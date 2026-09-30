@@ -12,6 +12,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Enable CORS for all origins (allowing GitHub Pages and mobile web to call AI endpoints)
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (_req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
+
 // High body limit to allow image uploads from high-resolution phone cameras
 app.use(express.json({ limit: '35mb' }));
 app.use(express.urlencoded({ limit: '35mb', extended: true }));
@@ -141,64 +153,7 @@ function normalizeInvoiceItems(parsed: any) {
   }));
 }
 
-// High-Speed Guaranteed Fallback Clinical Data (Instant Response on Quota Exhaustion or Offline)
-const FALLBACK_PRESCRIPTION_DATA = {
-  doctor: 'Dr. Tariq Mahmood (M.B.B.S, F.C.P.S - Consultant Physician)',
-  patient: 'Muhammad Aslam (Male, 42 Saal)',
-  treatmentSummary: 'Mausami bukhar, gale ki kharash, sozish aur jism ke dard ka mukammal ilaj.',
-  advice: 'Thande paani, ice cream, cold drinks aur tali hui cheezon se sakhti se parhez karein. Din me 8 se 10 glass neem garam paani piyen. Dawai baqaidgi se waqt par lein.',
-  medicines: [
-    {
-      name: 'Augmentin 625mg',
-      formula: 'Co-Amoxiclav',
-      form: 'Goli (Tablet)',
-      timing: 'Subah aur Sham 1 goli khane ke baad (1+0+1)',
-      usage: 'Taza paani ke sath pura nigal lein',
-      purpose: 'Gale ke bacterial infection aur sozish ke khatmay ke liye'
-    },
-    {
-      name: 'Panadol 500mg',
-      formula: 'Paracetamol',
-      form: 'Goli (Tablet)',
-      timing: 'Dopehar aur Raat ya zaroorat par dard mein (1+1+1)',
-      usage: 'Khana khane ke baad taza paani se',
-      purpose: 'Bukhar fori tor par utarne aur jism ke dard mein aaram ke liye'
-    },
-    {
-      name: 'Risek 20mg',
-      formula: 'Omeprazole',
-      form: 'Capsule',
-      timing: 'Subah nashte se aadha ghanta pehle (1+0+0)',
-      usage: 'Khali pait 1 glass paani ke sath',
-      purpose: 'Mede ki tezabiyat, jalan aur gas se mukammal bachao ke liye'
-    },
-    {
-      name: 'Arinac Forte',
-      formula: 'Ibuprofen + Pseudoephedrine',
-      form: 'Goli (Tablet)',
-      timing: 'Subah aur Raat khane ke baad (1+0+1)',
-      usage: 'Khana khane ke baad paani ke sath',
-      purpose: 'Band naak kholne, nazla aur sar dard se fori nijaat ke liye'
-    }
-  ]
-};
-
-const FALLBACK_INVOICE_ITEMS = [
-  { name: 'Augmentin 625mg Tab', generic: 'Co-Amoxiclav', batch: 'AG-904', expiry: '2026-11', packSize: '2x7', qty: 20, buyRate: 345, distributor: 'Getz Pharma / Premier' },
-  { name: 'Panadol 500mg Tab', generic: 'Paracetamol', batch: 'PN-412', expiry: '2027-04', packSize: '20x10', qty: 50, buyRate: 460, distributor: 'GSK Consumer' },
-  { name: 'Risek 20mg Cap', generic: 'Omeprazole', batch: 'RK-771', expiry: '2026-08', packSize: '2x7', qty: 30, buyRate: 275, distributor: 'Getz Pharma' },
-  { name: 'Arinac Forte Tab', generic: 'Ibuprofen', batch: 'AR-520', expiry: '2026-12', packSize: '10x10', qty: 15, buyRate: 180, distributor: 'Abbott Labs' },
-  { name: 'Flagyl 400mg Tab', generic: 'Metronidazole', batch: 'FL-330', expiry: '2027-01', packSize: '20x10', qty: 25, buyRate: 210, distributor: 'Sanofi Aventis' }
-];
-
-const FALLBACK_MARGIN_ITEMS = [
-  { name: 'Augmentin 625mg', buyRate: 345, qty: 10, freeQty: 1, mrp: '' },
-  { name: 'Risek 20mg Cap', buyRate: 275, qty: 10, freeQty: 1, mrp: '' },
-  { name: 'Panadol 500mg', buyRate: 460, qty: 20, freeQty: 2, mrp: '' },
-  { name: 'Sancos Syrup 120ml', buyRate: 115, qty: 12, freeQty: 1, mrp: '' }
-];
-
-// Initialize Gemini with strict 6s timeout and immediate quota protection
+// Initialize Gemini with accurate real vision scanning
 async function generateWithVisionFallback(prompt: string, imageBase64: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -215,47 +170,32 @@ async function generateWithVisionFallback(prompt: string, imageBase64: string): 
     }
   });
 
-  const { clean, mime } = sanitizeBase64(imageBase64);
+  const { clean } = sanitizeBase64(imageBase64);
   const models = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
 
   for (const modelName of models) {
     try {
-      // 6 second timeout race to prevent any hanging or freezing
-      const resultPromise = ai.models.generateContent({
+      const response: any = await ai.models.generateContent({
         model: modelName,
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: mime || 'image/jpeg',
-                data: clean
-              }
-            },
-            { text: prompt }
-          ]
-        },
+        contents: [
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: clean
+            }
+          },
+          prompt
+        ],
         config: {
           responseMimeType: 'application/json'
         }
       });
 
-      const timeoutPromise = new Promise<null>((_, reject) => {
-        setTimeout(() => reject(new Error('AI Request Timeout (6s)')), 6000);
-      });
-
-      const response: any = await Promise.race([resultPromise, timeoutPromise]);
       if (response && response.text) {
         return response.text;
       }
     } catch (err: any) {
-      const errStr = (err?.message || String(err)).toLowerCase();
       console.warn(`Vision model ${modelName} error:`, err?.message || err);
-
-      // If quota exhausted or 429 or 404, do not hammer the API with useless retries
-      if (errStr.includes('resource_exhausted') || errStr.includes('quota') || errStr.includes('429')) {
-        console.warn('API Quota exhausted. Switching immediately to high-speed clinical engine.');
-        break;
-      }
     }
   }
   return null;
@@ -268,57 +208,42 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) {
-      res.status(400).json({ success: false, error: 'Image base64 data is required.' });
+      res.status(400).json({ success: false, error: 'Image data darkar hai.' });
       return;
     }
 
     const prompt = `You are an expert clinical prescription and medical handwriting reader for pharmacies in Pakistan.
-Carefully examine the uploaded prescription / clinic slip image.
-Extract ONLY real medicines and doctor notes actually visible on the paper. DO NOT INVENT or hallucinate fake medicines.
-If the image is not a prescription or if no medicines are readable, return {"doctor":"","patient":"","treatmentSummary":"","advice":"","medicines":[]}.
+Carefully examine the uploaded prescription or clinic slip image.
+NOTE: The image may have been photographed using a smartphone camera. The paper may be oriented normally, sideways, or upside-down; read it in whatever orientation text is written.
+Inspect the entire paper: clinic/hospital header, doctor name, patient name/age, diagnosis, and all prescribed medicine line items.
+Extract ALL REAL medicines, brand names, generic formulas, potencies, and doctor notes visible on this paper.
+DO NOT INVENT fake medicines. However, if doctor handwriting is cursive or hurried, intelligently recognize common Pakistani pharmaceutical brands based on visible letter strokes and clinical patterns (e.g. Augmentin, Risek, Panadol, Brufen, Ciproxin, Arinac, Velosef, Klaricid, Flagyl, Gravinate, etc.).
+If no medicines can be identified from this image, return {"doctor":"","patient":"","treatmentSummary":"","advice":"","medicines":[]}.
 
-CRITICAL REQUIREMENT - LANGUAGE INSTRUCTION:
-All patient-facing explanations (treatmentSummary, advice, medicine timing, usage, and purpose) MUST BE WRITTEN IN NATURAL, EASY-TO-UNDERSTAND ROMAN URDU (Urdu written using English/Latin alphabets, e.g. "Subah sham 1 goli khane ke baad", "Khali pait taza paani se", "Bukhar aur gale ke dard ke liye", "Mede ki gas aur tezabiyat door karne ke liye", "Thandi, tali hui aur khatti cheezon se parhez karein, taza paani zyada piyen"). Do NOT use difficult English medical jargon.
+CRITICAL LANGUAGE INSTRUCTION:
+All patient-facing advice, timing, usage, and treatmentSummary MUST be written in natural Roman Urdu (Urdu written in English alphabets, e.g. "Subah sham 1 goli khane ke baad (1+0+1)", "Khali pait 1 glass taza paani se").
 
-Extract the following fields strictly in JSON:
-- doctor: Doctor or clinic/hospital name if visible, else ""
-- patient: Patient name, age/gender if visible, else ""
-- treatmentSummary: Short overall treatment summary in Roman Urdu (e.g. "Mausami bukhar, gale ki kharash aur jism dard ka ilaj", "Mede ki jalan aur acidity ka ilaj", "Blood pressure aur mamooli thakawat ka ilaj")
-- advice: Detailed parhez (dietary restrictions), precautions, and lifestyle advice in natural Roman Urdu (e.g. "Thanda paani, chawal aur tali hui cheezon se mukammal parhez karein. Din me 8 se 10 glass neem garam paani piyen aur 5 din baad dobara check karwayen.")
-- medicines: Array of medicines actually present on the prescription:
-  - name: Brand name and potency (e.g. "Augmentin 625mg", "Panadol 500mg", "Risek 20mg", "Brufen 400mg")
-  - formula: Generic formula / salt if visible (e.g. "Co-Amoxiclav", "Paracetamol", "Omeprazole")
-  - form: Form in Roman Urdu (e.g. "Goli (Tablet)", "Capsule", "Sharbath (Syrup)", "Qatray (Drops)", "Tika (Injection)", "Marham (Ointment)")
-  - timing: Dosage schedule in Roman Urdu (e.g. "Subah aur Sham 1 goli khane ke baad (1+0+1)", "Raat ko sone se pehle 1 capsule (0+0+1)", "Subah khali pait 1 capsule (1+0+0)", "Din me 3 dafa 1 chamach (1+1+1)")
-  - usage: Specific method of taking in Roman Urdu (e.g. "Khana khane ke baad taza paani ke sath lein", "Khana khane se aadha ghanta pehle khali pait", "Garam paani ke sath lein", "Sirf zaroorat par dard hone ki soorat mein")
-  - purpose: Therapeutic reason in Roman Urdu (e.g. "Infection aur gale ke dard ke liye", "Mede ki jalan aur gas door karne ke liye", "Bukhar aur sar dard ke liye", "Khaansi aur balgham ke liye")
-
-Strict JSON Output format:
+Extract strictly as JSON matching this schema:
 {
-  "doctor": "",
-  "patient": "",
-  "treatmentSummary": "",
-  "advice": "",
+  "doctor": "Doctor / Clinic name if legible, else empty string",
+  "patient": "Patient name or details if legible, else empty string",
+  "treatmentSummary": "Short treatment reason in Roman Urdu e.g. Bukhar aur gale ke dard ka ilaj",
+  "advice": "Precautions and parhez in Roman Urdu e.g. Thande paani aur tali hui cheezon se parhez karein",
   "medicines": [
     {
-      "name": "",
-      "formula": "",
-      "form": "",
-      "timing": "",
-      "usage": "",
-      "purpose": ""
+      "name": "Exact brand name and potency visible e.g. Augmentin 625mg",
+      "formula": "Generic salt if visible or known",
+      "form": "Goli (Tablet), Capsule, Sharbath (Syrup), Injection, etc.",
+      "timing": "Dosage schedule in Roman Urdu e.g. Subah sham khane ke baad (1+0+1)",
+      "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
+      "purpose": "Therapeutic indication in Roman Urdu e.g. Bukhar aur sozish"
     }
   ]
 }`;
 
-    let normalized = null;
-    try {
-      const text = await generateWithVisionFallback(prompt, imageBase64);
-      const parsed = text ? extractJsonFromText(text) : null;
-      normalized = normalizePrescriptionData(parsed);
-    } catch (e) {
-      console.warn('Prescription vision attempt error, using fallback:', e);
-    }
+    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const parsed = text ? extractJsonFromText(text) : null;
+    const normalized = normalizePrescriptionData(parsed);
 
     if (normalized && normalized.medicines && normalized.medicines.length > 0) {
       res.json({
@@ -326,18 +251,16 @@ Strict JSON Output format:
         data: normalized
       });
     } else {
-      // Instant High-Reliability Fallback with real Pakistani medicines & Roman Urdu instructions
       res.json({
-        success: true,
-        notice: 'High-Speed Clinical OCR Active',
-        data: FALLBACK_PRESCRIPTION_DATA
+        success: false,
+        error: 'Prescription se koi dawai saaf detect nahi ho saki. Barah-e-karam achi roshni mein seedhi tasweer lein.'
       });
     }
   } catch (err: any) {
     console.error('Prescription OCR server error:', err);
     res.json({
-      success: true,
-      data: FALLBACK_PRESCRIPTION_DATA
+      success: false,
+      error: 'Prescription scan karte waqt error aaya. Dobara koshish karein.'
     });
   }
 });
@@ -349,7 +272,7 @@ app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<vo
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) {
-      res.status(400).json({ success: false, error: 'Image base64 data is required.' });
+      res.status(400).json({ success: false, error: 'Image data darkar hai.' });
       return;
     }
 
@@ -359,41 +282,35 @@ DO NOT INVENT or hallucinate fake medicines. Extract ONLY what is visible on the
 If no invoice rows or medicines are visible, return an empty array [].
 
 For each real item found, extract:
-- name: brand name and strength
+- name: brand name and strength as printed on the bill
 - generic: generic formula if visible, else empty string
 - batch: batch number if visible, else empty string
 - expiry: expiry date in YYYY-MM-DD if visible, else empty string
 - packSize: pack size e.g. "20", "2x7", "10x10"
 - qty: quantity of packs invoiced (number)
 - buyRate: wholesale buy rate per pack (number)
-- distributor: distributor/supplier name from bill header or line if visible
+- distributor: distributor/supplier name from bill header if visible
 
 STRICT RULE: Leave 'mrp' as an empty string ("").
 Return a JSON array of objects.`;
 
-    let items: any[] = [];
-    try {
-      const text = await generateWithVisionFallback(prompt, imageBase64);
-      const parsed = text ? extractJsonFromText(text) : null;
-      items = normalizeInvoiceItems(parsed);
-    } catch (e) {
-      console.warn('Invoice vision attempt error, using fallback:', e);
-    }
+    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const parsed = text ? extractJsonFromText(text) : null;
+    const items = normalizeInvoiceItems(parsed);
 
     if (items.length > 0) {
       res.json({ success: true, data: items });
     } else {
       res.json({
-        success: true,
-        notice: 'High-Speed Invoice OCR Active',
-        data: FALLBACK_INVOICE_ITEMS
+        success: false,
+        error: 'Wholesale bill se koi medicine rows detect nahi ho sakin. Tasweer saaf roshni mein dobara upload karein.'
       });
     }
   } catch (err: any) {
     console.error('Invoice OCR server error:', err);
     res.json({
-      success: true,
-      data: FALLBACK_INVOICE_ITEMS
+      success: false,
+      error: 'Bill scan karte waqt error aaya. Dobara koshish karein.'
     });
   }
 });
@@ -405,7 +322,7 @@ app.post('/api/ai/scan-margin', async (req: Request, res: Response): Promise<voi
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) {
-      res.status(400).json({ success: false, error: 'Image base64 data is required.' });
+      res.status(400).json({ success: false, error: 'Image data darkar hai.' });
       return;
     }
 
@@ -422,31 +339,26 @@ Extract for each real line:
 STRICT RULE: Leave 'mrp' as an empty string ("").
 Return a JSON array of objects.`;
 
+    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const parsed = text ? extractJsonFromText(text) : null;
     let items: any[] = [];
-    try {
-      const text = await generateWithVisionFallback(prompt, imageBase64);
-      const parsed = text ? extractJsonFromText(text) : null;
-      if (Array.isArray(parsed)) items = parsed;
-      else if (Array.isArray(parsed?.items)) items = parsed.items;
-      else if (Array.isArray(parsed?.medicines)) items = parsed.medicines;
-    } catch (e) {
-      console.warn('Margin vision attempt error, using fallback:', e);
-    }
+    if (Array.isArray(parsed)) items = parsed;
+    else if (Array.isArray(parsed?.items)) items = parsed.items;
+    else if (Array.isArray(parsed?.medicines)) items = parsed.medicines;
 
     if (items.length > 0) {
       res.json({ success: true, data: items });
     } else {
       res.json({
-        success: true,
-        notice: 'High-Speed Margin Auditor Active',
-        data: FALLBACK_MARGIN_ITEMS
+        success: false,
+        error: 'Bill se koi items detect nahi ho sake. Barah-e-karam achi roshni mein seedhi tasweer upload karein.'
       });
     }
   } catch (err: any) {
     console.error('Margin OCR server error:', err);
     res.json({
-      success: true,
-      data: FALLBACK_MARGIN_ITEMS
+      success: false,
+      error: 'Margin bill scan karte waqt error aaya. Dobara koshish karein.'
     });
   }
 });
