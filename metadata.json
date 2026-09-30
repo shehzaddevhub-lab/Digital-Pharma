@@ -1,0 +1,6 @@
+{
+  "name": "Digital Pharma",
+  "description": "Digital Pharma - Smart Pharmacy ERP, High-Speed POS & AI Medical Scanner. Software developed by @ShahzadKhakh",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

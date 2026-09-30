@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Digital Pharma - Smart Pharmacy ERP",
+  "short_name": "DigitalPharma",
+  "description": "Smart Pharmacy ERP, High-Speed POS & AI Medical Scanner. Software developed by @ShahzadKhakh",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1e40af",
+  "theme_color": "#1e40af",
+  "categories": ["medical", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
