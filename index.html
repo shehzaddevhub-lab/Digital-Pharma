@@ -21,9 +21,9 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="description" content="Digital Pharma - Smart Pharmacy ERP, High-Speed POS & AI Medical Scanner. Software developed by @ShahzadKhakh">
+    <meta name="description" content="Digital Pharma - Smart Pharmacy ERP, High-Speed POS & AI Medical Scanner. Smart Pharmacy System">
     <meta property="og:title" content="Digital Pharma">
-    <meta property="og:description" content="Digital Pharma - Smart Pharmacy ERP, High-Speed POS & AI Medical Scanner. Software developed by @ShahzadKhakh">
+    <meta property="og:description" content="Digital Pharma - Smart Pharmacy ERP, High-Speed POS & AI Medical Scanner. Smart Pharmacy System">
     <title id="html-page-title">Digital Pharma - Smart Pharmacy ERP & POS</title>
 
     <!-- App Icon Links & Manifest -->
@@ -106,6 +106,10 @@
         }
 
         /* Clean Receipt Print Styling (Dynamic height according to items count) */
+        @page {
+            size: auto;
+            margin: 2mm;
+        }
         @media print {
             body * { visibility: hidden !important; }
             #receipt-card-capture, #receipt-card-capture * { visibility: visible !important; }
@@ -116,7 +120,7 @@
                 width: 100% !important;
                 max-width: 310px !important;
                 margin: 0 !important;
-                padding: 8px !important;
+                padding: 6px !important;
                 box-shadow: none !important;
                 border: none !important;
                 background-color: #ffffff !important;
@@ -135,6 +139,14 @@
             background-image: radial-gradient(#ebe7d8 0.65px, transparent 0.65px);
             background-size: 7px 7px;
             font-family: 'Courier New', Courier, ui-monospace, monospace;
+        }
+
+        @keyframes softPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.85); }
+        }
+        .animate-soft-pulse {
+            animation: softPulse 2.2s ease-in-out infinite;
         }
 
         @keyframes aiLaserScan {
@@ -201,8 +213,7 @@
                 </div>
                 <div class="min-w-0">
                     <h1 id="top-store-name" class="font-black text-sm sm:text-base leading-tight tracking-wide truncate">Digital Pharma</h1>
-                    <!-- Main required credit: Accurate font, color and style -->
-                    <p class="text-[11px] sm:text-[12px] text-amber-300 italic font-semibold tracking-wide truncate font-sans">Software by @ShahzadKhakh</p>
+                    <p class="text-[11px] sm:text-[12px] text-amber-300 font-semibold tracking-wide truncate font-sans">Smart Pharmacy System</p>
                 </div>
             </div>
 
@@ -226,13 +237,19 @@
                     <span class="hidden sm:inline font-bold">Install App</span>
                 </button>
 
-                <button id="account-hub-btn" onclick="window.openAccountHubModal()" class="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-brand-600 px-2.5 py-1 rounded-full transition shadow text-left">
+                <button id="account-hub-btn" onclick="window.openAccountHubModal()" class="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-brand-600 px-2 sm:px-2.5 py-1 rounded-full transition shadow text-left relative" title="Account & Profile">
                     <div class="flex flex-col hidden sm:block">
                         <span id="hub-header-name" class="block leading-none text-xs font-bold text-white">Guest Mode</span>
-                        <span id="hub-header-status" class="block leading-tight text-[9px] text-amber-300 font-medium">Local System</span>
+                        <span id="hub-header-status" class="block leading-tight text-[9px] text-amber-300 font-medium">Anonymous</span>
                     </div>
-                    <div class="w-7 h-7 rounded-full bg-brand-50 text-brand-800 flex items-center justify-center font-black text-xs shrink-0 shadow-inner">
-                        <span id="profile-avatar-char">G</span>
+                    <div class="relative">
+                        <div id="profile-avatar-container" class="w-7 h-7 rounded-full bg-slate-800 text-amber-300 border border-amber-400/40 flex items-center justify-center font-black text-xs shrink-0 shadow-inner overflow-hidden relative">
+                            <i id="profile-anonymous-icon" data-lucide="user-round" class="w-4 h-4 text-amber-300"></i>
+                            <img id="profile-header-img" class="hidden w-full h-full object-cover rounded-full" alt="Profile" />
+                            <span id="profile-avatar-char" class="hidden font-black text-xs text-white">G</span>
+                        </div>
+                        <!-- Internet Connectivity Indicator Dot (Green=Online, Red=Offline, with subtle pulsing) -->
+                        <span id="net-status-dot" class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-brand-900 animate-soft-pulse transition-colors duration-300" title="Internet Connected (Online)"></span>
                     </div>
                 </button>
             </div>
@@ -259,13 +276,13 @@
                 <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
             </button>
             <button onclick="window.switchTab('pos')" id="tab-pos" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100">
-                <i data-lucide="shopping-cart" class="w-4 h-4"></i> Sale POS Counter
+                <i data-lucide="shopping-cart" class="w-4 h-4"></i> Sale
             </button>
             <button onclick="window.switchTab('inventory')" id="tab-inventory" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100">
                 <i data-lucide="pill" class="w-4 h-4"></i> Stock Inventory
             </button>
             <button onclick="window.switchTab('margin')" id="tab-margin" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100">
-                <i data-lucide="calculator" class="w-4 h-4"></i> Margin Calculator
+                <i data-lucide="calculator" class="w-4 h-4"></i> Calculator
             </button>
             <button onclick="window.switchTab('network')" id="tab-network" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100">
                 <i data-lucide="network" class="w-4 h-4"></i> Connected Pharmacies
@@ -289,9 +306,9 @@
                 </label>
             </div>
 
-            <!-- Metric Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+            <!-- Metric Cards (Sale Clickable for Complete Investment & Sales Analytics with Graphs) -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div onclick="window.switchTab('inventory')" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3 cursor-pointer hover:border-brand-300 transition">
                     <div class="p-2.5 bg-brand-50 text-brand-600 rounded-xl shrink-0">
                         <i data-lucide="package" class="w-5 h-5"></i>
                     </div>
@@ -301,33 +318,33 @@
                     </div>
                 </div>
 
-                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
-                    <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl shrink-0">
-                        <i data-lucide="banknote" class="w-5 h-5"></i>
+                <!-- Today Sale & Investment Card (Click to open full analytics, graph, today/yesterday/week/month/year hisaab) -->
+                <div onclick="window.openSalesAnalyticsModal('today')" class="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white p-3.5 sm:p-4 rounded-2xl shadow-sm border border-emerald-600 flex items-center justify-between gap-3 cursor-pointer hover:shadow-md transition active:scale-[0.99] group" title="Click karein: Mukammal Sale, Investment & Profit Graph dekhne ke liye">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2.5 bg-white/20 text-white rounded-xl shrink-0">
+                            <i data-lucide="trending-up" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-1.5">
+                                <p class="text-[11px] font-bold text-emerald-100">Sale & Investment</p>
+                                <span class="text-[9px] bg-white/20 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider text-emerald-100">Today</span>
+                            </div>
+                            <h3 id="dash-today-sales" class="text-base sm:text-xl font-black text-white">Rs. 0</h3>
+                        </div>
                     </div>
-                    <div>
-                        <p class="text-[11px] font-medium text-slate-500">Stock Cost Value</p>
-                        <h3 id="dash-total-value" class="text-base sm:text-lg font-black text-slate-800">Rs. 0</h3>
+                    <div class="flex items-center gap-1 text-[11px] font-bold bg-white text-emerald-800 px-2.5 py-1.5 rounded-xl shadow-xs shrink-0 group-hover:bg-emerald-50 transition">
+                        <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-emerald-700"></i>
+                        <span class="hidden xs:inline sm:inline">Hisaab / Graph</span>
                     </div>
                 </div>
 
-                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+                <div onclick="window.switchTab('inventory')" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3 cursor-pointer hover:border-amber-300 transition">
                     <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl shrink-0">
                         <i data-lucide="alert-triangle" class="w-5 h-5"></i>
                     </div>
                     <div>
                         <p class="text-[11px] font-medium text-slate-500">Low Stock Alert</p>
                         <h3 id="dash-low-stock" class="text-base sm:text-lg font-black text-amber-600">0</h3>
-                    </div>
-                </div>
-
-                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
-                    <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl shrink-0">
-                        <i data-lucide="trending-up" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <p class="text-[11px] font-medium text-slate-500">Today Sales</p>
-                        <h3 id="dash-today-sales" class="text-base sm:text-lg font-black text-slate-800">Rs. 0</h3>
                     </div>
                 </div>
             </div>
@@ -412,7 +429,7 @@
                         <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Unit Type:</label>
                         <select id="pos-unit-type" onchange="window.updatePosLivePriceHint()" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
                             <option value="pack">📦 Full Pack</option>
-                            <option value="loose">💊 Loose Dawai</option>
+                            <option value="loose">💊 Loose</option>
                         </select>
                     </div>
                     <div>
@@ -502,7 +519,7 @@
                     </div>
                     <button onclick="window.completeSale()" id="pos-complete-btn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow transition flex items-center justify-center gap-1.5 text-xs sm:text-sm active:scale-95">
                         <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-                        <span>Complete Sale & Print Receipt</span>
+                        <span>Complete Sale & Receipt</span>
                     </button>
                 </div>
             </div>
@@ -548,7 +565,7 @@
                             <th class="p-3">Pack</th>
                             <th class="p-3">Batch</th>
                             <th class="p-3">Expiry</th>
-                            <th class="p-3 text-right">Buy Rate</th>
+                            <th class="p-3 text-right">Buy Rate TP</th>
                             <th class="p-3 text-right">Retail MRP</th>
                             <th class="p-3 text-center">Stock</th>
                             <th class="p-3 text-center">Action</th>
@@ -570,149 +587,203 @@
             </div>
         </section>
 
-        <!-- MARGIN & TRADE CALCULATOR VIEW -->
+        <!-- CALCULATOR VIEW -->
         <section id="view-margin" class="tab-content hidden max-w-3xl mx-auto w-full flex flex-col gap-4">
             
-            <!-- Scan Margin Banner (Clean & Direct) -->
-            <div class="bg-gradient-to-r from-amber-600 to-orange-700 text-white rounded-2xl shadow-xs p-3 sm:p-3.5 flex items-center justify-between gap-3 border border-amber-500">
-                <div class="flex items-center gap-2.5">
-                    <div class="p-2 bg-white/10 rounded-xl shrink-0">
-                        <i data-lucide="percent" class="w-5 h-5 text-amber-200"></i>
-                    </div>
-                    <h2 class="font-bold text-sm sm:text-base tracking-wide">Trade Margin & Profit % AI Auditor</h2>
-                </div>
-                <label class="cursor-pointer bg-white text-amber-900 font-bold text-xs px-3.5 py-2 rounded-xl shadow transition shrink-0 flex items-center gap-1.5 active:scale-95">
-                    <i data-lucide="camera" class="w-4 h-4"></i> Scan Bill
-                    <input type="file" class="hidden" accept="image/*" onchange="window.handleAiMarginBillScan(event)">
-                </label>
-            </div>
-
-            <!-- Calculator Tab Selector (Loose Dawai vs Bonus Scheme) -->
-            <div class="flex p-1 bg-white border border-slate-200 rounded-2xl shadow-xs gap-1.5">
-                <button type="button" id="margin-toggle-loose-btn" onclick="window.switchMarginCalcTab('loose')" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-xs">
-                    <i data-lucide="pill" class="w-4 h-4"></i> Loose Dawai Rate & Hisab
+            <!-- 3 Calculators Tab Toggle (1. Rate & Pack, 2. Simple Math, 3. Bonus Scheme) -->
+            <div class="flex p-1 bg-white border border-slate-200 rounded-2xl shadow-xs gap-1 sm:gap-1.5">
+                <button type="button" id="calc-tab-btn-rate" onclick="window.switchCalculatorTab('rate')" class="flex-1 py-2 sm:py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-xs">
+                    <i data-lucide="package" class="w-3.5 h-3.5"></i> 1. Rate & Pack
                 </button>
-                <button type="button" id="margin-toggle-bonus-btn" onclick="window.switchMarginCalcTab('bonus')" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-100">
-                    <i data-lucide="calculator" class="w-4 h-4"></i> Bonus Scheme (10+1) & Margin
+                <button type="button" id="calc-tab-btn-simple" onclick="window.switchCalculatorTab('simple')" class="flex-1 py-2 sm:py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-100">
+                    <i data-lucide="calculator" class="w-3.5 h-3.5"></i> 2. Simple (+ - × ÷ %)
+                </button>
+                <button type="button" id="calc-tab-btn-bonus" onclick="window.switchCalculatorTab('bonus')" class="flex-1 py-2 sm:py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-100">
+                    <i data-lucide="percent" class="w-3.5 h-3.5"></i> 3. Bonus Scheme (10+1)
                 </button>
             </div>
 
-            <!-- CALCULATOR 1: Loose Dawai Rate & Customer Hisab -->
-            <div id="margin-calc-loose-section" class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div class="border-b border-slate-100 pb-2">
-                    <h3 class="font-black text-slate-800 text-sm sm:text-base flex items-center gap-2">
-                        <i data-lucide="pill" class="w-4 h-4 text-brand-600"></i> Loose Dawai & Single Tablet Rate Calculator
+            <!-- CALCULATOR 1 (MAIN): Rate & Pack Calculator -->
+            <div id="calc-section-rate" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                <div class="border-b border-slate-100 pb-2 flex items-center justify-between gap-2">
+                    <h3 class="font-black text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
+                        <i data-lucide="package" class="w-4 h-4 text-brand-600"></i> Rate & Pack Calculator
                     </h3>
-                    <p class="text-xs text-slate-500">Box price likhein ya stock se dawai chunein, 1 goli/patta ka rate aur customer hisab foran nikalain.</p>
+                    <button type="button" onclick="window.resetSimpleCalc()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shrink-0 active:scale-95" title="Sab box saaf karein">
+                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Clear All
+                    </button>
                 </div>
 
-                <!-- Quick Stock Selector (Auto-fill from inventory) -->
-                <div class="bg-brand-50/70 p-2.5 rounded-xl border border-brand-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <span class="text-xs font-bold text-brand-900 flex items-center gap-1.5">
-                        <i data-lucide="search" class="w-3.5 h-3.5 text-brand-600"></i> Stock Se Dawai Chuniye (Auto-Fill):
-                    </span>
-                    <select id="loose-stock-selector" onchange="window.selectStockForLooseCalc(this.value)" class="text-xs font-bold text-slate-800 bg-white border border-brand-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 w-full sm:w-72">
-                        <option value="">-- Medicine Select Karein --</option>
-                    </select>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- 5 Equal Compact Input Boxes in Single Grid (Pack Price, Pack Size, Full Packs, Loose, Discount %) -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
                     <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Retail Pack MRP (Poore Dabba Ki Qemat):</label>
-                        <input type="number" id="loose-pack-price" value="540" placeholder="e.g. 540" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" onchange="window.runLooseCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1 truncate">Item Rate (Rs):</label>
+                        <input type="number" id="loose-pack-price" value="" placeholder="e.g. 500" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                     </div>
                     <div>
                         <div class="flex justify-between items-center mb-1">
-                            <label class="block text-xs font-bold text-slate-600">Pack Size (Packs / Strips):</label>
-                            <span id="loose-units-hint" class="text-[10px] font-bold text-brand-600">Total: 20 Dawai</span>
+                            <label class="block text-[11px] font-bold text-slate-700 truncate">Pack Size:</label>
+                            <span id="loose-units-hint" class="text-[9px] font-bold text-brand-600">0 Units</span>
                         </div>
-                        <input type="text" id="loose-pack-size" value="20" placeholder="e.g. 20 ya 2x7 ya 100" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" onchange="window.runLooseCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <input type="text" id="loose-pack-size" value="" placeholder="e.g. 20 ya 2x7" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                     </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1 truncate">📦 Full Packs:</label>
+                        <input type="number" id="loose-full-packs" value="" placeholder="0" min="0" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
                     <div>
                         <div class="flex justify-between items-center mb-1">
-                            <label class="text-xs font-bold text-slate-600">Sale Qty (Dawai / Tablets):</label>
+                            <label class="block text-[11px] font-bold text-slate-700 truncate">💊 Loose:</label>
                             <div class="flex gap-1">
-                                <button type="button" onclick="window.setLooseQtyPreset(2)" class="px-1.5 py-0.5 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-bold">2</button>
-                                <button type="button" onclick="window.setLooseQtyPreset(5)" class="px-1.5 py-0.5 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-bold">5</button>
-                                <button type="button" onclick="window.setLooseQtyPreset(10)" class="px-1.5 py-0.5 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-bold">10</button>
-                                <button type="button" onclick="window.setLooseQtyPreset(14)" class="px-1.5 py-0.5 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-bold">14</button>
+                                <button type="button" onclick="window.setLooseQtyPreset(5)" class="px-1 py-0.2 text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-bold">5</button>
+                                <button type="button" onclick="window.setLooseQtyPreset(10)" class="px-1 py-0.2 text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-bold">10</button>
                             </div>
                         </div>
-                        <div class="flex items-center gap-1.5">
-                            <button type="button" onclick="window.changeLooseCalcQty(-1)" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black text-base flex items-center justify-center border border-slate-300 shrink-0">-</button>
-                            <input type="number" id="loose-qty" value="1" min="1" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" onchange="window.runLooseCalc()" class="flex-1 min-w-0 px-2 py-2 border border-slate-200 rounded-xl font-black text-center text-xs text-slate-900 bg-white">
-                            <button type="button" onclick="window.changeLooseCalcQty(1)" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black text-base flex items-center justify-center border border-slate-300 shrink-0">+</button>
-                        </div>
+                        <input type="number" id="loose-qty" value="" placeholder="0" min="0" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Customer Discount % (Optional):</label>
-                        <input type="number" id="loose-discount" value="0" placeholder="0" min="0" max="100" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" onchange="window.runLooseCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <!-- Highlighted Equal-Sized Discount Box -->
+                    <div class="p-1 rounded-xl bg-amber-50/90 border border-amber-300">
+                        <div class="flex justify-between items-center mb-0.5">
+                            <label class="block text-[11px] font-black text-amber-950">Discount %:</label>
+                            <span class="text-[8px] font-black text-amber-700 bg-amber-200/60 px-1 py-0.2 rounded uppercase">Opt</span>
+                        </div>
+                        <input type="number" id="loose-discount" value="" placeholder="0%" min="0" max="100" step="0.1" oninput="window.runLooseCalc()" onkeyup="window.runLooseCalc()" class="w-full px-2 py-1 border border-amber-400 rounded-lg font-black text-right text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs shadow-inner">
                     </div>
                 </div>
 
-                <div class="grid grid-cols-3 gap-2.5 pt-2 text-center">
-                    <div class="p-3 bg-brand-50/80 border border-brand-200 rounded-xl">
-                        <span class="text-[10px] text-brand-700 font-bold block uppercase">Per Unit / Tablet:</span>
-                        <h4 id="loose-tab-price" class="text-xs sm:text-sm font-black text-brand-900 mt-0.5">Rs. 0.00</h4>
+                <!-- Calculation Results Summary Grid (Immediate View, No Scrolling Required) -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center">
+                    <div class="p-2 bg-brand-50 border border-brand-200 rounded-xl">
+                        <span class="text-[9px] text-brand-700 font-bold block uppercase">1 Unit Rate:</span>
+                        <h4 id="loose-tab-price" class="text-xs sm:text-sm font-black text-brand-900 mt-0.5">Rs. 0.0</h4>
                     </div>
-                    <div class="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl">
-                        <span class="text-[10px] text-indigo-700 font-bold block uppercase">Per Strip / Patta:</span>
-                        <h4 id="loose-strip-price" class="text-xs sm:text-sm font-black text-indigo-900 mt-0.5">Rs. 0.00</h4>
+                    <div class="p-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+                        <span class="text-[9px] text-indigo-700 font-bold block uppercase">1 Strip Rate:</span>
+                        <h4 id="loose-strip-price" class="text-xs sm:text-sm font-black text-indigo-900 mt-0.5">Rs. 0.0</h4>
                     </div>
-                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                        <span class="text-[10px] text-emerald-800 font-bold block uppercase">Net Payable (Hisab):</span>
-                        <h4 id="loose-net-total" class="text-xs sm:text-sm font-black text-emerald-700 mt-0.5">Rs. 0.00</h4>
+                    <div class="p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                        <span class="text-[9px] text-slate-500 font-bold block uppercase">Total Units:</span>
+                        <h4 id="loose-gross-total" class="text-xs sm:text-sm font-black text-slate-800 mt-0.5">Rs. 0.0</h4>
+                        <span id="loose-units-calculated" class="text-[9px] text-slate-500 block">0 Units</span>
+                    </div>
+                    <div class="p-2 bg-emerald-50 border-2 border-emerald-500 rounded-xl">
+                        <span class="text-[9px] text-emerald-800 font-black block uppercase">Net Final Amount:</span>
+                        <h4 id="loose-net-total" class="text-xs sm:text-sm font-black text-emerald-700 mt-0.5">Rs. 0.0</h4>
+                        <span id="loose-discount-saved" class="text-[9px] text-emerald-600 font-bold block">Disc: Rs. 0.0</span>
                     </div>
                 </div>
             </div>
 
-            <!-- CALCULATOR 2: Wholesale Bonus Scheme (10+1) & Margin -->
-            <div id="margin-calc-bonus-section" class="hidden bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div class="border-b border-slate-100 pb-2">
+            <!-- CALCULATOR 2: Simple Standard Math Calculator (+, -, ×, ÷, %) -->
+            <div id="calc-section-simple" class="hidden bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 max-w-md mx-auto w-full">
+                <div class="border-b border-slate-100 pb-2.5 flex items-center justify-between gap-2">
                     <h3 class="font-black text-slate-800 text-sm sm:text-base flex items-center gap-2">
-                        <i data-lucide="calculator" class="w-4 h-4 text-brand-600"></i> Wholesale Trade & Bonus Scheme Calculator
+                        <i data-lucide="calculator" class="w-4 h-4 text-brand-600"></i> Simple Calculator (+ - × ÷ %)
                     </h3>
-                    <p class="text-xs text-slate-500">Distributor discount, bonus schemes (10+1) aur net profit percentage calculate karein.</p>
+                    <button type="button" onclick="window.simpleCalcClear()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 active:scale-95" title="Clear Display">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Clear (C)
+                    </button>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Retail Price (MRP) per Dabba:</label>
-                        <input type="number" id="calc-mrp" placeholder="e.g. 500" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Invoiced Buy Rate (Kharid):</label>
-                        <input type="number" id="calc-rate" placeholder="e.g. 425" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Purchased Packs (Kharid Tadad):</label>
-                        <input type="number" id="calc-packs" value="10" min="1" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Free Bonus Packs (Scheme e.g. 10+1):</label>
-                        <input type="number" id="calc-free" value="0" min="0" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
-                    </div>
+                <!-- Digital Display Screen -->
+                <div class="bg-slate-900 text-white rounded-2xl p-3.5 sm:p-4 shadow-inner text-right space-y-1 border border-slate-800">
+                    <div id="simple-calc-history" class="text-xs text-slate-400 font-mono min-h-[16px] truncate tracking-wide"></div>
+                    <div id="simple-calc-display" class="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-wider overflow-x-auto no-scrollbar">0</div>
                 </div>
 
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-                    <div class="p-3 bg-brand-50 border border-brand-200 rounded-xl">
-                        <span class="text-[10px] text-slate-500 font-bold block">Trade Discount:</span>
-                        <h4 id="calc-disc-res" class="text-base sm:text-lg font-black text-brand-700 mt-0.5">0.00%</h4>
+                <!-- Calculator Keypad (Jama, Nafi, Zarb, Taqseem, Percentage, Equals) -->
+                <div class="grid grid-cols-4 gap-2 pt-1 select-none">
+                    <!-- Row 1: Clear, Backspace, Percent, Divide -->
+                    <button type="button" onclick="window.simpleCalcClear()" class="py-3 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-base transition active:scale-95 shadow-xs">C</button>
+                    <button type="button" onclick="window.simpleCalcBackspace()" class="py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition active:scale-95 shadow-xs flex items-center justify-center">⌫</button>
+                    <button type="button" onclick="window.simpleCalcPercent()" class="py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-black text-base transition active:scale-95 shadow-xs">%</button>
+                    <button type="button" onclick="window.simpleCalcOp('÷')" class="py-3 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-800 font-black text-xl transition active:scale-95 shadow-xs">÷</button>
+
+                    <!-- Row 2: 7, 8, 9, Multiply -->
+                    <button type="button" onclick="window.simpleCalcDigit('7')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">7</button>
+                    <button type="button" onclick="window.simpleCalcDigit('8')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">8</button>
+                    <button type="button" onclick="window.simpleCalcDigit('9')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">9</button>
+                    <button type="button" onclick="window.simpleCalcOp('×')" class="py-3 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-800 font-black text-xl transition active:scale-95 shadow-xs">×</button>
+
+                    <!-- Row 3: 4, 5, 6, Subtract -->
+                    <button type="button" onclick="window.simpleCalcDigit('4')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">4</button>
+                    <button type="button" onclick="window.simpleCalcDigit('5')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">5</button>
+                    <button type="button" onclick="window.simpleCalcDigit('6')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">6</button>
+                    <button type="button" onclick="window.simpleCalcOp('-')" class="py-3 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-800 font-black text-xl transition active:scale-95 shadow-xs">−</button>
+
+                    <!-- Row 4: 1, 2, 3, Add -->
+                    <button type="button" onclick="window.simpleCalcDigit('1')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">1</button>
+                    <button type="button" onclick="window.simpleCalcDigit('2')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">2</button>
+                    <button type="button" onclick="window.simpleCalcDigit('3')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">3</button>
+                    <button type="button" onclick="window.simpleCalcOp('+')" class="py-3 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-800 font-black text-xl transition active:scale-95 shadow-xs">+</button>
+
+                    <!-- Row 5: ±, 0, ., Equals -->
+                    <button type="button" onclick="window.simpleCalcToggleSign()" class="py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base transition active:scale-95 shadow-xs">±</button>
+                    <button type="button" onclick="window.simpleCalcDigit('0')" class="py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-lg transition active:scale-95 shadow-xs">0</button>
+                    <button type="button" onclick="window.simpleCalcDigit('.')" class="py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-lg transition active:scale-95 shadow-xs">.</button>
+                    <button type="button" onclick="window.simpleCalcEquals()" class="py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-2xl transition shadow-md active:scale-95">=</button>
+                </div>
+            </div>
+
+            <!-- CALCULATOR 3: Wholesale Bonus Scheme (10+1) & Margin -->
+            <div id="calc-section-bonus" class="hidden space-y-4">
+                <!-- Scan Margin Banner - ONLY visible on Bonus Scheme (3rd option) -->
+                <div id="margin-scanner-banner" class="bg-gradient-to-r from-amber-600 to-orange-700 text-white rounded-2xl shadow-xs p-3 sm:p-3.5 flex items-center justify-between gap-3 border border-amber-500">
+                    <div class="flex items-center gap-2.5">
+                        <div class="p-2 bg-white/10 rounded-xl shrink-0">
+                            <i data-lucide="percent" class="w-5 h-5 text-amber-200"></i>
+                        </div>
+                        <h2 class="font-bold text-sm sm:text-base tracking-wide">Trade Margin & Profit % AI Auditor</h2>
                     </div>
-                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                        <span class="text-[10px] text-slate-500 font-bold block">Net Profit %:</span>
-                        <h4 id="calc-profit-res" class="text-base sm:text-lg font-black text-emerald-700 mt-0.5">0.00%</h4>
+                    <label class="cursor-pointer bg-white text-amber-900 font-bold text-xs px-3.5 py-2 rounded-xl shadow transition shrink-0 flex items-center gap-1.5 active:scale-95">
+                        <i data-lucide="camera" class="w-4 h-4"></i> Scan Bill
+                        <input type="file" class="hidden" accept="image/*" onchange="window.handleAiMarginBillScan(event)">
+                    </label>
+                </div>
+
+                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                    <div class="border-b border-slate-100 pb-2.5 flex items-center justify-between gap-2">
+                        <h3 class="font-black text-slate-800 text-sm sm:text-base flex items-center gap-2">
+                            <i data-lucide="percent" class="w-4 h-4 text-brand-600"></i> Wholesale Trade & Bonus Scheme (10+1)
+                        </h3>
                     </div>
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                        <span class="text-[10px] text-slate-500 font-bold block">Effective Kharid/Pack:</span>
-                        <h4 id="calc-eff-cost" class="text-base sm:text-lg font-black text-slate-800 mt-0.5">Rs. 0.00</h4>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Retail Price (MRP) per Pack:</label>
+                            <input type="number" id="calc-mrp" placeholder="e.g. 500" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Invoiced Buy Rate TP:</label>
+                            <input type="number" id="calc-rate" placeholder="e.g. 425" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Purchased Packs:</label>
+                            <input type="number" id="calc-packs" value="10" min="1" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Free Bonus Packs (Scheme e.g. 10+1):</label>
+                            <input type="number" id="calc-free" value="1" min="0" oninput="window.runMarginCalc()" class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 bg-white">
+                        </div>
                     </div>
-                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                        <span class="text-[10px] text-slate-500 font-bold block">Net Deal Profit:</span>
-                        <h4 id="calc-total-profit" class="text-base sm:text-lg font-black text-amber-700 mt-0.5">Rs. 0.00</h4>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                        <div class="p-3 bg-brand-50 border border-brand-200 rounded-xl">
+                            <span class="text-[10px] text-slate-500 font-bold block">Trade Discount:</span>
+                            <h4 id="calc-disc-res" class="text-base sm:text-lg font-black text-brand-700 mt-0.5">0.00%</h4>
+                        </div>
+                        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <span class="text-[10px] text-slate-500 font-bold block">Net Profit %:</span>
+                            <h4 id="calc-profit-res" class="text-base sm:text-lg font-black text-emerald-700 mt-0.5">0.00%</h4>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                            <span class="text-[10px] text-slate-500 font-bold block">Effective Rate / Pack:</span>
+                            <h4 id="calc-eff-cost" class="text-base sm:text-lg font-black text-slate-800 mt-0.5">Rs. 0.00</h4>
+                        </div>
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                            <span class="text-[10px] text-slate-500 font-bold block">Net Deal Profit:</span>
+                            <h4 id="calc-total-profit" class="text-base sm:text-lg font-black text-amber-700 mt-0.5">Rs. 0.00</h4>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -748,7 +819,7 @@
                             <span class="w-2 h-2 rounded-full bg-emerald-600 animate-ping"></span>
                             AI Profit & Percentage Auditor Active
                         </h4>
-                        <p class="text-[11px] text-slate-500 mt-0.5">Bill se items, kharid rates aur bonus schemes extract ho rahi hain...</p>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Bill se items, Buy Rate TP aur bonus schemes extract ho rahi hain...</p>
                     </div>
                 </div>
 
@@ -758,62 +829,7 @@
                             <thead class="bg-slate-50 border-b text-slate-600 font-bold">
                                 <tr>
                                     <th class="p-2.5">Medicine Name</th>
-                                    <th class="p-2.5 text-right">Buy Rate (Kharid)</th>
-                                    <th class="p-2.5 text-center">Scheme / Packs</th>
-                                    <th class="p-2.5 text-right text-amber-900 bg-amber-50">Retail MRP (Box)</th>
-                                    <th class="p-2.5 text-right">Trade Discount %</th>
-                                    <th class="p-2.5 text-right text-emerald-800 bg-emerald-50">Net Profit %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="margin-scanned-table-body" class="divide-y divide-slate-100"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-            <!-- Scanned Bill Margin Audit Container -->
-            <div id="margin-scanned-container" class="hidden bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div class="flex items-center justify-between border-b pb-2">
-                    <div>
-                        <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
-                            <i data-lucide="scan-line" class="w-4 h-4 text-emerald-600"></i> Wholesale Bill Profit & Margin Audit
-                        </h3>
-                        <p class="text-[11px] text-slate-500">Box dekh kar MRP enter karein. Har item ka Discount % aur Net Profit % khud calculate hoga.</p>
-                    </div>
-                    <button onclick="document.getElementById('margin-scanned-container').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 p-1">
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                    </button>
-                </div>
-
-                <div id="margin-scan-loading" class="py-8 px-4 flex flex-col items-center justify-center gap-4 text-center">
-                    <div class="relative w-48 h-36 bg-slate-950 rounded-2xl border-2 border-emerald-500/80 shadow-2xl overflow-hidden flex items-center justify-center ai-scanner-grid">
-                        <div class="absolute top-2 left-2 w-3.5 h-3.5 border-t-2 border-l-2 border-emerald-400"></div>
-                        <div class="absolute top-2 right-2 w-3.5 h-3.5 border-t-2 border-r-2 border-emerald-400"></div>
-                        <div class="absolute bottom-2 left-2 w-3.5 h-3.5 border-b-2 border-l-2 border-emerald-400"></div>
-                        <div class="absolute bottom-2 right-2 w-3.5 h-3.5 border-b-2 border-r-2 border-emerald-400"></div>
-                        <div class="flex flex-col items-center gap-1 opacity-70 animate-pulse">
-                            <i data-lucide="calculator" class="w-9 h-9 text-emerald-400"></i>
-                            <span class="text-[9px] font-mono tracking-widest text-emerald-300 uppercase">AUDITING MARGINS</span>
-                        </div>
-                        <div class="ai-laser-bar"></div>
-                    </div>
-                    <div>
-                        <h4 class="text-xs font-black text-slate-800 tracking-wide flex items-center justify-center gap-1.5">
-                            <span class="w-2 h-2 rounded-full bg-emerald-600 animate-ping"></span>
-                            AI Profit & Percentage Auditor Active
-                        </h4>
-                        <p class="text-[11px] text-slate-500 mt-0.5">Bill se items, kharid rates aur bonus schemes extract ho rahi hain...</p>
-                    </div>
-                </div>
-
-                <div id="margin-scan-content" class="hidden space-y-3">
-                    <div class="overflow-x-auto border border-slate-200 rounded-xl">
-                        <table class="w-full text-left text-xs border-collapse">
-                            <thead class="bg-slate-50 border-b text-slate-600 font-bold">
-                                <tr>
-                                    <th class="p-2.5">Medicine Name</th>
-                                    <th class="p-2.5 text-right">Buy Rate (Kharid)</th>
+                                    <th class="p-2.5 text-right">Buy Rate TP</th>
                                     <th class="p-2.5 text-center">Scheme / Packs</th>
                                     <th class="p-2.5 text-right text-amber-900 bg-amber-50">Retail MRP (Box)</th>
                                     <th class="p-2.5 text-right">Trade Discount %</th>
@@ -836,11 +852,17 @@
                     </div>
                     <div>
                         <h2 class="font-black text-sm sm:text-base">Connected Pharmacies Network</h2>
+                        <p class="text-[11px] text-emerald-200">Real partner pharmacies & emergency medicine sharing</p>
                     </div>
                 </div>
-                <button onclick="window.refreshNetworkList()" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition">
-                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh
-                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="window.openAddNetworkStoreModal()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Pharmacy
+                    </button>
+                    <button onclick="window.refreshNetworkList()" class="bg-white/20 hover:bg-white/30 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
             </div>
 
             <div id="network-stores-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -850,12 +872,11 @@
             </div>
         </section>
 
-        <!-- Main Content Bottom Developer Credit (ALL WORDS CAPITAL, SPACED, CINEMATIC VIBE) -->
+        <!-- Main Content Bottom Developer Credit -->
         <footer class="mt-4 mb-1 text-center px-2">
-            <div class="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-full bg-slate-900 text-white shadow-md border border-slate-700/80">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span class="text-[10px] sm:text-xs font-black tracking-[0.22em] uppercase font-sans text-slate-100">
-                    DIGITAL PHARMA DEVELOPED BY SHAHZAD KHAKH
+            <div class="inline-flex items-center justify-center px-5 py-2.5 rounded-full bg-slate-900 text-white shadow-md border border-slate-700/80">
+                <span class="text-[10px] sm:text-xs font-black tracking-[0.18em] uppercase font-sans text-slate-100">
+                    DIGITAL PHARMA - SOFTWARE (Developed by ShahzadKhakh)
                 </span>
             </div>
         </footer>
@@ -870,7 +891,7 @@
         </button>
         <button onclick="window.switchTab('pos')" id="mob-tab-pos" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
             <i data-lucide="shopping-cart" class="w-5 h-5"></i>
-            <span class="text-[10px]">POS Sale</span>
+            <span class="text-[10px]">Sale</span>
         </button>
         <button onclick="window.switchTab('inventory')" id="mob-tab-inventory" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
             <i data-lucide="pill" class="w-5 h-5"></i>
@@ -878,7 +899,7 @@
         </button>
         <button onclick="window.switchTab('margin')" id="mob-tab-margin" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
             <i data-lucide="calculator" class="w-5 h-5"></i>
-            <span class="text-[10px]">Margin</span>
+            <span class="text-[10px]">Calculator</span>
         </button>
         <button onclick="window.switchTab('network')" id="mob-tab-network" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
             <i data-lucide="network" class="w-5 h-5"></i>
@@ -886,12 +907,12 @@
         </button>
     </nav>
 
-    <!-- RECEIPT MODAL (NO "thermal" or "80mm", dynamic size according to items count) -->
+    <!-- RECEIPT MODAL (Pure Receipt, dynamic size according to items count) -->
     <div id="digital-receipt-modal" onclick="if(event.target===this) window.closeReceiptModal()" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-sm w-full p-4 shadow-2xl flex flex-col gap-3 max-h-[94vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b pb-2">
                 <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
-                    <i data-lucide="receipt" class="w-4 h-4 text-brand-600"></i> Counter Sale Receipt
+                    <i data-lucide="receipt" class="w-4 h-4 text-brand-600"></i> Receipt
                 </h3>
                 <button onclick="window.closeReceiptModal()" class="text-slate-400 hover:text-slate-600 p-1">
                     <i data-lucide="x" class="w-4 h-4"></i>
@@ -1037,10 +1058,13 @@
                 </div>
 
                 <div>
-                    <h4 class="font-bold text-slate-800 text-xs mb-1.5 flex items-center gap-1">
-                        <i data-lucide="pill" class="w-3.5 h-3.5 text-brand-600"></i> Medicines, Timing & Tareeqa-e-Istemal:
+                    <h4 class="font-bold text-slate-800 text-xs mb-1.5 flex items-center justify-between">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="pill" class="w-3.5 h-3.5 text-brand-600"></i> Prescribed Medicines & Timings:
+                        </span>
+                        <span id="presc-items-badge" class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black rounded-full text-[10px]"></span>
                     </h4>
-                    <div id="presc-medicines-list" class="space-y-2 max-h-56 overflow-y-auto"></div>
+                    <div id="presc-medicines-list" class="space-y-2.5 max-h-[55vh] overflow-y-auto pr-1"></div>
                 </div>
 
                 <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 space-y-1">
@@ -1170,41 +1194,44 @@
                     <div>
                         <div class="flex justify-between items-center mb-1">
                             <label class="block font-bold text-slate-600">Pack Size:</label>
-                            <span id="med-pack-hint" class="text-[9px] font-bold text-brand-600">Total: 20</span>
+                            <span id="med-pack-hint" class="text-[9px] font-bold text-brand-600">Total: 0</span>
                         </div>
-                        <input type="text" id="med-pack" value="20" required placeholder="e.g. 2x7 or 100" oninput="window.updateMedPackHintLive()" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-center text-slate-900 bg-white">
+                        <input type="text" id="med-pack" required placeholder="e.g. 20 or 2x7" oninput="window.updateMedPackHintLive()" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-center text-slate-900 bg-white">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Batch Number:</label>
-                        <input type="text" id="med-batch" placeholder="B-102" class="w-full px-2.5 py-1.5 border rounded-xl font-mono text-center text-slate-900 bg-white">
+                        <input type="text" id="med-batch" placeholder="e.g. B-102" class="w-full px-2.5 py-1.5 border rounded-xl font-mono text-center text-slate-900 bg-white">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Expiry Date:</label>
                         <input type="date" id="med-expiry" class="w-full px-2.5 py-1.5 border rounded-xl text-center text-slate-900 bg-white">
                     </div>
                 </div>
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-3 gap-2 items-center">
                     <div>
-                        <label class="block font-bold text-slate-600 mb-1">Buy Rate (Rs):</label>
-                        <input type="number" id="med-buy" step="0.01" required placeholder="180" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-right text-slate-900 bg-white">
+                        <label class="block font-bold text-slate-600 mb-1">Buy Rate TP (Rs):</label>
+                        <input type="number" id="med-buy" step="0.01" required placeholder="0.00" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-right text-slate-900 bg-white">
                     </div>
-                    <div>
-                        <label class="block font-bold text-slate-600 mb-1">Retail MRP (Rs):</label>
-                        <input type="number" id="med-mrp" step="0.01" required placeholder="200" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-right text-emerald-700 bg-white">
+                    <div class="p-1 rounded-xl bg-emerald-50 border-2 border-emerald-500 shadow-xs">
+                        <div class="flex justify-between items-center mb-0.5">
+                            <label class="block font-black text-emerald-950 text-[10px]">Retail MRP (Rs) *:</label>
+                            <span class="px-1 py-0.2 bg-emerald-600 text-white rounded text-[8px] font-black uppercase">Main Entry</span>
+                        </div>
+                        <input type="number" id="med-mrp" step="0.01" required placeholder="0.00" class="w-full px-2 py-1 border border-emerald-400 rounded-lg font-black text-right text-emerald-900 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Stock (Packs):</label>
-                        <input type="number" id="med-stock" min="0" required value="10" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-center text-slate-900 bg-white">
+                        <input type="number" id="med-stock" min="0" required placeholder="0" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-center text-slate-900 bg-white">
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block font-bold text-slate-600 mb-1">Rack / Shelf Location:</label>
-                        <input type="text" id="med-location" placeholder="e.g. Rack A-1, Counter Shelf" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
+                        <label class="block font-bold text-slate-600 mb-1">Rack / Shelf Location <span class="text-slate-400 font-normal text-[10px]">(Optional / Ikhtiyari)</span>:</label>
+                        <input type="text" id="med-location" placeholder="e.g. Rack A-1 (Optional)" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Low Stock Alert (Packs):</label>
-                        <input type="number" id="med-min-stock" min="1" value="5" placeholder="5" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-center text-slate-900 bg-white">
+                        <input type="number" id="med-min-stock" min="1" placeholder="5" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-center text-slate-900 bg-white">
                     </div>
                 </div>
                 <div class="flex gap-2 pt-2 border-t">
@@ -1272,19 +1299,188 @@
         </div>
     </div>
 
-    <!-- ACCOUNT HUB MODAL -->
-    <div id="account-hub-modal" onclick="if(event.target===this) window.closeAccountHubModal()" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-3">
-        <div class="bg-white rounded-2xl max-w-sm w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+    <!-- SALES & INVESTMENT ANALYTICS MODAL (Today, Yesterday, Week, Month, Year with Graph & Detailed Records) -->
+    <div id="sales-analytics-modal" onclick="if(event.target===this) window.closeSalesAnalyticsModal()" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[92vh] overflow-y-auto border border-slate-200">
+            <!-- Modal Header -->
             <div class="flex items-center justify-between border-b pb-3">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-brand-100 text-brand-700 font-black flex items-center justify-center text-lg shadow-xs border border-brand-200">
-                        <span id="hub-avatar-char">G</span>
+                    <div class="p-2.5 bg-emerald-100 text-emerald-800 rounded-2xl">
+                        <i data-lucide="trending-up" class="w-6 h-6"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-slate-800 text-sm">Account & Store Hub</h3>
-                        <p class="text-[10px] flex items-center gap-1">
-                            <span id="hub-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
-                            <span id="hub-status-text" class="text-slate-600 font-semibold">Guest Mode (Local System)</span>
+                        <h3 class="font-black text-slate-900 text-base sm:text-lg leading-tight">Sale & Investment Analytics</h3>
+                        <p class="text-xs text-slate-500 font-medium">Mukammal Sale, Kharid TP Sarmayakari & Munafa Record</p>
+                    </div>
+                </div>
+                <button onclick="window.closeSalesAnalyticsModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Time Period Filter Tabs -->
+            <div class="flex flex-wrap gap-1.5 p-1.5 bg-slate-100 rounded-2xl text-xs font-bold">
+                <button type="button" id="sale-filter-today" onclick="window.setSalesAnalyticsPeriod('today')" class="flex-1 min-w-[70px] py-2 px-3 rounded-xl transition bg-emerald-600 text-white shadow-xs">Today</button>
+                <button type="button" id="sale-filter-yesterday" onclick="window.setSalesAnalyticsPeriod('yesterday')" class="flex-1 min-w-[70px] py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60">Yesterday</button>
+                <button type="button" id="sale-filter-week" onclick="window.setSalesAnalyticsPeriod('week')" class="flex-1 min-w-[80px] py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60">This Week</button>
+                <button type="button" id="sale-filter-month" onclick="window.setSalesAnalyticsPeriod('month')" class="flex-1 min-w-[85px] py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60">This Month</button>
+                <button type="button" id="sale-filter-year" onclick="window.setSalesAnalyticsPeriod('year')" class="flex-1 min-w-[75px] py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60">This Year</button>
+                <button type="button" id="sale-filter-all" onclick="window.setSalesAnalyticsPeriod('all')" class="flex-1 min-w-[70px] py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60">All Time</button>
+            </div>
+
+            <!-- Financial KPI Metrics (Including Stock Cost Value inside Sale option!) -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 text-xs">
+                <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
+                    <div class="flex items-center justify-between text-emerald-800 font-bold text-[11px]">
+                        <span>Total Sale (فروخت)</span>
+                        <i data-lucide="banknote" class="w-4 h-4 text-emerald-600"></i>
+                    </div>
+                    <h4 id="an-period-sale" class="text-base sm:text-xl font-black text-emerald-900">Rs. 0</h4>
+                    <span id="an-period-invoices" class="text-[10px] text-emerald-700 font-medium block">0 Bills / Invoices</span>
+                </div>
+
+                <div class="p-3 bg-blue-50 border border-blue-200 rounded-2xl space-y-1">
+                    <div class="flex items-center justify-between text-blue-800 font-bold text-[11px]">
+                        <span>Cost / Sold TP (سرمایہ)</span>
+                        <i data-lucide="layers" class="w-4 h-4 text-blue-600"></i>
+                    </div>
+                    <h4 id="an-period-cost" class="text-base sm:text-xl font-black text-blue-900">Rs. 0</h4>
+                    <span class="text-[10px] text-blue-700 font-medium block">Sold Stock Buy TP Value</span>
+                </div>
+
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl space-y-1">
+                    <div class="flex items-center justify-between text-amber-800 font-bold text-[11px]">
+                        <span>Net Profit (منافع)</span>
+                        <i data-lucide="sparkles" class="w-4 h-4 text-amber-600"></i>
+                    </div>
+                    <h4 id="an-period-profit" class="text-base sm:text-xl font-black text-amber-900">Rs. 0</h4>
+                    <span id="an-period-margin" class="text-[10px] text-amber-700 font-extrabold block">Margin: 0%</span>
+                </div>
+
+                <!-- Stock Cost Value: Brought inside Sale Option! -->
+                <div class="p-3 bg-slate-900 text-white rounded-2xl space-y-1 border border-slate-800">
+                    <div class="flex items-center justify-between text-slate-300 font-bold text-[11px]">
+                        <span>Current Stock TP Value</span>
+                        <i data-lucide="package-check" class="w-4 h-4 text-amber-400"></i>
+                    </div>
+                    <h4 id="an-stock-cost-val" class="text-base sm:text-xl font-black text-amber-400">Rs. 0</h4>
+                    <span class="text-[10px] text-slate-400 block font-medium">Inventory Mein Mojood Sarmaya</span>
+                </div>
+            </div>
+
+            <!-- Visual Graph Section -->
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 space-y-2.5">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-700"></i>
+                        <h4 class="font-black text-xs sm:text-sm text-slate-800">Visual Sales vs Investment Graph</h4>
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex items-center gap-3 text-[11px] font-bold">
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Total Sale
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span> Cost / Investment (TP)
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Graph Container Canvas / SVG -->
+                <div id="analytics-graph-container" class="w-full bg-white border border-slate-200 rounded-xl p-3 min-h-[160px] flex items-center justify-center">
+                    <!-- Dynamic Bars Generated by JS -->
+                </div>
+            </div>
+
+            <!-- Detailed Invoices Data Record Table -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <h4 class="font-black text-xs sm:text-sm text-slate-800 flex items-center gap-1.5">
+                        <i data-lucide="receipt" class="w-4 h-4 text-brand-600"></i> Invoices Record (<span id="an-invoices-count">0</span>)
+                    </h4>
+                    <span class="text-[10px] text-slate-400">Bills ki complete detail & re-print</span>
+                </div>
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-x-auto max-h-60">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold sticky top-0">
+                            <tr>
+                                <th class="p-2.5">Invoice #</th>
+                                <th class="p-2.5">Date & Time</th>
+                                <th class="p-2.5">Customer / Items</th>
+                                <th class="p-2.5 text-right">Cost TP</th>
+                                <th class="p-2.5 text-right">Sale Amount</th>
+                                <th class="p-2.5 text-right">Profit</th>
+                                <th class="p-2.5 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="an-invoices-tbody" class="divide-y divide-slate-100">
+                            <tr>
+                                <td colspan="7" class="text-center py-6 text-slate-400">Loading invoices...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD REAL PHARMACY TO NETWORK MODAL (Zero Fake Data) -->
+    <div id="add-network-modal" onclick="if(event.target===this) window.closeAddNetworkStoreModal()" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+        <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-3">
+            <div class="flex items-center justify-between border-b pb-2">
+                <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
+                    <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-600"></i> Partner Pharmacy Connect Karein
+                </h3>
+                <button onclick="window.closeAddNetworkStoreModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <form onsubmit="window.saveNewNetworkStore(event)" class="space-y-2.5 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-600 mb-0.5">Pharmacy / Medical Store Name *:</label>
+                    <input type="text" id="net-store-name" required placeholder="e.g. Al-Madina Pharmacy" class="w-full px-2.5 py-2 border rounded-xl text-slate-900 bg-white font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-0.5">City / Location *:</label>
+                    <input type="text" id="net-store-city" required placeholder="e.g. Lahore / Muzaffargarh" class="w-full px-2.5 py-2 border rounded-xl text-slate-900 bg-white">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-0.5">WhatsApp / Phone Number *:</label>
+                    <input type="tel" id="net-store-phone" required placeholder="03001234567" class="w-full px-2.5 py-2 border rounded-xl font-mono text-slate-900 bg-white">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-0.5">Active Medicines / Remarks (Optional):</label>
+                    <input type="text" id="net-store-remarks" placeholder="e.g. 500+ Items, Special discounts available" class="w-full px-2.5 py-2 border rounded-xl text-slate-900 bg-white">
+                </div>
+                <div class="flex gap-2 pt-2 border-t">
+                    <button type="button" onclick="window.closeAddNetworkStoreModal()" class="flex-1 py-2 border rounded-xl font-bold text-slate-600">Cancel</button>
+                    <button type="submit" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow active:scale-95 transition">Add Pharmacy</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ACCOUNT HUB MODAL (3 Options: Login, Sign Up with Profile Pic, Guest Mode) -->
+    <div id="account-hub-modal" onclick="if(event.target===this) window.closeAccountHubModal()" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b pb-3">
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <div id="hub-avatar-display" class="w-12 h-12 rounded-full bg-slate-800 border-2 border-brand-300 text-amber-300 flex items-center justify-center text-lg font-black shadow-xs overflow-hidden">
+                            <i id="hub-anon-icon" data-lucide="user-round" class="w-6 h-6 text-amber-300"></i>
+                            <img id="hub-avatar-img" class="hidden w-full h-full object-cover rounded-full" alt="Profile Pic">
+                            <span id="hub-avatar-char" class="hidden font-black text-lg text-white">G</span>
+                        </div>
+                        <label id="hub-avatar-camera-btn" class="hidden absolute -bottom-1 -right-1 p-1 bg-brand-600 hover:bg-brand-700 text-white rounded-full cursor-pointer shadow-md active:scale-95 transition" title="Profile picture chunein">
+                            <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+                            <input type="file" id="profile-pic-file-input" accept="image/*" class="hidden" onchange="window.handleProfilePicUpload(event)">
+                        </label>
+                    </div>
+                    <div>
+                        <h3 id="hub-modal-title" class="font-bold text-slate-800 text-sm">Account & Store Profile</h3>
+                        <p class="text-[10px] flex items-center gap-1 mt-0.5">
+                            <span id="hub-status-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                            <span id="hub-status-text" class="text-slate-600 font-semibold">Not Selected</span>
                         </p>
                     </div>
                 </div>
@@ -1293,55 +1489,144 @@
                 </button>
             </div>
 
-            <div class="space-y-2.5 text-xs">
-                <div class="flex justify-between items-center mb-1">
-                    <h4 class="font-bold text-brand-700 text-[11px] uppercase tracking-wider">Store Profile Settings</h4>
-                    <span id="hub-auth-pill" class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Local System</span>
+            <!-- VIEW 1: 3 OPTIONS SELECTION (Login, Sign Up, or Use as Guest Mode) -->
+            <div id="hub-choice-section" class="space-y-3">
+                <div class="flex p-1 bg-slate-100 rounded-xl gap-1 text-xs font-bold">
+                    <button type="button" id="hub-tab-btn-login" onclick="window.switchHubAuthTab('login')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Login</button>
+                    <button type="button" id="hub-tab-btn-signup" onclick="window.switchHubAuthTab('signup')" class="flex-1 py-1.5 rounded-lg transition bg-brand-600 text-white shadow-xs">Sign Up</button>
+                    <button type="button" id="hub-tab-btn-guest" onclick="window.switchHubAuthTab('guest')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Guest Mode</button>
                 </div>
-                
-                <div>
-                    <label class="block font-bold text-slate-600 mb-0.5">Pharmacy / Store Name:</label>
-                    <input type="text" id="hub-store-name" placeholder="Apna Medical Store Name" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white">
-                </div>
-                <div>
-                    <label class="block font-bold text-slate-600 mb-0.5">WhatsApp / Phone Number:</label>
-                    <input type="tel" id="hub-store-phone" placeholder="0300-1234567" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
-                </div>
-                <div>
-                    <label class="block font-bold text-slate-600 mb-0.5">Store Address / City:</label>
-                    <input type="text" id="hub-store-address" placeholder="Main Commercial Market, City" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
-                </div>
-                <div>
-                    <label class="block font-bold text-slate-600 mb-0.5">Drug Sale License (D.S.L #) - Optional:</label>
-                    <input type="text" id="hub-store-license" placeholder="Optional (e.g. DSL-PB-2024)" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
-                </div>
-                
-                <button onclick="window.saveAccountHubStoreProfile()" class="w-full py-2 mt-1 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow transition active:scale-95">
-                    Save Profile Changes
-                </button>
-            </div>
 
-            <hr class="border-dashed border-slate-200">
-
-            <div id="hub-unauth-box" class="space-y-3">
-                <h4 class="font-bold text-emerald-700 text-[11px] uppercase tracking-wider">Cloud Backup Sync</h4>
-                <div class="space-y-2.5 text-xs">
-                    <input type="email" id="hub-email" placeholder="Email Address" class="w-full px-2.5 py-1.5 border rounded-xl text-slate-900 bg-white">
-                    <input type="password" id="hub-password" placeholder="Password (Min 6)" class="w-full px-2.5 py-1.5 border rounded-xl font-mono text-slate-900 bg-white">
-                    <div class="flex gap-2 pt-1">
-                        <button onclick="window.handleHubLogin()" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow">Login</button>
-                        <button onclick="window.handleHubSignUp()" class="flex-1 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 rounded-xl font-bold">Sign Up</button>
+                <!-- 1. LOGIN TAB -->
+                <div id="hub-panel-login" class="hidden space-y-2.5 text-xs">
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Email Address:</label>
+                        <input type="email" id="login-email" placeholder="name@email.com" class="w-full px-2.5 py-2 border rounded-xl text-slate-900 bg-white">
                     </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Password:</label>
+                        <div class="relative">
+                            <input type="password" id="login-password" placeholder="Password (Min 6)" class="w-full pl-2.5 pr-9 py-2 border rounded-xl font-mono text-slate-900 bg-white">
+                            <button type="button" onclick="window.togglePasswordVisibility('login-password', 'login-pwd-icon')" class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700" title="Show/Hide Password">
+                                <i id="login-pwd-icon" data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button" onclick="window.submitLogin()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow active:scale-95 transition">
+                        Login Karein
+                    </button>
+                </div>
+
+                <!-- 2. SIGN UP TAB (Includes Profile Picture Upload!) -->
+                <div id="hub-panel-signup" class="space-y-2.5 text-xs">
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Owner / Store Name:</label>
+                        <input type="text" id="signup-name" placeholder="Apna Name ya Store Name" class="w-full px-2.5 py-2 border rounded-xl text-slate-900 bg-white">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Email Address:</label>
+                        <input type="email" id="signup-email" placeholder="name@email.com" class="w-full px-2.5 py-2 border rounded-xl text-slate-900 bg-white">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Password:</label>
+                        <div class="relative">
+                            <input type="password" id="signup-password" placeholder="Password (Min 6)" class="w-full pl-2.5 pr-9 py-2 border rounded-xl font-mono text-slate-900 bg-white">
+                            <button type="button" onclick="window.togglePasswordVisibility('signup-password', 'signup-pwd-icon')" class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700" title="Show/Hide Password">
+                                <i id="signup-pwd-icon" data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Profile Pic Upload Inside Signup -->
+                    <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                        <div id="signup-pic-preview-box" class="w-10 h-10 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center overflow-hidden shrink-0">
+                            <i id="signup-pic-default-icon" data-lucide="camera" class="w-5 h-5 text-slate-500"></i>
+                            <img id="signup-pic-preview-img" class="hidden w-full h-full object-cover" alt="Preview">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <label class="cursor-pointer text-xs font-bold text-brand-700 hover:underline flex items-center gap-1">
+                                <span>Profile Pic Choose Karein</span>
+                                <input type="file" id="signup-photo-input" accept="image/*" class="hidden" onchange="window.handleSignupPhotoPreview(event)">
+                            </label>
+                            <span id="signup-photo-status" class="text-[10px] text-slate-400 block truncate">Photo optional hai</span>
+                        </div>
+                    </div>
+
+                    <button type="button" onclick="window.submitSignUp()" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow active:scale-95 transition">
+                        Create Account & Submit
+                    </button>
+                </div>
+
+                <!-- 3. USE AS GUEST MODE TAB -->
+                <div id="hub-panel-guest" class="hidden space-y-3 text-xs">
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1.5">
+                        <div class="flex items-center gap-2 font-bold">
+                            <i data-lucide="user-round" class="w-4 h-4 text-amber-600"></i>
+                            <span>Guest Mode (Anonymous)</span>
+                        </div>
+                        <p class="text-[11px] leading-relaxed text-amber-800">
+                            Baghair kisi login ya signup ke direct app chalayein. Sara data aapke isi browser/device mein mehfooz rahega aur anonymous icon show hota rahega.
+                        </p>
+                    </div>
+                    <button type="button" onclick="window.submitGuestMode()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-amber-300 font-bold rounded-xl shadow flex items-center justify-center gap-2 active:scale-95 transition">
+                        <i data-lucide="user-round" class="w-4 h-4"></i> Continue as Guest User
+                    </button>
                 </div>
             </div>
 
-            <div id="hub-auth-box" class="hidden pt-1">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-slate-600">Logged in as:</span>
-                    <span id="hub-user-email" class="text-[11px] font-mono text-emerald-600 bg-emerald-50 px-2 py-1 rounded">owner@email.com</span>
+            <!-- VIEW 2: ACTIVE PROFILE MANAGEMENT (Shown after user submits) -->
+            <div id="hub-active-profile-section" class="hidden space-y-3">
+                <!-- Status Banner & Mode Switch -->
+                <div id="hub-session-banner" class="p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs">
+                    <div>
+                        <strong id="hub-session-user-name" class="block font-black text-slate-800">Guest User</strong>
+                        <span id="hub-session-user-detail" class="text-[10px] text-slate-500 block">Anonymous Mode</span>
+                    </div>
+                    <button type="button" onclick="window.showHubChoiceSection()" class="px-2.5 py-1 bg-white hover:bg-slate-100 border rounded-lg font-bold text-[11px] text-brand-700 shadow-xs transition">
+                        Switch Mode
+                    </button>
                 </div>
-                <button onclick="window.handleHubLogout()" class="w-full py-2 border border-red-200 text-red-600 hover:bg-red-50 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Logout & Disconnect Sync
+
+                <!-- Profile Photo Edit Option for Active User -->
+                <div id="hub-photo-control-box" class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-700">Profile Photo</span>
+                        <button type="button" id="remove-profile-pic-btn" onclick="window.removeProfilePic()" class="hidden text-[11px] text-red-600 hover:underline font-semibold">Photo Remove Karein</button>
+                    </div>
+                    <button type="button" onclick="document.getElementById('profile-pic-file-input').click()" class="w-full py-1.5 px-3 bg-white hover:bg-slate-100 text-brand-700 border border-brand-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95">
+                        <i data-lucide="image" class="w-3.5 h-3.5 text-brand-600"></i> Profile Pic Change Karein
+                    </button>
+                </div>
+
+                <!-- Store Profile Settings Form -->
+                <div class="space-y-2 text-xs">
+                    <div class="flex justify-between items-center mb-0.5">
+                        <h4 class="font-bold text-brand-700 text-[11px] uppercase tracking-wider">Store Profile Info</h4>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Pharmacy / Store Name:</label>
+                        <input type="text" id="hub-store-name" placeholder="Apna Medical Store Name" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">WhatsApp / Phone Number:</label>
+                        <input type="tel" id="hub-store-phone" placeholder="0300-1234567" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Store Address / City:</label>
+                        <input type="text" id="hub-store-address" placeholder="Main Commercial Market, City" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-0.5">Drug Sale License (D.S.L #) - Optional:</label>
+                        <input type="text" id="hub-store-license" placeholder="Optional (e.g. DSL-PB-2024)" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
+                    </div>
+                    <button type="button" onclick="window.saveAccountHubStoreProfile()" class="w-full py-2 mt-1 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow transition active:scale-95">
+                        Save Profile Changes
+                    </button>
+                </div>
+
+                <!-- Logout Button -->
+                <button type="button" onclick="window.handleHubLogout()" class="w-full py-2 border border-red-200 text-red-600 hover:bg-red-50 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Logout & Reset Mode
                 </button>
             </div>
         </div>
