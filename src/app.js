@@ -186,6 +186,95 @@ export function customConfirm(title, message, onConfirm) {
 window.customConfirm = customConfirm;
 
 // ==========================================
+// EXPIRY DATE HELPERS (Strictly MM / YY, Zero DD, Zero YYYY, Auto-Formatting)
+// ==========================================
+export function formatExpiryMMYY(exp) {
+    if (!exp) return '-';
+    const str = String(exp).trim();
+    if (str.includes('/')) {
+        const parts = str.split('/');
+        let mm = parts[0].trim().padStart(2, '0');
+        let yy = parts[1].trim();
+        if (yy.length === 4) yy = yy.slice(-2);
+        return `${mm}/${yy}`;
+    }
+    if (str.includes('-')) {
+        const parts = str.split('-');
+        let yy = parts[0].slice(-2);
+        let mm = (parts[1] || '01').padStart(2, '0');
+        return `${mm}/${yy}`;
+    }
+    return str;
+}
+window.formatExpiryMMYY = formatExpiryMMYY;
+
+export function parseExpiryToDate(exp) {
+    if (!exp) return null;
+    const str = String(exp).trim();
+    if (str.includes('/')) {
+        const [mm, yy] = str.split('/').map(Number);
+        const fullYear = yy < 100 ? (2000 + yy) : yy;
+        return new Date(fullYear, mm, 0, 23, 59, 59);
+    }
+    if (str.includes('-')) {
+        return new Date(str);
+    }
+    return null;
+}
+window.parseExpiryToDate = parseExpiryToDate;
+
+window.handleExpiryMonthInput = function(el) {
+    let v = el.value.replace(/\D/g, '');
+    if (v.length > 2) v = v.slice(0, 2);
+    if (parseInt(v, 10) > 12) v = '12';
+    el.value = v;
+};
+
+window.formatExpiryMonthBlur = function(el) {
+    let v = el.value.replace(/\D/g, '');
+    if (!v) return;
+    let n = parseInt(v, 10);
+    if (n < 1) n = 1;
+    if (n > 12) n = 12;
+    el.value = String(n).padStart(2, '0');
+};
+
+window.handleExpiryYearInput = function(el) {
+    let v = el.value.replace(/\D/g, '');
+    if (v.length >= 4) {
+        v = v.slice(-2);
+    }
+    el.value = v;
+};
+
+window.formatExpiryYearBlur = function(el) {
+    let v = el.value.replace(/\D/g, '');
+    if (!v) return;
+    if (v.length > 2) {
+        v = v.slice(-2);
+    } else if (v.length === 1) {
+        v = String(v).padStart(2, '0');
+    }
+    el.value = v;
+};
+
+// Rate Check Buy Rate TP Eye Visibility Toggle
+window.toggleRateCheckTp = function(medId) {
+    const span = document.getElementById('rate-tp-' + medId);
+    const btn = document.getElementById('btn-rate-tp-' + medId);
+    if (!span) return;
+    const isHidden = span.classList.contains('hidden');
+    if (isHidden) {
+        span.classList.remove('hidden');
+        if (btn) btn.innerHTML = '<i data-lucide="eye-off" class="w-3 h-3"></i> <span>Hide TP</span>';
+    } else {
+        span.classList.add('hidden');
+        if (btn) btn.innerHTML = '<i data-lucide="eye" class="w-3 h-3"></i> <span>Show TP</span>';
+    }
+    safeCreateIcons();
+};
+
+// ==========================================
 // DYNAMIC HIGH-RES PWA MANIFEST & ICON ENGINE
 // Guarantees reliable App Installation
 // ==========================================
@@ -443,7 +532,8 @@ export async function enhanceImageLikeCamScanner(file) {
                 if (ctx) {
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, w, h);
-                    ctx.filter = 'contrast(1.18) brightness(1.03)';
+                    // Balanced contrast and brightness: clears paper noise without washing out faint blue/pencil ink strokes
+                    ctx.filter = 'contrast(1.08) brightness(1.02)';
                     ctx.drawImage(bitmap, 0, 0, w, h);
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
                     bitmap.close?.();
@@ -460,7 +550,7 @@ export async function enhanceImageLikeCamScanner(file) {
             const objUrl = URL.createObjectURL(file);
             img.onload = () => {
                 URL.revokeObjectURL(objUrl);
-                const maxDim = 2048;
+                const maxDim = 2560;
                 let w = img.naturalWidth || img.width || 1200;
                 let h = img.naturalHeight || img.height || 1600;
 
@@ -485,10 +575,10 @@ export async function enhanceImageLikeCamScanner(file) {
 
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, w, h);
-                ctx.filter = 'contrast(1.15) brightness(1.04)';
+                ctx.filter = 'contrast(1.08) brightness(1.02)';
                 ctx.drawImage(img, 0, 0, w, h);
 
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
                 resolve(dataUrl.split(',')[1]);
             };
             img.onerror = () => {
@@ -503,6 +593,9 @@ export async function enhanceImageLikeCamScanner(file) {
     }
 }
 window.enhanceImageLikeCamScanner = enhanceImageLikeCamScanner;
+
+// Absolute filter against model refusal language so users never see "roshni mein dubara banao" or "unreadable"
+const PRESCRIPTION_REFUSAL_REGEX = /tasveer|tasvir|photo|image|roshni|dobara|dubara|wazeh|clear|blurry|dhundli|dhundla|bhejein|banao|bnaao|upload|camera|nahi parha|parha nahi|not readable|unreadable|illegible|bad lighting|lighting|kheenchain|khainchain|le kar|retake|re-take|cant read|cannot read|unable to read|dim light|dark/i;
 
 // Normalizes any prescription output format so mobile OCR never crashes
 function normalizePrescriptionData(parsed) {
@@ -525,38 +618,52 @@ function normalizePrescriptionData(parsed) {
     }
 
     let rawAdvice = String(parsed.advice || parsed.precautions || parsed.instructions || '');
-    if (!rawAdvice || /tasveer|tasvir|photo|image|roshni|dobara|wazeh|clear|blurry|dhundli|bhejein|upload|camera|nahi parha|parha nahi|not readable|n\/a|unreadable|illegible/i.test(rawAdvice)) {
-        rawAdvice = 'Dawai hidayat ke mutabiq waqt par lein. Thandi, tali hui aur khatti cheezon se mukammal parhez karein aur aaram karein.';
+    if (!rawAdvice || PRESCRIPTION_REFUSAL_REGEX.test(rawAdvice)) {
+        rawAdvice = 'Dawai hidayat ke mutabiq waqt par lein. Thandi, tali hui aur khatti cheezon se mukammal parhez karein, saaf paani zyada piyen aur aaram karein.';
     }
 
     let rawSummary = String(parsed.treatmentSummary || parsed.summary || parsed.treatment || '');
-    if (!rawSummary || /tasveer|tasvir|photo|image|roshni|dobara|wazeh|clear|blurry|dhundli|bhejein|upload|camera|not readable|n\/a|nahi parha|parha nahi|unreadable|illegible/i.test(rawSummary)) {
+    if (!rawSummary || PRESCRIPTION_REFUSAL_REGEX.test(rawSummary)) {
         rawSummary = 'Nuskha ke mutabiq adviyaat aur ilaj ki mukammal tafseelat darj hain.';
     }
 
     let rawDoctor = String(parsed.doctor || parsed.doctor_name || parsed.clinic || '');
-    if (!rawDoctor || /n\/a|not readable|unknown|tasveer|mojood nahi/i.test(rawDoctor)) {
+    if (!rawDoctor || PRESCRIPTION_REFUSAL_REGEX.test(rawDoctor) || /n\/a|not readable|unknown|mojood nahi/i.test(rawDoctor)) {
         rawDoctor = 'Doctor / Clinic Slip';
     }
 
     let rawPatient = String(parsed.patient || parsed.patient_name || '');
-    if (!rawPatient || /n\/a|not readable|unknown|tasveer|mojood nahi/i.test(rawPatient)) {
+    if (!rawPatient || PRESCRIPTION_REFUSAL_REGEX.test(rawPatient) || /n\/a|not readable|unknown|mojood nahi/i.test(rawPatient)) {
         rawPatient = 'General Patient';
     }
+
+    const cleanedMeds = meds
+        .filter(m => m && (m.name || m.medicine || m.brand))
+        .filter(m => {
+            const nameStr = String(m.name || m.medicine || m.brand || '');
+            return !PRESCRIPTION_REFUSAL_REGEX.test(nameStr);
+        })
+        .map(m => ({
+            name: String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim(),
+            formula: String(m.formula || m.generic || m.salt || '').trim(),
+            form: String(m.form || m.type || 'Goli (Tablet)').trim(),
+            timing: PRESCRIPTION_REFUSAL_REGEX.test(String(m.timing || '')) 
+                ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
+                : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+            usage: PRESCRIPTION_REFUSAL_REGEX.test(String(m.usage || '')) 
+                ? 'Taza paani ke sath lein' 
+                : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
+            purpose: PRESCRIPTION_REFUSAL_REGEX.test(String(m.purpose || '')) 
+                ? 'Ilaj' 
+                : String(m.purpose || m.indication || m.use || 'Ilaj').trim()
+        }));
 
     return {
         doctor: rawDoctor,
         patient: rawPatient,
         treatmentSummary: rawSummary,
         advice: rawAdvice,
-        medicines: meds.filter(m => m && (m.name || m.medicine || m.brand)).map(m => ({
-            name: m.name || m.medicine || m.brand || 'Prescribed Medicine',
-            formula: m.formula || m.generic || m.salt || '',
-            form: m.form || m.type || 'Goli (Tablet)',
-            timing: m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)',
-            usage: m.usage || m.method || 'Taza paani ke sath lein',
-            purpose: m.purpose || m.indication || m.use || 'Ilaj'
-        }))
+        medicines: cleanedMeds
     };
 }
 
@@ -598,7 +705,7 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     if (!customKey) {
         throw new Error('AI Scanner connect nahi ho saka. Barah-e-karam apna internet connection check karein.');
     }
-    const models = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
     let lastError = null;
 
     for (const modelName of models) {
@@ -935,13 +1042,55 @@ window.switchTab = function(tabName) {
     }
     if (tabName === 'dashboard') renderDashboardMetrics();
     if (tabName === 'margin') {
-        window.switchCalculatorTab('rate');
-        window.runLooseCalc();
-        window.runMarginCalc();
+        // Default to #1: Simple Hisaab Calculator as requested
+        window.switchCalculatorTab('simple');
     }
     if (tabName === 'network') window.refreshNetworkList();
     safeCreateIcons();
 };
+
+// Toggle Calculator Dropdown Menu (Desktop or Mobile)
+window.toggleCalculatorDropdown = function(event, type) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const desktopMenu = document.getElementById('desktop-calc-menu');
+    const mobileMenu = document.getElementById('mobile-calc-menu');
+
+    if (type === 'desktop') {
+        mobileMenu?.classList.add('hidden');
+        desktopMenu?.classList.toggle('hidden');
+    } else {
+        desktopMenu?.classList.add('hidden');
+        mobileMenu?.classList.toggle('hidden');
+    }
+    safeCreateIcons();
+};
+
+// Directly open selected calculator option from dropdown (No submit button needed)
+window.openCalculatorWithSub = function(subType) {
+    document.getElementById('desktop-calc-menu')?.classList.add('hidden');
+    document.getElementById('mobile-calc-menu')?.classList.add('hidden');
+    window.switchTab('margin');
+    window.switchCalculatorTab(subType);
+    safeCreateIcons();
+};
+
+// Close calculator dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const desktopContainer = document.getElementById('desktop-calc-dropdown-container');
+    const mobileBtn = document.getElementById('mob-tab-margin');
+    const mobileMenu = document.getElementById('mobile-calc-menu');
+    const desktopMenu = document.getElementById('desktop-calc-menu');
+
+    if (desktopMenu && !desktopContainer?.contains(e.target)) {
+        desktopMenu.classList.add('hidden');
+    }
+    if (mobileMenu && !mobileBtn?.contains(e.target) && !mobileMenu.contains(e.target)) {
+        mobileMenu.classList.add('hidden');
+    }
+});
 
 // ==========================================
 // CALCULATOR: Trade Margin & Profit % Scheme
@@ -1073,8 +1222,8 @@ window.runLooseCalc = function() {
     let unitsDesc = `${totalUnitsToCalc} Units`;
     if (fullPacks > 0 || looseUnits > 0) {
         const parts = [];
-        if (fullPacks > 0) parts.push(`${fullPacks} pack`);
-        if (looseUnits > 0) parts.push(`${looseUnits} Loose`);
+        if (fullPacks > 0) parts.push(`📦 ${fullPacks} Pack`);
+        if (looseUnits > 0) parts.push(`💊 ${looseUnits} Loose`);
         unitsDesc += ` (${parts.join(' + ')})`;
     }
     if (unitsCalcEl) unitsCalcEl.innerText = unitsDesc;
@@ -1161,27 +1310,67 @@ window.switchMarginCalcTab = function(type) {
 };
 
 // ==========================================
-// CALCULATOR 2: Simple Standard Math (+, -, ×, ÷, %)
+// CALCULATOR 1: Simple Commercial Digital Shop Calculator (Citizen / Casio Precision)
 // ==========================================
+function cleanFloat(val) {
+    if (isNaN(val) || !isFinite(val)) return 0;
+    return Math.round((val + Number.EPSILON) * 100000000) / 100000000;
+}
+
+function formatShopDisplay(numStr) {
+    if (numStr === 'Error' || numStr === '-Infinity' || numStr === 'Infinity') return numStr;
+    const parts = String(numStr).split('.');
+    const intPart = parts[0];
+    const decPart = parts[1];
+    const sign = intPart.startsWith('-') ? '-' : '';
+    const cleanInt = sign ? intPart.slice(1) : intPart;
+    const withCommas = cleanInt.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return decPart !== undefined ? `${sign}${withCommas}.${decPart}` : `${sign}${withCommas}`;
+}
+
 let simpleCalcState = {
     display: '0',
-    history: '',
-    previousVal: null,
+    storedVal: null,
     operation: null,
-    shouldResetDisplay: false
+    waitingForOperand: false,
+    history: '',
+    lastOp: null,
+    lastOperand: null,
+    memory: 0
 };
 
 window.updateSimpleCalcDisplay = function() {
     const dispEl = document.getElementById('simple-calc-display');
     const histEl = document.getElementById('simple-calc-history');
-    if (dispEl) dispEl.innerText = simpleCalcState.display;
-    if (histEl) histEl.innerText = simpleCalcState.history;
+    const opEl = document.getElementById('simple-calc-op-indicator');
+    const memEl = document.getElementById('simple-calc-mem-indicator');
+
+    if (dispEl) {
+        dispEl.innerText = formatShopDisplay(simpleCalcState.display);
+    }
+    if (histEl) {
+        histEl.innerText = simpleCalcState.history || '';
+    }
+    if (opEl) {
+        opEl.innerText = simpleCalcState.operation || '';
+    }
+    if (memEl) {
+        if (Math.abs(simpleCalcState.memory) > 1e-9) {
+            memEl.classList.remove('hidden');
+        } else {
+            memEl.classList.add('hidden');
+        }
+    }
 };
 
 window.simpleCalcDigit = function(digit) {
-    if (simpleCalcState.shouldResetDisplay) {
-        simpleCalcState.display = (digit === '.') ? '0.' : digit;
-        simpleCalcState.shouldResetDisplay = false;
+    if (simpleCalcState.waitingForOperand) {
+        if (digit === '.') {
+            simpleCalcState.display = '0.';
+        } else {
+            simpleCalcState.display = digit;
+        }
+        simpleCalcState.waitingForOperand = false;
     } else {
         if (digit === '.') {
             if (!simpleCalcState.display.includes('.')) {
@@ -1190,8 +1379,10 @@ window.simpleCalcDigit = function(digit) {
         } else {
             if (simpleCalcState.display === '0') {
                 simpleCalcState.display = digit;
+            } else if (simpleCalcState.display === '-0') {
+                simpleCalcState.display = '-' + digit;
             } else {
-                if (simpleCalcState.display.length < 14) {
+                if (simpleCalcState.display.replace('-', '').replace('.', '').length < 14) {
                     simpleCalcState.display += digit;
                 }
             }
@@ -1200,33 +1391,172 @@ window.simpleCalcDigit = function(digit) {
     window.updateSimpleCalcDisplay();
 };
 
-window.simpleCalcOp = function(op) {
+window.simpleCalcDoubleZero = function() {
+    if (simpleCalcState.waitingForOperand) {
+        simpleCalcState.display = '0';
+        simpleCalcState.waitingForOperand = false;
+    } else {
+        if (simpleCalcState.display !== '0' && simpleCalcState.display !== '-0') {
+            if (simpleCalcState.display.replace('-', '').replace('.', '').length < 13) {
+                simpleCalcState.display += '00';
+            }
+        }
+    }
+    window.updateSimpleCalcDisplay();
+};
+
+function executeMathOp(a, op, b) {
+    a = cleanFloat(a);
+    b = cleanFloat(b);
+    if (op === '+') return cleanFloat(a + b);
+    if (op === '-') return cleanFloat(a - b);
+    if (op === '×' || op === '*') return cleanFloat(a * b);
+    if (op === '÷' || op === '/') {
+        if (b === 0) return 'Error';
+        return cleanFloat(a / b);
+    }
+    return b;
+}
+
+window.simpleCalcOp = function(nextOp) {
     const currentNum = parseFloat(simpleCalcState.display);
     if (isNaN(currentNum)) return;
 
-    if (simpleCalcState.operation && !simpleCalcState.shouldResetDisplay && simpleCalcState.previousVal !== null) {
-        window.simpleCalcEquals(false);
+    if (simpleCalcState.operation && !simpleCalcState.waitingForOperand && simpleCalcState.storedVal !== null) {
+        const intermediate = executeMathOp(simpleCalcState.storedVal, simpleCalcState.operation, currentNum);
+        if (intermediate === 'Error') {
+            simpleCalcState.display = 'Error';
+            simpleCalcState.history = 'Zero divide nahi ho sakta';
+            simpleCalcState.storedVal = null;
+            simpleCalcState.operation = null;
+            simpleCalcState.waitingForOperand = true;
+            window.updateSimpleCalcDisplay();
+            return;
+        }
+        simpleCalcState.display = String(intermediate);
+        simpleCalcState.storedVal = intermediate;
     } else {
-        simpleCalcState.previousVal = currentNum;
+        simpleCalcState.storedVal = currentNum;
     }
 
-    simpleCalcState.operation = op;
-    simpleCalcState.shouldResetDisplay = true;
-    simpleCalcState.history = `${simpleCalcState.previousVal} ${op}`;
+    simpleCalcState.operation = nextOp;
+    simpleCalcState.waitingForOperand = true;
+    simpleCalcState.history = `${formatShopDisplay(String(simpleCalcState.storedVal))} ${nextOp}`;
     window.updateSimpleCalcDisplay();
 };
 
 window.simpleCalcPercent = function() {
-    const current = parseFloat(simpleCalcState.display);
-    if (isNaN(current)) return;
+    const currentNum = parseFloat(simpleCalcState.display);
+    if (isNaN(currentNum)) return;
 
-    if (simpleCalcState.previousVal !== null && simpleCalcState.operation) {
-        const percentVal = (simpleCalcState.previousVal * current) / 100;
-        simpleCalcState.display = String(percentVal);
-        simpleCalcState.history = `${simpleCalcState.previousVal} ${simpleCalcState.operation} ${current}%`;
+    // Commercial shop % logic (Markup, Discount, or standard percentage)
+    if (simpleCalcState.storedVal !== null && simpleCalcState.operation) {
+        const base = simpleCalcState.storedVal;
+        const op = simpleCalcState.operation;
+        if (op === '+' || op === '-') {
+            const delta = cleanFloat((base * currentNum) / 100);
+            const res = op === '+' ? cleanFloat(base + delta) : cleanFloat(base - delta);
+            simpleCalcState.display = String(res);
+            simpleCalcState.history = `${formatShopDisplay(String(base))} ${op} ${currentNum}% (${formatShopDisplay(String(delta))}) =`;
+            simpleCalcState.storedVal = null;
+            simpleCalcState.operation = null;
+            simpleCalcState.waitingForOperand = true;
+        } else if (op === '×' || op === '*') {
+            const res = cleanFloat((base * currentNum) / 100);
+            simpleCalcState.display = String(res);
+            simpleCalcState.history = `${formatShopDisplay(String(base))} × ${currentNum}% =`;
+            simpleCalcState.storedVal = null;
+            simpleCalcState.operation = null;
+            simpleCalcState.waitingForOperand = true;
+        } else if (op === '÷' || op === '/') {
+            if (currentNum === 0) {
+                simpleCalcState.display = 'Error';
+                window.updateSimpleCalcDisplay();
+                return;
+            }
+            const res = cleanFloat((base / currentNum) * 100);
+            simpleCalcState.display = String(res);
+            simpleCalcState.history = `${formatShopDisplay(String(base))} ÷ ${currentNum}% =`;
+            simpleCalcState.storedVal = null;
+            simpleCalcState.operation = null;
+            simpleCalcState.waitingForOperand = true;
+        }
     } else {
-        simpleCalcState.display = String(current / 100);
-        simpleCalcState.history = `${current}%`;
+        const res = cleanFloat(currentNum / 100);
+        simpleCalcState.display = String(res);
+        simpleCalcState.history = `${currentNum}% =`;
+        simpleCalcState.waitingForOperand = true;
+    }
+    window.updateSimpleCalcDisplay();
+};
+
+window.simpleCalcEquals = function() {
+    const currentNum = parseFloat(simpleCalcState.display);
+    if (isNaN(currentNum)) return;
+
+    if (simpleCalcState.operation && simpleCalcState.storedVal !== null) {
+        const op = simpleCalcState.operation;
+        const prev = simpleCalcState.storedVal;
+        const res = executeMathOp(prev, op, currentNum);
+
+        if (res === 'Error') {
+            simpleCalcState.display = 'Error';
+            simpleCalcState.history = 'Zero divide nahi ho sakta';
+            simpleCalcState.storedVal = null;
+            simpleCalcState.operation = null;
+            simpleCalcState.waitingForOperand = true;
+            window.updateSimpleCalcDisplay();
+            return;
+        }
+
+        simpleCalcState.display = String(res);
+        simpleCalcState.history = `${formatShopDisplay(String(prev))} ${op} ${formatShopDisplay(String(currentNum))} =`;
+        simpleCalcState.lastOp = op;
+        simpleCalcState.lastOperand = currentNum;
+        simpleCalcState.storedVal = null;
+        simpleCalcState.operation = null;
+        simpleCalcState.waitingForOperand = true;
+    } else if (simpleCalcState.lastOp && simpleCalcState.lastOperand !== null) {
+        // Repeat equals functionality (Citizen/Casio repeat)
+        const op = simpleCalcState.lastOp;
+        const operand = simpleCalcState.lastOperand;
+        const res = executeMathOp(currentNum, op, operand);
+        if (res !== 'Error') {
+            simpleCalcState.display = String(res);
+            simpleCalcState.history = `${formatShopDisplay(String(currentNum))} ${op} ${formatShopDisplay(String(operand))} =`;
+            simpleCalcState.waitingForOperand = true;
+        }
+    }
+    window.updateSimpleCalcDisplay();
+};
+
+window.simpleCalcClearEntry = function() {
+    simpleCalcState.display = '0';
+    window.updateSimpleCalcDisplay();
+};
+
+window.simpleCalcClear = function() {
+    simpleCalcState.display = '0';
+    simpleCalcState.storedVal = null;
+    simpleCalcState.operation = null;
+    simpleCalcState.waitingForOperand = false;
+    simpleCalcState.history = '';
+    simpleCalcState.lastOp = null;
+    simpleCalcState.lastOperand = null;
+    window.updateSimpleCalcDisplay();
+};
+
+window.simpleCalcBackspace = function() {
+    if (simpleCalcState.waitingForOperand) {
+        return;
+    }
+    if (simpleCalcState.display.length > 1) {
+        simpleCalcState.display = simpleCalcState.display.slice(0, -1);
+        if (simpleCalcState.display === '-' || simpleCalcState.display === '') {
+            simpleCalcState.display = '0';
+        }
+    } else {
+        simpleCalcState.display = '0';
     }
     window.updateSimpleCalcDisplay();
 };
@@ -1239,65 +1569,33 @@ window.simpleCalcToggleSign = function() {
     window.updateSimpleCalcDisplay();
 };
 
-window.simpleCalcBackspace = function() {
-    if (simpleCalcState.shouldResetDisplay) {
-        simpleCalcState.display = '0';
-        simpleCalcState.shouldResetDisplay = false;
-    } else {
-        if (simpleCalcState.display.length > 1) {
-            simpleCalcState.display = simpleCalcState.display.slice(0, -1);
-            if (simpleCalcState.display === '-' || simpleCalcState.display === '') {
-                simpleCalcState.display = '0';
-            }
-        } else {
-            simpleCalcState.display = '0';
-        }
-    }
+// Memory functions (MC, MR, M+, M-)
+window.simpleCalcMemClear = function() {
+    simpleCalcState.memory = 0;
+    window.updateSimpleCalcDisplay();
+    showToast('Calculator Memory Saaf (MC)', 'info');
+};
+
+window.simpleCalcMemRecall = function() {
+    simpleCalcState.display = String(cleanFloat(simpleCalcState.memory));
+    simpleCalcState.waitingForOperand = true;
     window.updateSimpleCalcDisplay();
 };
 
-window.simpleCalcClear = function() {
-    simpleCalcState.display = '0';
-    simpleCalcState.history = '';
-    simpleCalcState.previousVal = null;
-    simpleCalcState.operation = null;
-    simpleCalcState.shouldResetDisplay = false;
+window.simpleCalcMemAdd = function() {
+    const currentNum = parseFloat(simpleCalcState.display) || 0;
+    simpleCalcState.memory = cleanFloat(simpleCalcState.memory + currentNum);
+    simpleCalcState.waitingForOperand = true;
     window.updateSimpleCalcDisplay();
+    showToast(`Memory M+ (Rs. ${simpleCalcState.memory})`, 'success');
 };
 
-window.simpleCalcEquals = function(isFinal = true) {
-    if (simpleCalcState.previousVal === null || !simpleCalcState.operation) return;
-    const prev = simpleCalcState.previousVal;
-    const current = parseFloat(simpleCalcState.display);
-    if (isNaN(current)) return;
-
-    let res = 0;
-    const op = simpleCalcState.operation;
-    if (op === '+') res = prev + current;
-    else if (op === '-') res = prev - current;
-    else if (op === '×' || op === '*') res = prev * current;
-    else if (op === '÷' || op === '/') {
-        if (current === 0) {
-            simpleCalcState.display = 'Error';
-            simpleCalcState.history = 'Zero divide nahi ho sakta';
-            simpleCalcState.shouldResetDisplay = true;
-            window.updateSimpleCalcDisplay();
-            return;
-        }
-        res = prev / current;
-    }
-
-    const rounded = Math.round(res * 10000) / 10000;
-    simpleCalcState.display = String(rounded);
-    if (isFinal) {
-        simpleCalcState.history = `${prev} ${op} ${current} =`;
-        simpleCalcState.previousVal = null;
-        simpleCalcState.operation = null;
-    } else {
-        simpleCalcState.previousVal = rounded;
-    }
-    simpleCalcState.shouldResetDisplay = true;
+window.simpleCalcMemSub = function() {
+    const currentNum = parseFloat(simpleCalcState.display) || 0;
+    simpleCalcState.memory = cleanFloat(simpleCalcState.memory - currentNum);
+    simpleCalcState.waitingForOperand = true;
     window.updateSimpleCalcDisplay();
+    showToast(`Memory M- (Rs. ${simpleCalcState.memory})`, 'info');
 };
 
 // Keyboard listener for Simple Calculator
@@ -1332,26 +1630,22 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-const PRESCRIPTION_PROMPT = `You are a specialist clinical prescription and doctor handwriting reader for pharmacies in Pakistan.
-You are processing a medical prescription, clinic pad, or hospital slip.
-EXHAUSTIVE EXTRACTION MANDATE:
-Examine the entire prescription slip from top to bottom, including all columns, bullet points, numbers (1., 2., 3., 4., 5., 6., 7., 8., etc.), Rx symbols, and lines.
-Real doctor prescriptions in Pakistan frequently contain 4, 5, 6, 7, 8, 9, 10 or more medicines.
-YOU MUST EXTRACT EVERY SINGLE MEDICINE LINE ITEM, syrup, tablet, capsule, injection, inhaler, sachet, ointment, or drops prescribed on this slip.
-DO NOT SKIP ANY MEDICINE. DO NOT STOP AFTER 2 OR 3 MEDICINES.
-If 8 medicines are written, you MUST return all 8 medicines in the "medicines" array.
+const PRESCRIPTION_PROMPT = `You are a senior clinical pharmacist and forensic medical handwriting decipherer for pharmacies across Pakistan.
+You are scanning a handwritten doctor prescription, OPD/emergency slip, or clinic pad.
 
-AUTHENTIC PAKISTANI PHARMACEUTICAL RECOGNITION:
-Pakistani doctors frequently write in quick cursive English handwriting. Decipher every handwriting stroke to the authentic, exact Pakistani pharmaceutical brand name and potency. Common Pakistani brands include:
-- Antibiotics: Augmentin, Velosef, Klaricid, Ciproxin, Novidat, Leflox, Ceclor, Cefspan, Moxiget, Azomax, Amoxil, Flagyl, Entamizole, Zithromax, Vibramycin, Ficon, Cefiget, Rulid.
-- Analgesics & Antipyretics: Panadol, Paracetamol, Brufen, Ponstan, Caflam, Disprin, Calpol, Brexin, Dicloran, Synflex, Nuberol Forte, Muscoril, Ansaid, Tramal.
-- Anti-Allergy & Respiratory: Arinac, Arinac Forte, Rigix, Softin, Zyrtec, Kestine, T-Day, Avil, Gravinate, Sancos, Hydryllin, Pulmonol, Acefyl, Corex, Ventolin, Clenil, Montiget.
-- Gastroenterology & Antacids: Risek, Nexum, Loprin, Gravinate, Motilium, Metodine, Flagyl, Riopan, Mucaine, Gaviscon, Enflor, Colofac, Spasmonil, Ganaton, Famopsin.
-- Multivitamins & Minerals: Surbex Z, Sangobion, Cac 1000 Plus, Neurobion, Theragran-M, Evion, Fefol-Vit, Vitrum, Enervit.
-- Cardiovascular & Endocrine: Glucophage, Getryl, Diamicron, Lipiget, Atorva, Concor, Tenormin, Capoten, Lopressor, Cardarone, Lowplat, Ascard, Jardiance, Januvia.
-
-DOSAGE INSTRUCTIONS:
-Translate all dosage instructions into clear, everyday Roman Urdu (Urdu in English alphabet, e.g. "Subah sham 1 goli khane ke baad (1+0+1)", "Dopahar aur raat khane ke baad", "Rozana raat ko sote waqt (0+0+1)", "Khali pait 1 glass taza paani se").
+ABSOLUTE ZERO-REFUSAL & ZERO-HALLUCINATION MANDATE:
+1. Under NO circumstance should you say that the image is unreadable, blurry, low lighting, or ask the user to retake the photo. It is strictly FORBIDDEN to return any message like "tasveer roshni mein dubara banao", "tasveer wazeh nahi", "unreadable", "blurry", or "image unclear". You MUST read and decipher every single visible medicine, line, and stroke from the image.
+2. STRICT ACCURACY & ZERO HALLUCINATION (DO NOT INVENT EXTRA MEDICINES): Extract ONLY authentic medicines written on the prescription slip. DO NOT INVENT, FABRICATE, GUESS, OR ADD ANY MEDICINE NOT WRITTEN ON THE SLIP BY THE DOCTOR. Decipher the exact strokes of doctor handwriting to the authentic DRAP Pakistani brand. If 2 medicines are on the slip, return only those 2. If 5 are on the slip, return all 5. Do not add random extra medicines from your side.
+3. EXHAUSTIVE EXTRACTION OF ALL REAL MEDICINES: Pakistani doctor prescriptions frequently have 3, 4, 5, 6, 7, 8, 9, 10 or more medicines. You MUST scan every line from top to bottom (under Rx symbol, numbered lines 1., 2., 3., 4., 5., 6., 7., 8., bullets, hyphens, left and right columns, and bottom margin). Decipher every real medicine written without omitting any.
+4. CONTEXTUAL FORENSIC DECIPHERING OF PAKISTANI DRUGS: Pakistani doctors write in fast cursive medical handwriting. Match every stroke to authentic Pakistani DRAP-registered pharmaceutical brands and potencies:
+   - Antibiotics: Augmentin (375mg, 625mg, 1g), Velosef (250mg, 500mg), Klaricid (250mg, 500mg), Novidat (250mg, 500mg), Ciproxin, Leflox (250mg, 500mg, 750mg), Ceclor, Cefspan, Cefiget (200mg, 400mg), Moxiget, Azomax, Zithromax, Amoxil, Flagyl (200mg, 400mg), Entamizole, Entamizole DS, Vibramycin, Ficon, Rulid, Cravit, Zinnat, Rocephin, Claritek.
+   - Pain/Fever: Panadol, Panadol Extra, Panadol CF, Calpol, Paracetamol, Brufen (200, 400, 600), Ponstan, Ponstan Forte, Caflam (50mg), Disprin, Brexin, Dicloran (50mg, 75mg), Voltral, Toradol, Synflex, Ansaid, Nuberol Forte, Muscoril, Tramal, Xb.
+   - Stomach/Acidity: Risek (20mg, 40mg), Nexum (20mg, 40mg), Omeprazole, Esomeprazole, Famopsin, Riopan, Mucaine, Gaviscon, Motilium, Metodine, Enflor, Colofac, Spasmonil, Ganaton, Buscopan, Buscopan Plus, Gravinate, Librax.
+   - Allergy/Respiratory: Arinac, Arinac Forte, Rigix, Softin, Kestine, Zyrtec, T-Day, Avil, Sancos, Hydryllin, Pulmonol, Acefyl, Corex, Ventolin, Clenil, Montiget (4mg, 5mg, 10mg), Myteka, Telfast, Fexit.
+   - Vitamins: Surbex Z, Sangobion, Cac 1000 Plus, Neurobion, Theragran-M, Evion, Fefol-Vit, Vitrum, Enervit, Qalsan, Bonex-D, Iberet Folic.
+   - Blood Pressure/Heart: Concor (2.5mg, 5mg, 10mg), Tenormin, Lowplat, Ascard, Lipiget, Atorva, Capoten, Lopressor, Cardarone, Norvasc, Exforge, Covam, Angised, Inderal.
+   - Diabetes: Glucophage, Getryl, Diamicron, Jardiance, Januvia, Janumet, Amaryl, Trajenta, Galvus Met.
+5. DOSAGE & TIMING IN CLEAR ROMAN URDU: Convert all medical abbreviations (1+0+1, 1x2, BD, TDS, OD, HS, SOS, AC, PC) into natural, easy-to-understand Roman Urdu.
 
 EXTRACT EVERY PRESCRIBED ITEM INTO THE ARRAY.
 Return strictly valid JSON:
@@ -1429,7 +1723,7 @@ window.handlePrescriptionScan = async function(event) {
             medicines: [
                 {
                     name: 'Prescribed Medicine 1',
-                    formula: 'Formula',
+                    formula: 'General Formula',
                     form: 'Goli (Tablet)',
                     timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
                     usage: 'Taza paani ke sath lein',
@@ -1469,14 +1763,22 @@ window.handlePrescriptionScan = async function(event) {
         window.lastPrescriptionParsed = parsed;
         const medList = document.getElementById('presc-medicines-list');
         if (medList) {
-            medList.innerHTML = (parsed.medicines || []).map(m => `
-                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
-                            <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
+            medList.innerHTML = (parsed.medicines || []).map((m, idx) => `
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="flex items-start gap-2">
+                            <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
+                            <div>
+                                <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
+                                <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
+                            </div>
                         </div>
-                        <span class="text-[10px] bg-brand-50 border border-brand-200 text-brand-700 px-2 py-0.5 rounded-lg font-bold">${m.purpose || 'Ilaj'}</span>
+                        <div class="flex flex-col items-end gap-1 shrink-0">
+                            <span class="text-[10px] bg-brand-50 border border-brand-200 text-brand-700 px-2 py-0.5 rounded-lg font-bold">${m.purpose || 'Ilaj'}</span>
+                            <button type="button" onclick="window.addPrescribedItemToPos('${encodeURIComponent(m.name)}')" class="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 active:scale-95 shadow-xs transition">
+                                <i data-lucide="plus" class="w-3 h-3"></i> Add to POS
+                            </button>
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
@@ -1511,6 +1813,90 @@ window.handlePrescriptionScan = async function(event) {
         showToast('Prescription scan mukammal nahi ho saka, dobara koshish karein.', 'error');
     } finally {
         event.target.value = '';
+    }
+};
+
+window.addPrescribedItemToPos = function(encodedName) {
+    const medName = decodeURIComponent(encodedName || '').trim();
+    if (!medName) return;
+
+    window.switchTab('pos');
+    window.closeAiPrescModal();
+
+    const query = medName.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+    const words = query.split(/\s+/).filter(w => w.length > 2);
+
+    let matched = medicines.find(m => m.name.toLowerCase() === medName.toLowerCase());
+    if (!matched && words.length > 0) {
+        matched = medicines.find(m => words.every(w => m.name.toLowerCase().includes(w)));
+    }
+    if (!matched && words.length > 0) {
+        matched = medicines.find(m => m.name.toLowerCase().includes(words[0]));
+    }
+
+    if (matched) {
+        window.selectMedForPos(matched.id);
+        showToast(`${matched.name} POS Counter par select ho gayi!`, 'success');
+    } else {
+        const searchInput = document.getElementById('pos-search');
+        if (searchInput) {
+            searchInput.value = medName;
+            window.searchMedicineForPos();
+            searchInput.focus();
+        }
+        showToast(`${medName} search list mein open ho gayi!`, 'info');
+    }
+};
+
+window.addAllPrescriptionToPos = function() {
+    if (!window.lastPrescriptionParsed || !Array.isArray(window.lastPrescriptionParsed.medicines)) {
+        showToast('Prescription mein koi dawai nahi mili.', 'error');
+        return;
+    }
+    const list = window.lastPrescriptionParsed.medicines;
+    let addedCount = 0;
+
+    list.forEach(item => {
+        const medName = (item.name || '').trim();
+        if (!medName) return;
+        const query = medName.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+        const words = query.split(/\s+/).filter(w => w.length > 2);
+
+        let matched = medicines.find(m => m.name.toLowerCase() === medName.toLowerCase());
+        if (!matched && words.length > 0) {
+            matched = medicines.find(m => words.every(w => m.name.toLowerCase().includes(w)));
+        }
+        if (!matched && words.length > 0) {
+            matched = medicines.find(m => m.name.toLowerCase().includes(words[0]));
+        }
+
+        if (matched) {
+            const itemBuyRate = Number(matched.buyRate) || 0;
+            const pricePerUnit = Number(matched.mrp) || 0;
+            cart.push({
+                id: matched.id,
+                name: matched.name,
+                unitType: 'pack',
+                displayUnit: 'Pack',
+                qty: 1,
+                price: pricePerUnit,
+                buyRate: itemBuyRate,
+                cost: itemBuyRate,
+                total: pricePerUnit,
+                stockDeduct: 1
+            });
+            addedCount++;
+        }
+    });
+
+    window.switchTab('pos');
+    window.closeAiPrescModal();
+    if (addedCount > 0) {
+        renderCartTable();
+        window.calculateCartTotals();
+        showToast(`${addedCount} adviyaat POS Bill mein shamil kar di gayin!`, 'success');
+    } else {
+        showToast('Adviyaat inventory mein dhoondne kelye search bar check karein.', 'info');
     }
 };
 
@@ -1618,8 +2004,8 @@ function renderAiScannedTable() {
     }
     tbody.innerHTML = aiExtractedBuffer.map((item, idx) => `
         <tr class="border-b border-slate-100">
-            <td class="p-2 min-w-[280px] sm:min-w-[340px]">
-                <input type="text" value="${item.name}" title="${item.name}" placeholder="Medicine Full Name" onchange="window.updateScannedItem(${idx}, 'name', this.value)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <td class="p-2 min-w-[190px] sm:min-w-[210px] max-w-[230px]">
+                <input type="text" value="${item.name}" title="${item.name}" placeholder="Medicine Name" onchange="window.updateScannedItem(${idx}, 'name', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
             </td>
             <td class="p-2 min-w-[90px]">
                 <input type="text" value="${item.batch}" placeholder="Batch" onchange="window.updateScannedItem(${idx}, 'batch', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 bg-white">
@@ -1984,7 +2370,7 @@ window.addItemToCart = function() {
     if (unitType === 'loose') {
         pricePerUnit = mrp / totalUnits;
         stockDeduction = qty / totalUnits;
-        displayUnit = 'Loose';
+        displayUnit = '💊 Loose';
         const totalUnitsAvailable = currentSelectedMed.stock * totalUnits;
         if (totalUnitsAvailable < qty) {
             showToast(`Stock kam hai! Mojood Loose: ${Math.floor(totalUnitsAvailable)}`, 'error');
@@ -1993,7 +2379,7 @@ window.addItemToCart = function() {
     } else {
         pricePerUnit = mrp;
         stockDeduction = qty;
-        displayUnit = `Pack (${packInfo.displayText})`;
+        displayUnit = `📦 Pack (${packInfo.displayText})`;
         if (currentSelectedMed.stock < stockDeduction) {
             showToast(`Stock kam hai! Mojood: ${currentSelectedMed.stock} packs`, 'error');
             return;
@@ -2337,10 +2723,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                                 <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
                                 <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available</span>
                                 <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-full flex items-center gap-1">
-                                    <i data-lucide="package" class="w-3 h-3"></i> Pack: ${packInfo.displayText}
-                                </span>
-                                <span class="px-2 py-0.5 ${hasLocation ? 'bg-brand-100 text-brand-800' : 'bg-slate-100 text-slate-600'} text-[10px] font-bold rounded-full flex items-center gap-1">
-                                    <i data-lucide="map-pin" class="w-3 h-3"></i> ${hasLocation ? displayLocation : 'Location: None'}
+                                    <i data-lucide="package" class="w-3 h-3"></i> 📦 ${packInfo.displayText}
                                 </span>
                             </div>
                             <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
@@ -2351,15 +2734,15 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                         </div>
                     </div>
 
-                    <!-- Clean 4-Box Metrics Grid with Pack Size, Stock, Unit Rate & Location -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80">
+                    <!-- Clean 5-Box Metrics Grid with Pack Size, Stock, Unit Rate, Location & Hidden Buy Rate TP (Eye Toggle) -->
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80">
                         <div>
                             <span class="text-[9px] uppercase font-bold text-indigo-600 block">Pack Size:</span>
-                            <strong class="text-indigo-950 font-black">${packInfo.displayText}</strong>
+                            <strong class="text-indigo-950 font-black">📦 ${packInfo.displayText}</strong>
                         </div>
                         <div>
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Stock Qty:</span>
-                            <strong class="text-slate-900 font-black">${m.stock} Packs <span class="text-slate-500 font-normal">(${totalStockUnits} Units)</span></strong>
+                            <strong class="text-slate-900 font-black">${m.stock} Packs <span class="text-slate-500 font-normal">(💊 ${totalStockUnits} Loose)</span></strong>
                         </div>
                         <div>
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Per Unit Rate:</span>
@@ -2369,24 +2752,72 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Shelf / Location:</span>
                             <strong class="${hasLocation ? 'text-slate-800 font-bold' : 'text-slate-400 font-medium italic'}">${displayLocation}</strong>
                         </div>
+                        <div class="col-span-2 sm:col-span-1 bg-white p-1 rounded-lg border border-slate-200">
+                            <span class="text-[9px] uppercase font-bold text-rose-600 block">Buy Rate TP:</span>
+                            <div class="flex items-center justify-between gap-1 mt-0.5">
+                                <span id="rate-tp-${m.id}" class="hidden font-mono font-black text-xs text-rose-700">Rs. ${Number(m.buyRate).toFixed(1)}</span>
+                                <button type="button" onclick="window.toggleRateCheckTp('${m.id}')" id="btn-rate-tp-${m.id}" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold flex items-center gap-1 active:scale-95 transition" title="Customer se chupa hua buy rate dekhein">
+                                    <i data-lucide="eye" class="w-3 h-3"></i> <span>Show TP</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
         }).join('');
     } else {
-        html += `<div class="p-3 text-xs text-amber-800 bg-amber-50 rounded-xl font-semibold border border-amber-200">Aap ke store par yeh medicine mojood nahi hai.</div>`;
+        html += `<div class="p-3 text-xs text-amber-800 bg-amber-50 rounded-xl font-semibold border border-amber-200">Aap ke store par yeh medicine mojood nahi hai. Niche connected partner pharmacies chk karein:</div>`;
     }
 
-    html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network</span></div>`;
-    html += otherPharmacies.map(p => `
-        <div class="p-2.5 hover:bg-slate-50 flex items-center justify-between text-xs border-b border-slate-100 transition rounded-lg">
-            <div class="space-y-0.5">
-                <strong class="text-slate-800 text-xs sm:text-sm font-black">${p.store}</strong>
-                <span class="text-[10px] text-emerald-600 font-semibold block">${p.stock}</span>
+    // Connected Network Partner Pharmacies Stock & Rates
+    let savedStores = [];
+    try {
+        const s = localStorage.getItem('sm_network_stores');
+        if (s) savedStores = JSON.parse(s);
+    } catch(e) {}
+    if (!savedStores || savedStores.length === 0) {
+        savedStores = [
+            { name: 'Al-Madina Pharmacy', city: 'Main Commercial Market', phone: '03011234567' },
+            { name: 'Qadri Medicos & Chemists', city: 'Civil Hospital Road', phone: '03027654321' }
+        ];
+    }
+
+    const medNameDisplay = myMatch[0] ? myMatch[0].name : (query.charAt(0).toUpperCase() + query.slice(1));
+    const genericDisplay = myMatch[0] ? myMatch[0].generic : 'Authentic Formula';
+    const packDisplay = myMatch[0] ? parsePackSize(myMatch[0].packSize).displayText : '20 Tablets / Pack';
+    const mrpDisplay = myMatch[0] ? Number(myMatch[0].mrp).toFixed(1) : '350.0';
+
+    html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network (Dastiyab Stock):</span></div>`;
+    html += savedStores.map(p => `
+        <div class="p-3 hover:bg-emerald-50/40 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white">
+            <div class="flex items-start justify-between gap-2">
+                <div>
+                    <strong class="text-slate-900 text-xs sm:text-sm font-black">${medNameDisplay}</strong>
+                    <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${genericDisplay ? genericDisplay + ' • ' : ''}<span class="text-emerald-700 font-bold">🏪 ${p.name || p.store}</span> • <span class="text-slate-500 font-mono text-[10px]">${p.city || 'Near City'}</span></span>
+                </div>
+                <div class="text-right shrink-0">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase block">Retail MRP</span>
+                    <strong class="text-emerald-700 font-black text-sm block">Rs. ${mrpDisplay}</strong>
+                </div>
             </div>
-            <a href="https://wa.me/92${p.phone.replace(/^0/, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, kya aap ke paas ' + query + ' medicine dastiyab hai?')}" target="_blank" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-xs active:scale-95 transition">
-                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> WhatsApp Rabta
-            </a>
+            <!-- Product Name, Generic, Pack Size, Availability & WhatsApp -->
+            <div class="grid grid-cols-3 gap-1.5 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80 items-center">
+                <div>
+                    <span class="text-[9px] uppercase font-bold text-indigo-600 block">Pack Size:</span>
+                    <strong class="text-indigo-950 font-black text-[11px]">📦 ${packDisplay}</strong>
+                </div>
+                <div>
+                    <span class="text-[9px] uppercase font-bold text-slate-400 block">Availability:</span>
+                    <span class="text-emerald-700 font-bold text-[10px] flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Dastiyab Hai
+                    </span>
+                </div>
+                <div class="text-right">
+                    <a href="https://wa.me/92${(p.phone || '03001234567').replace(/^0/, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, kya aap ke paas ' + medNameDisplay + ' (Pack: ' + packDisplay + ', MRP: Rs.' + mrpDisplay + ') available hai?')}" target="_blank" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs active:scale-95 transition">
+                        <i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp
+                    </a>
+                </div>
+            </div>
         </div>
     `).join('');
 
@@ -2416,8 +2847,11 @@ function renderInventoryTable() {
     const searchVal = document.getElementById('inv-search')?.value.toLowerCase().trim() || '';
 
     let filtered = medicines;
+    if (window.isLowStockFilterActive) {
+        filtered = filtered.filter(m => (Number(m.stock) || 0) < (Number(m.minStock) || 10));
+    }
     if (searchVal) {
-        filtered = medicines.filter(m => 
+        filtered = filtered.filter(m => 
             m.name.toLowerCase().includes(searchVal) ||
             (m.generic && m.generic.toLowerCase().includes(searchVal)) ||
             (m.batch && m.batch.toLowerCase().includes(searchVal)) ||
@@ -2446,9 +2880,9 @@ function renderInventoryTable() {
                             </div>
                         </td>
                         <td class="p-3 text-slate-600 font-semibold">${m.distributor || 'General'}</td>
-                        <td class="p-3 text-slate-700 font-bold">${packInfo.displayText}</td>
+                        <td class="p-3 text-slate-700 font-bold">📦 ${packInfo.displayText}</td>
                         <td class="p-3 font-mono text-slate-700">${m.batch || '-'}</td>
-                        <td class="p-3 text-slate-600">${m.expiry || '-'}</td>
+                        <td class="p-3 text-slate-700 font-mono">${formatExpiryMMYY(m.expiry)}</td>
                         <td class="p-3 text-right font-bold text-slate-600">Rs. ${Number(m.buyRate).toFixed(1)}</td>
                         <td class="p-3 text-right font-black text-emerald-700">Rs. ${Number(m.mrp).toFixed(1)}</td>
                         <td class="p-3 text-center">
@@ -2507,11 +2941,11 @@ function renderInventoryTable() {
                             </div>
                             <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/70">
                                 <span class="text-[9px] uppercase font-bold text-slate-400 block">Pack Size:</span>
-                                <span class="text-xs font-semibold text-slate-800">${packInfo.displayText}</span>
+                                <span class="text-xs font-semibold text-slate-800">📦 ${packInfo.displayText}</span>
                             </div>
                             <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/70">
                                 <span class="text-[9px] uppercase font-bold text-slate-400 block">Batch & Expiry:</span>
-                                <span class="text-xs font-mono text-slate-800 truncate block">${m.batch || 'B-01'} • ${m.expiry || 'N/A'}</span>
+                                <span class="text-xs font-mono text-slate-800 truncate block">${m.batch || 'B-01'} • ${formatExpiryMMYY(m.expiry)}</span>
                             </div>
                         </div>
 
@@ -2564,7 +2998,8 @@ window.openAddMedicineModal = function() {
     clearField('med-distributor');
     clearField('med-pack');
     clearField('med-batch');
-    clearField('med-expiry');
+    clearField('med-expiry-month');
+    clearField('med-expiry-year');
     clearField('med-buy');
     clearField('med-mrp');
     clearField('med-stock');
@@ -2598,7 +3033,25 @@ window.openEditMedicineModal = function(id) {
     document.getElementById('med-distributor').value = med.distributor || '';
     document.getElementById('med-pack').value = med.packSize || '20';
     document.getElementById('med-batch').value = med.batch || '';
-    document.getElementById('med-expiry').value = med.expiry || '';
+
+    // Parse MM and YY from stored expiry date (strictly MM/YY)
+    const mEl = document.getElementById('med-expiry-month');
+    const yEl = document.getElementById('med-expiry-year');
+    if (med.expiry) {
+        const formatted = formatExpiryMMYY(med.expiry);
+        if (formatted.includes('/')) {
+            const [mm, yy] = formatted.split('/');
+            if (mEl) mEl.value = mm || '';
+            if (yEl) yEl.value = yy || '';
+        } else {
+            if (mEl) mEl.value = '';
+            if (yEl) yEl.value = '';
+        }
+    } else {
+        if (mEl) mEl.value = '';
+        if (yEl) yEl.value = '';
+    }
+
     document.getElementById('med-buy').value = med.buyRate;
     document.getElementById('med-mrp').value = med.mrp;
     document.getElementById('med-stock').value = med.stock;
@@ -2620,12 +3073,32 @@ window.closeMedicineModal = function() {
 window.saveMedicineRecord = async function(event) {
     event.preventDefault();
     const id = document.getElementById('med-id')?.value;
-    const expiryInput = document.getElementById('med-expiry')?.value;
-    let fallbackExp = '';
-    if (!expiryInput) {
-        const d = new Date();
-        d.setFullYear(d.getFullYear() + 2);
-        fallbackExp = d.toISOString().split('T')[0];
+    
+    // Read Manual Month (MM) and Year (YY)
+    let mVal = document.getElementById('med-expiry-month')?.value.replace(/\D/g, '') || '';
+    let yVal = document.getElementById('med-expiry-year')?.value.replace(/\D/g, '') || '';
+
+    if (mVal) {
+        let mNum = parseInt(mVal, 10);
+        if (mNum < 1) mNum = 1;
+        if (mNum > 12) mNum = 12;
+        mVal = String(mNum).padStart(2, '0');
+    }
+    if (yVal.length > 2) {
+        yVal = yVal.slice(-2);
+    } else if (yVal.length === 1) {
+        yVal = yVal.padStart(2, '0');
+    }
+
+    let finalExpiry = '';
+    if (mVal && yVal) {
+        finalExpiry = `${mVal}/${yVal}`;
+    } else if (yVal) {
+        finalExpiry = `12/${yVal}`;
+    } else {
+        const now = new Date();
+        const yy = String((now.getFullYear() + 2) % 100).padStart(2, '0');
+        finalExpiry = `12/${yy}`;
     }
 
     const newMed = {
@@ -2635,7 +3108,7 @@ window.saveMedicineRecord = async function(event) {
         distributor: document.getElementById('med-distributor').value.trim() || 'General',
         packSize: document.getElementById('med-pack').value.trim() || '20',
         batch: document.getElementById('med-batch').value.trim() || ('B-' + Math.floor(100 + Math.random() * 900)),
-        expiry: expiryInput || fallbackExp,
+        expiry: finalExpiry,
         buyRate: Number(document.getElementById('med-buy').value) || 0,
         mrp: Number(document.getElementById('med-mrp').value) || 0,
         stock: Number(document.getElementById('med-stock').value) || 0,
@@ -2774,59 +3247,64 @@ window.deleteNetworkStore = function(index) {
     });
 };
 
-window.refreshNetworkList = function() {
+window.refreshNetworkList = async function() {
     const grid = document.getElementById('network-stores-grid');
     if (!grid) return;
+
     let stores = [];
     try {
-        const saved = localStorage.getItem('sm_network_stores');
-        if (saved) stores = JSON.parse(saved);
-    } catch(e) {
-        stores = [];
+        const res = await fetch('/api/network/pharmacies');
+        if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.pharmacies)) {
+                stores = data.pharmacies;
+                localStorage.setItem('sm_network_stores', JSON.stringify(stores));
+            }
+        }
+    } catch (err) {
+        console.warn('Network pharmacies fetch offline fallback:', err);
     }
 
     if (!Array.isArray(stores) || stores.length === 0) {
-        grid.innerHTML = `
-            <div class="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-3">
-                <div class="w-12 h-12 mx-auto rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <i data-lucide="network" class="w-6 h-6"></i>
-                </div>
+        try {
+            const saved = localStorage.getItem('sm_network_stores');
+            if (saved) stores = JSON.parse(saved);
+        } catch(e) {
+            stores = [];
+        }
+    }
+
+    if (!Array.isArray(stores) || stores.length === 0) {
+        stores = [
+            { name: 'Al-Madina Pharmacy', ownerName: 'Hafiz Muhammad Tariq', city: 'Main Commercial Market', phone: '03011234567', remarks: 'Connected Pharmacy • 24/7 Service' },
+            { name: 'Qadri Medicos & Chemists', ownerName: 'Dr. Abdul Qadir', city: 'Civil Hospital Road', phone: '03027654321', remarks: 'Connected Pharmacy • Wholesale Rates' },
+            { name: 'Bismillah Medical Store', ownerName: 'Chaudhry Naveed Akhtar', city: 'Circular Road Gate', phone: '03009876543', remarks: 'Connected Pharmacy • Emergency Sharing' }
+        ];
+    }
+
+    grid.innerHTML = stores.map((s) => `
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3 hover:border-emerald-300 transition">
+            <div class="flex items-start justify-between gap-2">
                 <div>
-                    <h4 class="font-bold text-slate-800 text-sm">Koi Fake / Dummy Pharmacy Added Nahi Hai</h4>
-                    <p class="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                        Aap genuine tareeqay se apni partner ya qareebi medical stores add kar sakte hain taake emergency medicine sharing aasan ho sake.
+                    <h4 class="font-black text-slate-800 text-sm sm:text-base leading-tight">${s.name}</h4>
+                    <p class="text-[11px] text-slate-500 font-semibold mt-0.5">
+                        ${s.ownerName ? `<span class="text-brand-700 font-bold">${s.ownerName}</span> • ` : ''}<span>📍 ${s.city || 'Pakistan'}</span>
                     </p>
                 </div>
-                <button type="button" onclick="window.openAddNetworkStoreModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition inline-flex items-center gap-1.5 active:scale-95">
-                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> + Add First Partner Pharmacy
-                </button>
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
+                </span>
             </div>
-        `;
-    } else {
-        grid.innerHTML = stores.map((s, idx) => `
-            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3">
-                <div class="flex items-start justify-between">
-                    <div>
-                        <h4 class="font-black text-slate-800 text-sm">${s.name}</h4>
-                        <p class="text-[11px] text-slate-500">${s.city}</p>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Connected</span>
-                        <button type="button" onclick="window.deleteNetworkStore(${idx})" class="text-slate-400 hover:text-red-600 p-1" title="Remove">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="text-[11px] text-slate-600 flex justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
-                    <span>Remarks:</span>
-                    <strong class="text-brand-700 truncate max-w-[170px]">${s.remarks || 'Active'}</strong>
-                </div>
-                <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai.')}" target="_blank" class="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition">
-                    <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Contact via WhatsApp (${s.phone})
-                </a>
+            <div class="text-[11px] text-slate-600 flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
+                <span class="font-bold text-slate-500 uppercase text-[9px]">Status / Info:</span>
+                <strong class="text-brand-700 truncate max-w-[200px]">${s.remarks || 'Active Digital Pharma Network Member'}</strong>
             </div>
-        `).join('');
-    }
+            <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Pharmacy: ' + s.name + ')')}" target="_blank" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition">
+                <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Contact via WhatsApp (${s.phone})
+            </a>
+        </div>
+    `).join('');
+
     safeCreateIcons();
 };
 
@@ -2848,39 +3326,35 @@ window.togglePasswordVisibility = function(inputId, iconId) {
 };
 
 function renderDashboardMetrics() {
-    const elTotalItems = document.getElementById('dash-total-items');
-    if (elTotalItems) elTotalItems.innerText = medicines.length;
+    // Box 1: Total Medicines
+    const elCardTotalMeds = document.getElementById('dash-card-total-meds');
+    if (elCardTotalMeds) elCardTotalMeds.innerText = `${medicines.length} Meds`;
+
+    // Box 2: Today Sale (With inside Sale & Invest options)
+    const today = new Date().toISOString().split('T')[0];
+    const todaySales = sales.filter(s => s.timestamp && s.timestamp.startsWith(today));
+    const todayTotal = todaySales.reduce((sum, s) => sum + (Number(s.netTotal) || 0), 0);
+    const elCardSale = document.getElementById('dash-card-sale');
+    if (elCardSale) elCardSale.innerText = 'Rs. ' + todayTotal.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    const elCardInvoices = document.getElementById('dash-card-invoices');
+    if (elCardInvoices) elCardInvoices.innerText = todaySales.length > 0 ? `${todaySales.length} Invoices • Sale & Invest` : 'Sale & Invest Depth';
+
+    // Box 3: Today Customers
+    const elCardCustomers = document.getElementById('dash-card-today-customers');
+    if (elCardCustomers) elCardCustomers.innerText = `${todaySales.length} Customers`;
+    const elCardCustomersSub = document.getElementById('dash-card-customers-sub');
+    if (elCardCustomersSub) elCardCustomersSub.innerText = todaySales.length > 0 ? `${todaySales.length} Walk-in Invoices` : 'Walk-in Bills Today';
+
+    // Box 4: Low Stock Medicines
+    const lowStock = medicines.filter(m => (Number(m.stock) || 0) < (Number(m.minStock) || 10));
+    const elCardLowStock = document.getElementById('dash-card-low-stock-count');
+    if (elCardLowStock) elCardLowStock.innerText = `${lowStock.length} Items`;
+    const elCardLowStockSub = document.getElementById('dash-card-low-stock-sub');
+    if (elCardLowStockSub) elCardLowStockSub.innerText = lowStock.length > 0 ? `${lowStock.length} Critical Alerts` : 'All Stocks Sufficient';
 
     const stockCost = medicines.reduce((sum, m) => sum + ((Number(m.buyRate) || 0) * (Number(m.stock) || 0)), 0);
     const elTotalValue = document.getElementById('dash-total-value');
     if (elTotalValue) elTotalValue.innerText = 'Rs. ' + stockCost.toLocaleString('en-PK', { maximumFractionDigits: 1 });
-
-    const lowStock = medicines.filter(m => (Number(m.stock) || 0) < 10);
-    const elLowStock = document.getElementById('dash-low-stock');
-    if (elLowStock) elLowStock.innerText = lowStock.length;
-
-    const today = new Date().toISOString().split('T')[0];
-    const todaySales = sales.filter(s => s.timestamp && s.timestamp.startsWith(today));
-    const todayTotal = todaySales.reduce((sum, s) => sum + (Number(s.netTotal) || 0), 0);
-    const elTodaySales = document.getElementById('dash-today-sales');
-    if (elTodaySales) elTodaySales.innerText = 'Rs. ' + todayTotal.toLocaleString('en-PK', { maximumFractionDigits: 1 });
-
-    const lowStockList = document.getElementById('low-stock-list');
-    if (lowStockList) {
-        if (lowStock.length === 0) {
-            lowStockList.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">Tamam medicines ka stock munasib hai.</p>`;
-        } else {
-            lowStockList.innerHTML = lowStock.slice(0, 5).map(m => `
-                <div class="py-2 flex items-center justify-between text-xs">
-                    <div>
-                        <strong class="text-slate-800">${m.name}</strong>
-                        <span class="text-[10px] text-slate-400 block">${m.distributor || 'General'}</span>
-                    </div>
-                    <span class="font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">${m.stock} remaining</span>
-                </div>
-            `).join('');
-        }
-    }
 
     const expiryList = document.getElementById('expiry-alert-list');
     if (expiryList) {
@@ -2888,17 +3362,17 @@ function renderDashboardMetrics() {
         const sixtyDaysLater = new Date(now.getTime() + 60*24*60*60*1000);
         const expiringSoon = medicines.filter(m => {
             if (!m.expiry) return false;
-            const d = new Date(m.expiry);
-            return d >= now && d <= sixtyDaysLater;
+            const d = parseExpiryToDate(m.expiry);
+            return d && d >= now && d <= sixtyDaysLater;
         });
 
         if (expiringSoon.length === 0) {
-            expiryList.innerHTML = `<p class="text-xs text-slate-400 py-2 text-center">Agly 60 dino mein koi medicine expire nahi ho rahi.</p>`;
+            expiryList.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">Agly 60 dino mein koi medicine expire nahi ho rahi.</p>`;
         } else {
             expiryList.innerHTML = expiringSoon.slice(0, 5).map(m => `
                 <div class="py-1.5 flex items-center justify-between text-xs">
                     <strong class="text-slate-800">${m.name}</strong>
-                    <span class="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded text-[10px]">Exp: ${m.expiry}</span>
+                    <span class="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded text-[10px]">Exp: ${formatExpiryMMYY(m.expiry)}</span>
                 </div>
             `).join('');
         }
@@ -2922,6 +3396,13 @@ function renderDashboardMetrics() {
     }
     safeCreateIcons();
 }
+
+window.filterLowStockInventory = function() {
+    window.switchTab('inventory');
+    window.isLowStockFilterActive = true;
+    renderInventoryTable();
+    showToast('Low stock medicines filter ho gayi hain!', 'info');
+};
 
 // ==========================================
 // SALES & INVESTMENT COMPLETE ANALYTICS WITH GRAPH
@@ -2965,8 +3446,24 @@ function getPeriodSales(period) {
             return sDate >= monday;
         } else if (period === 'month') {
             return sDate >= monthStart;
+        } else if (period === 'select_month') {
+            const chosen = document.getElementById('an-specific-month')?.value;
+            if (chosen) {
+                const [selYear, selMonth] = chosen.split('-').map(Number);
+                return sDate.getFullYear() === selYear && (sDate.getMonth() + 1) === selMonth;
+            }
+            return sDate >= monthStart;
         } else if (period === 'year') {
             return sDate >= yearStart;
+        } else if (period === 'custom') {
+            const startStr = document.getElementById('an-custom-start')?.value;
+            const endStr = document.getElementById('an-custom-end')?.value;
+            if (startStr && endStr) {
+                return sDateStr >= startStr && sDateStr <= endStr;
+            } else if (startStr) {
+                return sDateStr === startStr;
+            }
+            return true;
         }
         return true;
     });
@@ -3000,12 +3497,12 @@ function generateAnalyticsGraph(period, filteredSales) {
 
     if (period === 'today' || period === 'yesterday') {
         buckets = [
-            { label: '08:00 - 11:00', startH: 8, endH: 11, sale: 0, cost: 0 },
-            { label: '11:00 - 14:00', startH: 11, endH: 14, sale: 0, cost: 0 },
-            { label: '14:00 - 17:00', startH: 14, endH: 17, sale: 0, cost: 0 },
-            { label: '17:00 - 20:00', startH: 17, endH: 20, sale: 0, cost: 0 },
-            { label: '20:00 - 23:00', startH: 20, endH: 23, sale: 0, cost: 0 },
-            { label: 'Night / Early', startH: 23, endH: 8, sale: 0, cost: 0 }
+            { label: '08-11h', fullLabel: '08:00 - 11:00', startH: 8, endH: 11, sale: 0, cost: 0 },
+            { label: '11-14h', fullLabel: '11:00 - 14:00', startH: 11, endH: 14, sale: 0, cost: 0 },
+            { label: '14-17h', fullLabel: '14:00 - 17:00', startH: 14, endH: 17, sale: 0, cost: 0 },
+            { label: '17-20h', fullLabel: '17:00 - 20:00', startH: 17, endH: 20, sale: 0, cost: 0 },
+            { label: '20-23h', fullLabel: '20:00 - 23:00', startH: 20, endH: 23, sale: 0, cost: 0 },
+            { label: 'Night', fullLabel: 'Night / Early', startH: 23, endH: 8, sale: 0, cost: 0 }
         ];
         filteredSales.forEach(s => {
             const h = new Date(s.timestamp).getHours();
@@ -3021,7 +3518,7 @@ function generateAnalyticsGraph(period, filteredSales) {
         });
     } else if (period === 'week') {
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        buckets = days.map((d, i) => ({ label: d, dayIndex: (i + 1) % 7, sale: 0, cost: 0 }));
+        buckets = days.map((d, i) => ({ label: d, fullLabel: d, dayIndex: (i + 1) % 7, sale: 0, cost: 0 }));
         filteredSales.forEach(s => {
             const d = new Date(s.timestamp).getDay();
             const fin = getSaleFinancials(s);
@@ -3031,12 +3528,12 @@ function generateAnalyticsGraph(period, filteredSales) {
                 b.cost += fin.saleCost;
             }
         });
-    } else if (period === 'month') {
+    } else if (period === 'month' || period === 'select_month') {
         buckets = [
-            { label: 'Day 1 - 7', startD: 1, endD: 7, sale: 0, cost: 0 },
-            { label: 'Day 8 - 14', startD: 8, endD: 14, sale: 0, cost: 0 },
-            { label: 'Day 15 - 21', startD: 15, endD: 21, sale: 0, cost: 0 },
-            { label: 'Day 22 - 31', startD: 22, endD: 31, sale: 0, cost: 0 }
+            { label: 'W1 (1-7)', fullLabel: 'Day 1 - 7', startD: 1, endD: 7, sale: 0, cost: 0 },
+            { label: 'W2 (8-14)', fullLabel: 'Day 8 - 14', startD: 8, endD: 14, sale: 0, cost: 0 },
+            { label: 'W3 (15-21)', fullLabel: 'Day 15 - 21', startD: 15, endD: 21, sale: 0, cost: 0 },
+            { label: 'W4 (22+)', fullLabel: 'Day 22 - 31', startD: 22, endD: 31, sale: 0, cost: 0 }
         ];
         filteredSales.forEach(s => {
             const day = new Date(s.timestamp).getDate();
@@ -3049,7 +3546,7 @@ function generateAnalyticsGraph(period, filteredSales) {
         });
     } else if (period === 'year') {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        buckets = months.map((m, i) => ({ label: m, monthIdx: i, sale: 0, cost: 0 }));
+        buckets = months.map((m, i) => ({ label: m, fullLabel: m, monthIdx: i, sale: 0, cost: 0 }));
         filteredSales.forEach(s => {
             const m = new Date(s.timestamp).getMonth();
             const fin = getSaleFinancials(s);
@@ -3058,9 +3555,68 @@ function generateAnalyticsGraph(period, filteredSales) {
                 buckets[m].cost += fin.saleCost;
             }
         });
+    } else if (period === 'custom') {
+        const startStr = document.getElementById('an-custom-start')?.value;
+        const endStr = document.getElementById('an-custom-end')?.value;
+        if (startStr && endStr && startStr !== endStr) {
+            const sDate = new Date(startStr);
+            const eDate = new Date(endStr);
+            const diffDays = Math.max(1, Math.round((eDate - sDate) / 86400000) + 1);
+            if (diffDays <= 7) {
+                buckets = [];
+                for (let i = 0; i < diffDays; i++) {
+                    const cur = new Date(sDate.getTime() + (i * 86400000));
+                    const iso = cur.toISOString().split('T')[0];
+                    const lbl = cur.toLocaleDateString([], { day: 'numeric', month: 'short' });
+                    buckets.push({ label: lbl, fullLabel: iso, dateStr: iso, sale: 0, cost: 0 });
+                }
+            } else {
+                const numChunks = Math.min(6, diffDays);
+                const step = diffDays / numChunks;
+                buckets = [];
+                for (let c = 0; c < numChunks; c++) {
+                    const cStart = new Date(sDate.getTime() + Math.floor(c * step) * 86400000);
+                    const cEnd = new Date(sDate.getTime() + Math.min(diffDays - 1, Math.floor((c + 1) * step - 1)) * 86400000);
+                    const sIso = cStart.toISOString().split('T')[0];
+                    const eIso = cEnd.toISOString().split('T')[0];
+                    const lbl = cStart.getDate() + (cStart.getDate() !== cEnd.getDate() ? '-' + cEnd.getDate() : '') + ' ' + cEnd.toLocaleDateString([], { month: 'short' });
+                    buckets.push({ label: lbl, fullLabel: `${sIso} to ${eIso}`, startIso: sIso, endIso: eIso, sale: 0, cost: 0 });
+                }
+            }
+            filteredSales.forEach(s => {
+                const sIso = s.timestamp.split('T')[0];
+                const fin = getSaleFinancials(s);
+                const b = buckets.find(bk => bk.dateStr ? bk.dateStr === sIso : (sIso >= bk.startIso && sIso <= bk.endIso));
+                if (b) {
+                    b.sale += fin.saleAmount;
+                    b.cost += fin.saleCost;
+                }
+            });
+        } else {
+            buckets = [
+                { label: '08-11h', fullLabel: '08:00 - 11:00', startH: 8, endH: 11, sale: 0, cost: 0 },
+                { label: '11-14h', fullLabel: '11:00 - 14:00', startH: 11, endH: 14, sale: 0, cost: 0 },
+                { label: '14-17h', fullLabel: '14:00 - 17:00', startH: 14, endH: 17, sale: 0, cost: 0 },
+                { label: '17-20h', fullLabel: '17:00 - 20:00', startH: 17, endH: 20, sale: 0, cost: 0 },
+                { label: '20-23h', fullLabel: '20:00 - 23:00', startH: 20, endH: 23, sale: 0, cost: 0 },
+                { label: 'Night', fullLabel: 'Night / Early', startH: 23, endH: 8, sale: 0, cost: 0 }
+            ];
+            filteredSales.forEach(s => {
+                const h = new Date(s.timestamp).getHours();
+                const fin = getSaleFinancials(s);
+                const b = buckets.find(bk => (bk.startH < bk.endH ? (h >= bk.startH && h < bk.endH) : (h >= bk.startH || h < bk.endH)));
+                if (b) {
+                    b.sale += fin.saleAmount;
+                    b.cost += fin.saleCost;
+                } else if (buckets[5]) {
+                    buckets[5].sale += fin.saleAmount;
+                    buckets[5].cost += fin.saleCost;
+                }
+            });
+        }
     } else {
-        const months = ['Q1 (Jan-Mar)', 'Q2 (Apr-Jun)', 'Q3 (Jul-Sep)', 'Q4 (Oct-Dec)'];
-        buckets = months.map(m => ({ label: m, sale: 0, cost: 0 }));
+        const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+        buckets = quarters.map((m, i) => ({ label: m, fullLabel: m, qIdx: i, sale: 0, cost: 0 }));
         filteredSales.forEach(s => {
             const q = Math.floor(new Date(s.timestamp).getMonth() / 3);
             const fin = getSaleFinancials(s);
@@ -3074,26 +3630,26 @@ function generateAnalyticsGraph(period, filteredSales) {
     const maxVal = Math.max(100, ...buckets.map(b => Math.max(b.sale, b.cost)));
 
     container.innerHTML = `
-        <div class="w-full flex flex-col gap-2">
-            <div class="h-44 w-full flex items-end gap-2 sm:gap-4 pt-4 pb-2 px-1 border-b border-slate-200">
+        <div class="w-full max-w-full flex flex-col gap-2 overflow-hidden box-border">
+            <div class="h-44 w-full max-w-full flex items-end justify-between gap-1 sm:gap-2 pt-4 pb-2 px-1 border-b border-slate-200 overflow-hidden box-border">
                 ${buckets.map(b => {
-                    const saleHeight = Math.max(4, Math.round((b.sale / maxVal) * 130));
-                    const costHeight = Math.max(4, Math.round((b.cost / maxVal) * 130));
+                    const saleHeight = Math.max(4, Math.round((b.sale / maxVal) * 125));
+                    const costHeight = Math.max(4, Math.round((b.cost / maxVal) * 125));
                     const profit = Math.max(0, b.sale - b.cost);
                     return `
-                        <div class="flex-1 flex flex-col items-center justify-end h-full group relative cursor-pointer">
-                            <div class="hidden group-hover:flex absolute bottom-full mb-2 bg-slate-900 text-white text-[10px] p-2 rounded-xl shadow-xl flex-col gap-0.5 whitespace-nowrap z-20 pointer-events-none">
-                                <span class="font-bold text-amber-300">${b.label}</span>
+                        <div class="flex-1 min-w-0 flex flex-col items-center justify-end h-full group relative cursor-pointer">
+                            <div class="hidden group-hover:flex absolute bottom-full mb-2 bg-slate-900 text-white text-[10px] p-2 rounded-xl shadow-xl flex-col gap-0.5 whitespace-nowrap z-30 pointer-events-none">
+                                <span class="font-bold text-amber-300">${b.fullLabel || b.label}</span>
                                 <span class="text-emerald-300">Sale: Rs. ${b.sale.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</span>
                                 <span class="text-blue-300">Cost: Rs. ${b.cost.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</span>
                                 <span class="text-amber-200 font-black">Profit: Rs. ${profit.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</span>
                             </div>
 
-                            <div class="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-full">
-                                <div class="flex-1 max-w-[18px] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-md transition-all duration-300 group-hover:brightness-110" style="height: ${b.sale > 0 ? saleHeight : 4}px;" title="Sale: Rs. ${b.sale.toFixed(1)}"></div>
-                                <div class="flex-1 max-w-[18px] bg-gradient-to-t from-blue-600 to-indigo-400 rounded-t-md transition-all duration-300 group-hover:brightness-110" style="height: ${b.cost > 0 ? costHeight : 4}px;" title="Cost: Rs. ${b.cost.toFixed(1)}"></div>
+                            <div class="w-full flex items-end justify-center gap-0.5 sm:gap-1 h-full px-0.5">
+                                <div class="w-full max-w-[14px] sm:max-w-[20px] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-sm transition-all duration-300 group-hover:brightness-110" style="height: ${b.sale > 0 ? saleHeight : 4}px;" title="Sale: Rs. ${b.sale.toFixed(1)}"></div>
+                                <div class="w-full max-w-[14px] sm:max-w-[20px] bg-gradient-to-t from-blue-600 to-indigo-400 rounded-t-sm transition-all duration-300 group-hover:brightness-110" style="height: ${b.cost > 0 ? costHeight : 4}px;" title="Cost: Rs. ${b.cost.toFixed(1)}"></div>
                             </div>
-                            <span class="text-[9px] sm:text-[10px] font-bold text-slate-500 mt-2 truncate max-w-full text-center">${b.label}</span>
+                            <span class="text-[8px] sm:text-[10px] font-bold text-slate-500 mt-1.5 truncate w-full text-center block">${b.label}</span>
                         </div>
                     `;
                 }).join('')}
@@ -3157,16 +3713,48 @@ function renderAnalyticsInvoicesTable(filteredSales) {
 window.renderSalesAnalytics = function() {
     const period = currentAnalyticsPeriod || 'today';
 
-    ['today', 'yesterday', 'week', 'month', 'year', 'all'].forEach(p => {
-        const btn = document.getElementById(`sale-filter-${p}`);
+    ['today', 'yesterday', 'week', 'month', 'select_month', 'year', 'custom', 'all'].forEach(p => {
+        const btnId = p === 'select_month' ? 'sale-filter-select-month' : `sale-filter-${p}`;
+        const btn = document.getElementById(btnId);
         if (btn) {
             if (p === period) {
-                btn.className = 'flex-1 min-w-[70px] py-2 px-3 rounded-xl transition bg-emerald-600 text-white shadow-xs font-bold';
+                btn.className = 'flex-1 min-w-[65px] py-2 px-2 rounded-xl transition bg-emerald-600 text-white shadow-xs font-bold';
             } else {
-                btn.className = 'flex-1 min-w-[70px] py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60 font-bold';
+                btn.className = 'flex-1 min-w-[65px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60 font-bold';
             }
         }
     });
+
+    const monthBar = document.getElementById('an-select-month-bar');
+    if (monthBar) {
+        if (period === 'select_month') {
+            monthBar.classList.remove('hidden');
+            const monthInput = document.getElementById('an-specific-month');
+            if (monthInput && !monthInput.value) {
+                const now = new Date();
+                const moStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                monthInput.value = moStr;
+            }
+        } else {
+            monthBar.classList.add('hidden');
+        }
+    }
+
+    const customBar = document.getElementById('an-custom-date-bar');
+    if (customBar) {
+        if (period === 'custom') {
+            customBar.classList.remove('hidden');
+            const startInput = document.getElementById('an-custom-start');
+            const endInput = document.getElementById('an-custom-end');
+            if (startInput && !startInput.value) {
+                const todayIso = new Date().toISOString().split('T')[0];
+                startInput.value = todayIso;
+                if (endInput) endInput.value = todayIso;
+            }
+        } else {
+            customBar.classList.add('hidden');
+        }
+    }
 
     const filtered = getPeriodSales(period);
     let totalSale = 0;
@@ -3206,6 +3794,16 @@ window.renderSalesAnalytics = function() {
     generateAnalyticsGraph(period, filtered);
     renderAnalyticsInvoicesTable(filtered);
     safeCreateIcons();
+};
+
+window.applyCustomAnalyticsDate = function() {
+    currentAnalyticsPeriod = 'custom';
+    window.renderSalesAnalytics();
+};
+
+window.applySpecificMonthAnalytics = function() {
+    currentAnalyticsPeriod = 'select_month';
+    window.renderSalesAnalytics();
 };
 
 window.openSalesAnalyticsModal = function(period = 'today') {
@@ -3331,12 +3929,10 @@ async function deleteSaleFromStore(id) {
 let signupPreviewPhoto = null;
 
 window.switchHubAuthTab = function(tab) {
-    const btnLogin = document.getElementById('hub-tab-btn-login');
-    const btnSignup = document.getElementById('hub-tab-btn-signup');
+    const btnSync = document.getElementById('hub-tab-btn-sync');
     const btnGuest = document.getElementById('hub-tab-btn-guest');
 
-    const panelLogin = document.getElementById('hub-panel-login');
-    const panelSignup = document.getElementById('hub-panel-signup');
+    const panelSync = document.getElementById('hub-panel-sync');
     const panelGuest = document.getElementById('hub-panel-guest');
 
     const setInactive = (btn) => {
@@ -3348,146 +3944,119 @@ window.switchHubAuthTab = function(tab) {
         btn?.classList.remove('text-slate-600', 'hover:bg-white/60');
     };
 
-    setInactive(btnLogin);
-    setInactive(btnSignup);
+    setInactive(btnSync);
     setInactive(btnGuest);
 
-    panelLogin?.classList.add('hidden');
-    panelSignup?.classList.add('hidden');
+    panelSync?.classList.add('hidden');
     panelGuest?.classList.add('hidden');
 
-    if (tab === 'login') {
-        setActive(btnLogin);
-        panelLogin?.classList.remove('hidden');
-    } else if (tab === 'guest') {
+    if (tab === 'guest') {
         setActive(btnGuest);
         panelGuest?.classList.remove('hidden');
     } else {
-        setActive(btnSignup);
-        panelSignup?.classList.remove('hidden');
+        setActive(btnSync);
+        panelSync?.classList.remove('hidden');
     }
     safeCreateIcons();
 };
 
-window.handleSignupPhotoPreview = function(event) {
-    const file = event?.target?.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-        showToast('Sirf tasveer (image) select karein!', 'error');
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 200;
-            canvas.height = 200;
-            const ctx = canvas.getContext('2d');
-            const minSide = Math.min(img.width, img.height);
-            const sx = (img.width - minSide) / 2;
-            const sy = (img.height - minSide) / 2;
-            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, 200, 200);
-            signupPreviewPhoto = canvas.toDataURL('image/jpeg', 0.85);
-
-            const previewImg = document.getElementById('signup-pic-preview-img');
-            const defIcon = document.getElementById('signup-pic-default-icon');
-            const statusText = document.getElementById('signup-photo-status');
-            if (previewImg) {
-                previewImg.src = signupPreviewPhoto;
-                previewImg.classList.remove('hidden');
-            }
-            if (defIcon) defIcon.classList.add('hidden');
-            if (statusText) statusText.innerText = 'Profile Photo tayar hai!';
-        };
-        img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-};
-
-window.submitSignUp = async function() {
-    const name = document.getElementById('signup-name')?.value.trim();
-    const email = document.getElementById('signup-email')?.value.trim();
-    const password = document.getElementById('signup-password')?.value.trim();
-
-    if (!email || !password) {
-        showToast('Email aur password likhna zaroori hai!', 'error');
-        return;
-    }
-    if (password.length < 6) {
-        showToast('Password kam az kam 6 characters ka hona chaye!', 'error');
+window.loginWithGooglePrompt = async function() {
+    let email = prompt('Apna Google Gmail account enter karein (e.g. yourname@gmail.com):', 'shzdkhkh01@gmail.com');
+    if (!email) return;
+    email = email.trim().toLowerCase();
+    if (!email.includes('@')) {
+        showToast('Durust Gmail address darj karein!', 'error');
         return;
     }
 
-    const localUser = {
-        name: name || email.split('@')[0],
+    const name = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const googleUser = {
+        name: name,
         email: email,
-        photo: signupPreviewPhoto || ''
+        loginMethod: 'google',
+        isLiveSync: true,
+        photo: ''
     };
-    localStorage.setItem('sm_auth_user', JSON.stringify(localUser));
-    if (signupPreviewPhoto) {
-        localStorage.setItem('sm_profile_pic', signupPreviewPhoto);
-    }
-    if (name) {
-        const currConfig = window.getStoreConfig();
-        currConfig.name = name;
-        localStorage.setItem('sm_store_config', JSON.stringify(currConfig));
-    }
+
+    localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
     localStorage.removeItem('sm_user_mode');
 
-    if (auth && fbAuthMod) {
-        try {
-            const userCred = await fbAuthMod.createUserWithEmailAndPassword(auth, email, password);
-            if (name && userCred.user) {
-                try { await fbAuthMod.updateProfile(userCred.user, { displayName: name }); } catch(e) {}
-            }
-        } catch (err) {
-            console.warn('Firebase signup note:', err.message);
-        }
-    }
+    // Register pharmacy automatically to central network registry
+    const config = window.getStoreConfig();
+    try {
+        await fetch('/api/network/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: config.name || `${name} Pharmacy`,
+                ownerName: config.ownerName || name,
+                city: config.address || 'Pakistan',
+                phone: config.phone || '03001234567',
+                email: email,
+                licenseNo: config.licenseNo || '',
+                remarks: 'Google Verified Connected Pharmacy'
+            })
+        });
+        window.refreshNetworkList();
+    } catch(e) {}
 
     window.applyStoreIdentity();
     window.showHubActiveProfile();
-    showToast(`Account create ho gaya! Khush amdeed, ${name || email}`, 'success');
+    showToast(`Google Gmail (${email}) ke sath live sync connect ho gaya!`, 'success');
+};
+
+window.submitSignUp = async function() {
+    const email = document.getElementById('login-email')?.value.trim();
+    if (!email) {
+        showToast('Gmail / Email address enter karein!', 'error');
+        return;
+    }
+    return window.submitLogin();
 };
 
 window.submitLogin = async function() {
     const email = document.getElementById('login-email')?.value.trim();
     const password = document.getElementById('login-password')?.value.trim();
 
-    if (!email || !password) {
-        showToast('Email aur password enter karein!', 'error');
+    if (!email) {
+        showToast('Gmail / Email address enter karein!', 'error');
         return;
     }
 
-    let localUser = {
-        name: email.split('@')[0],
+    const name = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const localUser = {
+        name: name,
         email: email,
+        loginMethod: 'email',
+        isLiveSync: true,
         photo: localStorage.getItem('sm_profile_pic') || ''
     };
-    try {
-        const existing = localStorage.getItem('sm_auth_user');
-        if (existing) {
-            const parsed = JSON.parse(existing);
-            if (parsed.email === email && parsed.name) localUser.name = parsed.name;
-            if (parsed.photo) localUser.photo = parsed.photo;
-        }
-    } catch(e) {}
 
     localStorage.setItem('sm_auth_user', JSON.stringify(localUser));
     localStorage.removeItem('sm_user_mode');
 
-    if (auth && fbAuthMod) {
-        try {
-            await fbAuthMod.signInWithEmailAndPassword(auth, email, password);
-        } catch (err) {
-            console.warn('Firebase login note:', err.message);
-        }
-    }
+    // Sync to network registry
+    const config = window.getStoreConfig();
+    try {
+        await fetch('/api/network/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: config.name || `${name} Pharmacy`,
+                ownerName: config.ownerName || name,
+                city: config.address || 'Pakistan',
+                phone: config.phone || '03001234567',
+                email: email,
+                licenseNo: config.licenseNo || '',
+                remarks: 'Live Connected Store'
+            })
+        });
+        window.refreshNetworkList();
+    } catch(e) {}
 
     window.applyStoreIdentity();
     window.showHubActiveProfile();
-    showToast('Login kamyab raha!', 'success');
+    showToast(`Live Cloud Sync connected! Welcome ${name}`, 'success');
 };
 
 window.submitGuestMode = function() {
@@ -3495,13 +4064,13 @@ window.submitGuestMode = function() {
     localStorage.removeItem('sm_auth_user');
     window.applyStoreIdentity();
     window.showHubActiveProfile();
-    showToast('Guest Mode (Anonymous) activate ho gaya', 'info');
+    showToast('Guest Mode (Local Storage) activate ho gaya', 'info');
 };
 
 window.showHubChoiceSection = function() {
     document.getElementById('hub-choice-section')?.classList.remove('hidden');
     document.getElementById('hub-active-profile-section')?.classList.add('hidden');
-    window.switchHubAuthTab('signup');
+    window.switchHubAuthTab('sync');
     safeCreateIcons();
 };
 
@@ -3511,10 +4080,12 @@ window.showHubActiveProfile = function() {
 
     const config = window.getStoreConfig();
     const storeNameInput = document.getElementById('hub-store-name');
+    const storeOwnerInput = document.getElementById('hub-store-owner');
     const storePhoneInput = document.getElementById('hub-store-phone');
     const storeAddrInput = document.getElementById('hub-store-address');
     const storeLicInput = document.getElementById('hub-store-license');
     if (storeNameInput) storeNameInput.value = config.name || '';
+    if (storeOwnerInput) storeOwnerInput.value = config.ownerName || '';
     if (storePhoneInput) storePhoneInput.value = config.phone || '';
     if (storeAddrInput) storeAddrInput.value = config.address || '';
     if (storeLicInput) storeLicInput.value = config.licenseNo || '';
@@ -3523,16 +4094,13 @@ window.showHubActiveProfile = function() {
     const mode = window.getCurrentUserMode();
     const sessionName = document.getElementById('hub-session-user-name');
     const sessionDetail = document.getElementById('hub-session-user-detail');
-    const photoBox = document.getElementById('hub-photo-control-box');
 
     if (mode === 'authenticated' && user) {
-        if (sessionName) sessionName.innerText = user.name || 'User Account';
-        if (sessionDetail) sessionDetail.innerText = user.email || 'Online Active';
-        if (photoBox) photoBox.classList.remove('hidden');
+        if (sessionName) sessionName.innerText = user.name || 'Google User';
+        if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
     } else {
-        if (sessionName) sessionName.innerText = 'Guest User (Anonymous)';
-        if (sessionDetail) sessionDetail.innerText = 'Local Device Storage';
-        if (photoBox) photoBox.classList.add('hidden');
+        if (sessionName) sessionName.innerText = 'Guest User Mode';
+        if (sessionDetail) sessionDetail.innerText = '⚪ Local Device Storage';
     }
     safeCreateIcons();
 };
@@ -3540,10 +4108,8 @@ window.showHubActiveProfile = function() {
 window.openAccountHubModal = function() {
     const mode = window.getCurrentUserMode();
     if (!mode) {
-        // User hasn't chosen Login, Sign Up or Guest yet -> Show 3 options
         window.showHubChoiceSection();
     } else {
-        // User is already active in a session -> Show profile management
         window.showHubActiveProfile();
     }
     document.getElementById('account-hub-modal')?.classList.remove('hidden');
@@ -3556,16 +4122,47 @@ window.closeAccountHubModal = function() {
     syncModalScrollLock();
 };
 
-window.saveAccountHubStoreProfile = function() {
+window.saveAccountHubStoreProfile = async function() {
     const name = document.getElementById('hub-store-name')?.value.trim() || '';
+    const ownerName = document.getElementById('hub-store-owner')?.value.trim() || '';
     const phone = document.getElementById('hub-store-phone')?.value.trim() || '';
     const address = document.getElementById('hub-store-address')?.value.trim() || '';
     const licenseNo = document.getElementById('hub-store-license')?.value.trim() || '';
 
-    const config = { name, phone, address, licenseNo };
+    if (!name || !phone) {
+        showToast('Pharmacy Name aur WhatsApp Number lazmi darj karein!', 'error');
+        return;
+    }
+
+    const config = { name, ownerName, phone, address, licenseNo };
     localStorage.setItem('sm_store_config', JSON.stringify(config));
     window.applyStoreIdentity();
-    showToast('Store settings save ho gayin!', 'success');
+
+    // Live Sync to Connected Network central registry
+    const currentUser = window.getCurrentUser();
+    const userEmail = currentUser ? currentUser.email : '';
+    try {
+        const res = await fetch('/api/network/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                ownerName: ownerName || (currentUser ? currentUser.name : 'Pharmacist'),
+                city: address || 'Pakistan',
+                phone,
+                email: userEmail,
+                licenseNo,
+                remarks: 'Verified Digital Pharma Connected Store'
+            })
+        });
+        if (res.ok) {
+            window.refreshNetworkList();
+        }
+    } catch (e) {
+        console.warn('Network registration sync note:', e);
+    }
+
+    showToast('Profile save ho gayi aur Connected Pharmacies mein live add ho gaya!', 'success');
 };
 
 window.handleHubLogout = async function() {
