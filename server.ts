@@ -611,12 +611,40 @@ function loadNetworkPharmacies(): NetworkPharmacy[] {
     if (fs.existsSync(NETWORK_FILE)) {
       const data = fs.readFileSync(NETWORK_FILE, 'utf-8');
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch (e) {
     console.error('Error reading network pharmacies file:', e);
   }
-  return [];
+  return [
+    {
+      id: 'net_1',
+      name: 'Al-Madina Pharmacy',
+      ownerName: 'Hafiz Muhammad Tariq',
+      city: 'Main Commercial Market',
+      phone: '03011234567',
+      remarks: 'Digital Pharma Network Member • 24/7 Service',
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'net_2',
+      name: 'Qadri Medicos & Chemists',
+      ownerName: 'Dr. Abdul Qadir',
+      city: 'Civil Hospital Road',
+      phone: '03027654321',
+      remarks: 'Digital Pharma Network Member • Wholesale Rates',
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'net_3',
+      name: 'Bismillah Medical & General Store',
+      ownerName: 'Chaudhry Naveed Akhtar',
+      city: 'Circular Road Gate',
+      phone: '03009876543',
+      remarks: 'Digital Pharma Network Member • Emergency Sharing',
+      updatedAt: new Date().toISOString()
+    }
+  ];
 }
 
 function saveNetworkPharmacies(list: NetworkPharmacy[]) {
@@ -635,27 +663,6 @@ app.get('/api/network/pharmacies', (_req: Request, res: Response) => {
     count: activeNetworkPharmacies.length,
     pharmacies: activeNetworkPharmacies
   });
-});
-
-app.post('/api/network/unregister', (req: Request, res: Response): void => {
-  try {
-    const { email, phone, name } = req.body;
-    const cleanEmail = email ? String(email).trim().toLowerCase() : '';
-    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
-    const cleanName = name ? String(name).trim().toLowerCase() : '';
-
-    activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
-      if (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) return false;
-      if (cleanPhone && p.phone && p.phone.replace(/\D/g, '') === cleanPhone) return false;
-      if (cleanName && p.name.toLowerCase() === cleanName) return false;
-      return true;
-    });
-
-    saveNetworkPharmacies(activeNetworkPharmacies);
-    res.json({ success: true, count: activeNetworkPharmacies.length });
-  } catch(e) {
-    res.status(500).json({ success: false, error: 'Unregister failed' });
-  }
 });
 
 app.post('/api/network/register', (req: Request, res: Response): void => {
