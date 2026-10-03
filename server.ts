@@ -46,7 +46,7 @@ app.get('/icon.svg', (_req, res) => {
   res.sendFile(path.resolve(__dirname, 'public/icon.svg'));
 });
 
-// Helper to extract JSON or parse line-by-line prescription from Gemini text output
+// Helper to extract JSON from Gemini text output
 function extractJsonFromText(rawText: string): any {
   if (!rawText) return null;
   const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -72,40 +72,6 @@ function extractJsonFromText(rawText: string): any {
       } catch (err) {}
     }
   }
-
-  // Fallback: If Gemini output text in numbered list format instead of strict JSON, parse lines
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-  const detectedMeds: any[] = [];
-  const lineRegex = /^(?:(?:\d+[\.\)]|\-|\*|Rx|•)\s*)?([A-Za-z0-9\s\.\+\-]{3,40})(?:[\:\-–\s]+(.+))?$/i;
-
-  for (const line of lines) {
-    if (/doctor|patient|mareez|dr\.|clinic|hospital|date|tariq/i.test(line)) continue;
-    if (/tasveer|roshni|dobara|wazeh|clear|blurry|dhundli|camera|unreadable/i.test(line)) continue;
-    const match = line.match(lineRegex);
-    if (match && match[1]) {
-      const candidateName = match[1].trim();
-      if (candidateName.length >= 3 && !/^(dawai|medicine|prescription|hidayat|parhez|ilaj)$/i.test(candidateName)) {
-        detectedMeds.push({
-          name: candidateName,
-          timing: match[2]?.trim() || 'Subah sham 1 goli khane ke baad (1+0+1)',
-          form: /syp|syrup|sharbath/i.test(line) ? 'Sharbath (Syrup)' : (/cap|capsule/i.test(line) ? 'Capsule' : (/inj|injection/i.test(line) ? 'Teeka (Injection)' : 'Goli (Tablet)')),
-          usage: 'Taza paani ke sath lein',
-          purpose: 'Ilaj'
-        });
-      }
-    }
-  }
-
-  if (detectedMeds.length > 0) {
-    return {
-      doctor: 'Doctor / Clinic Slip',
-      patient: 'General Patient',
-      treatmentSummary: 'Nuskha ke mutabiq adviyaat aur ilaj ki mukammal tafseelat.',
-      advice: 'Dawai hidayat ke mutabiq waqt par lein. Thandi aur tali hui cheezon se parhez karein.',
-      medicines: detectedMeds
-    };
-  }
-
   return null;
 }
 
@@ -268,19 +234,17 @@ async function generateWithVisionFallback(
 
         const response: any = await ai.models.generateContent({
           model: modelName,
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  mimeType: mime || 'image/jpeg',
-                  data: clean
-                }
-              },
-              {
-                text: prompt
+          contents: [
+            {
+              inlineData: {
+                mimeType: mime || 'image/jpeg',
+                data: clean
               }
-            ]
-          },
+            },
+            {
+              text: prompt
+            }
+          ],
           config
         });
 
@@ -309,44 +273,20 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
       return;
     }
 
-    const prescriptionSystemInstruction = `You are an expert Clinical Pharmacist and senior forensic medical handwriting reader specialized in deciphering Pakistani doctor prescriptions, hospital slips (OPD/Emergency), and clinic pads.
+    const prescriptionSystemInstruction = `You are an expert Clinical Pharmacist and forensic prescription OCR reader.
+Your sole mission is to accurately transcribe genuine doctor handwriting and printed clinic slips into structured data.
 
-ABSOLUTE ZERO-REFUSAL MANDATE:
-1. Under NO circumstance should you say that the image is unreadable, blurry, low lighting, or ask the user to retake the photo. It is strictly FORBIDDEN to return any message like "tasveer roshni mein dubara banao", "tasveer wazeh nahi", "unreadable", "blurry", or "image unclear". You MUST read and decipher every single visible medicine, line, and stroke from the image.
-2. STRICT ACCURACY & ZERO HALLUCINATION: Extract ONLY genuine medicines written by the doctor on this prescription. DO NOT INVENT, FABRICATE, OR ADD EXTRA MEDICINES THAT ARE NOT WRITTEN ON THE PAPER. Be accurate. If 3 medicines are written, return only those 3. If 6 medicines are written, return all 6. Decipher doctor handwriting strokes accurately to authentic Pakistani DRAP-registered pharmaceutical brands and potencies.
-3. DOSAGE & TIMING IN CLEAR ROMAN URDU: Convert all medical abbreviations (1+0+1, 1x2, BD, TDS, OD, HS, SOS, AC, PC) into natural, easy-to-understand Roman Urdu.`;
+CRITICAL ZERO-HALLUCINATION & HONESTY MANDATE:
+1. STRICT OCR TRANSCRIBING: Transcribe ONLY the actual medicines visibly written on this specific slip. DO NOT GUESS, DO NOT INVENT, AND DO NOT ADD MEDICINES THAT ARE NOT WRITTEN ON THE PAPER.
+2. If 2 medicines are written, return only 2. If 5 are written, return 5.
+3. If no medicines can be identified from the image, return an empty array [] for "medicines". NEVER generate dummy, placeholder, or sample medicines like Panadol, Augmentin, etc. unless they are clearly written by the doctor on the slip.
+4. Translate doctor frequency abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite, natural Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
+5. Never output refusal messages or apologies; always return strictly valid JSON conforming to the schema.`;
 
-    const prompt = `Carefully examine this prescription image and extract EVERY GENUINE prescribed medicine into the JSON schema.
-DO NOT INVENT fake medicines. Only extract what is visibly written on the prescription slip.
-
-DECIPHERING GUIDE FOR PAKISTANI PRESCRIBING PATTERNS:
-1. Identify all numbered rows (1, 2, 3, 4, 5, 6, 7, 8, etc.) or bullet points under the Rx symbol.
-2. Form Factor Indicators:
-   - "Tab" / "T." / "Tabs" = Goli (Tablet)
-   - "Cap" / "C." / "Caps" = Capsule
-   - "Syr" / "S." = Sharbath (Syrup)
-   - "Inj" = Teeka (Injection)
-   - "Sach" = Sachet (Powder packet)
-   - "Drops" / "Gtt" = Qatre (Drops)
-   - "Oint" / "Crm" = Marham (Ointment / Cream)
-3. Pakistani Brand Phonetics & Potencies:
-   - Antibiotics: Augmentin (375mg, 625mg, 1g), Velosef (250mg, 500mg), Klaricid (250mg, 500mg), Novidat (250mg, 500mg), Ciproxin, Leflox (250mg, 500mg, 750mg), Ceclor, Cefspan, Cefiget (200mg, 400mg), Moxiget, Azomax, Zithromax, Amoxil, Flagyl (200mg, 400mg, 400), Entamizole, Entamizole DS, Vibramycin, Ficon, Rulid, Cravit, Zinnat, Rocephin, Claritek.
-   - Pain/Fever: Panadol, Panadol Extra, Panadol CF, Calpol, Paracetamol, Brufen (200, 400, 600), Ponstan, Ponstan Forte, Caflam (50mg), Disprin, Brexin, Dicloran (50mg, 75mg), Voltral, Toradol, Synflex, Ansaid, Nuberol Forte, Muscoril, Tramal, Xb.
-   - Stomach/Acidity: Risek (20mg, 40mg), Nexum (20mg, 40mg), Omeprazole, Esomeprazole, Famopsin, Riopan, Mucaine, Gaviscon, Motilium, Metodine, Enflor, Colofac, Spasmonil, Ganaton, Buscopan, Buscopan Plus, Gravinate, Librax.
-   - Allergy/Respiratory: Arinac, Arinac Forte, Rigix, Softin, Kestine, Zyrtec, T-Day, Avil, Sancos, Hydryllin, Pulmonol, Acefyl, Corex, Ventolin, Clenil, Montiget (4mg, 5mg, 10mg), Myteka, Telfast, Fexit.
-   - Vitamins: Surbex Z, Sangobion, Cac 1000 Plus, Neurobion, Theragran-M, Evion, Fefol-Vit, Vitrum, Enervit, Qalsan, Bonex-D, Iberet Folic.
-   - Blood Pressure/Heart: Concor (2.5mg, 5mg, 10mg), Tenormin, Lowplat, Ascard, Lipiget, Atorva, Capoten, Lopressor, Cardarone, Norvasc, Exforge, Covam, Angised, Inderal.
-   - Diabetes: Glucophage, Getryl, Diamicron, Jardiance, Januvia, Janumet, Amaryl, Trajenta, Galvus Met.
-4. Timing Conversion:
-   - "1+0+1" or "BD" -> "Subah sham 1 goli khane ke baad (1+0+1)"
-   - "1+1+1" or "TDS" -> "Subah dopahar raat 1 goli (1+1+1)"
-   - "1+0+0" or "OD" -> "Rozana subah 1 goli (1+0+0)"
-   - "0+0+1" or "HS" -> "Rozana raat ko sote waqt (0+0+1)"
-   - "SOS" -> "Zaroorat ke waqt (Dard ya bukhar mein)"
-   - "BBF" / "AC" -> "Nashte se pehle (Khali pait)"
-   - "AF" / "PC" -> "Khane ke baad"
-
-YOU MUST EXTRACT EVERY PRESCRIBED ITEM. DO NOT LEAVE ANY MEDICINE OUT.`;
+    const prompt = `Perform high-precision medical OCR on this prescription slip.
+Carefully trace every line under Rx or clinic items.
+Extract ONLY real medicines visibly prescribed on this document.
+DO NOT hallucinate or output example medications. If the paper has no medicines, return "medicines": [].`;
 
     const prescriptionSchema = {
       type: Type.OBJECT,
@@ -387,32 +327,15 @@ YOU MUST EXTRACT EVERY PRESCRIBED ITEM. DO NOT LEAVE ANY MEDICINE OUT.`;
       return;
     }
 
-    // Clean graceful recovery with genuine Pakistani medicine context
+    // Return genuine empty results without inventing fake medicines
     res.json({
       success: true,
       data: {
         doctor: normalized?.doctor || 'Clinic / Doctor Slip',
         patient: normalized?.patient || 'General Patient',
-        treatmentSummary: normalized?.treatmentSummary || 'Nuskha ke mutabiq adviyaat darj zail hain. Aap inhein edit ya shamil kar sakte hain.',
-        advice: normalized?.advice || 'Dawai hidayat ke mutabiq waqt par lein. Thandi, tali hui aur khatti cheezon se mukammal parhez karein aur neem garam paani piyen.',
-        medicines: (normalized?.medicines && normalized.medicines.length > 0) ? normalized.medicines : [
-          {
-            name: 'Panadol 500mg',
-            formula: 'Paracetamol',
-            form: 'Goli (Tablet)',
-            timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
-            usage: 'Taza paani ke sath lein',
-            purpose: 'Bukhar aur dard'
-          },
-          {
-            name: 'Augmentin 625mg',
-            formula: 'Co-Amoxiclav',
-            form: 'Goli (Tablet)',
-            timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
-            usage: 'Pait bhar khana khane ke baad lein',
-            purpose: 'Infection ka ilaj'
-          }
-        ]
+        treatmentSummary: normalized?.treatmentSummary || 'Nuskha se adviyaat parhi ja rahi hain.',
+        advice: normalized?.advice || 'Dawai hidayat ke mutabiq waqt par lein.',
+        medicines: []
       }
     });
   } catch (err: any) {
@@ -422,18 +345,9 @@ YOU MUST EXTRACT EVERY PRESCRIBED ITEM. DO NOT LEAVE ANY MEDICINE OUT.`;
       data: {
         doctor: 'Doctor Slip',
         patient: 'General Patient',
-        treatmentSummary: 'Nuskha ke mutabiq adviyaat darj hain.',
+        treatmentSummary: 'Nuskha parha ja raha hai.',
         advice: 'Dawai hidayat ke mutabiq waqt par lein.',
-        medicines: [
-          {
-            name: 'Panadol 500mg',
-            formula: 'Paracetamol',
-            form: 'Goli (Tablet)',
-            timing: 'Subah sham khane ke baad (1+0+1)',
-            usage: 'Taza paani ke sath lein',
-            purpose: 'Dard aur bukhar'
-          }
-        ]
+        medicines: []
       }
     });
   }
@@ -485,37 +399,13 @@ Extract all real line items visible on the invoice into the JSON schema array.`;
 
     res.json({
       success: true,
-      data: [
-        {
-          name: 'Invoiced Medicine Item 1',
-          generic: 'General Formula',
-          batch: 'B-' + Math.floor(100 + Math.random() * 900),
-          expiry: '2027-12',
-          packSize: '20',
-          qty: 10,
-          buyRate: 250,
-          distributor: 'Distributor Invoice',
-          mrp: ''
-        }
-      ]
+      data: []
     });
   } catch (err: any) {
     console.error('Invoice OCR server error:', err);
     res.json({
       success: true,
-      data: [
-        {
-          name: 'Invoiced Medicine Item',
-          generic: 'Formula',
-          batch: 'B-01',
-          expiry: '2027-12',
-          packSize: '20',
-          qty: 1,
-          buyRate: 0,
-          distributor: 'Wholesale Distributor',
-          mrp: ''
-        }
-      ]
+      data: []
     });
   }
 });

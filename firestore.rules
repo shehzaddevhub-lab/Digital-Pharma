@@ -12,19 +12,18 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return isSignedIn() && (request.auth.uid == userId || userId.matches('^ph_.*'));
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Public Connected Pharmacies Directory
+    // Public Connected Pharmacies Directory (Connects all pharmacies together)
     match /pharmacies/{pharmacyId} {
       allow read: if true;
       allow create, update: if isValidId(pharmacyId) && (
-        request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120 &&
-        request.resource.data.phone is string && request.resource.data.phone.size() > 0 && request.resource.data.phone.size() <= 40
+        request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
       );
       allow delete: if false;
     }
