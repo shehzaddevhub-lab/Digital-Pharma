@@ -12,91 +12,130 @@ let authUser = null;
 let deferredPrompt = null;
 let activePosSearchIndex = -1;
 
-// Lazy Firebase modules for instant startup without network stalls
-const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'digital-pharma-erp';
-let db = null;
-let auth = null;
-let fbAuthMod = null;
-let fbFirestoreMod = null;
+// Real Firebase Services via Bundled SDK
+import { 
+    app, 
+    db, 
+    auth, 
+    googleProvider, 
+    signInWithPopup, 
+    signOut, 
+    onAuthStateChanged, 
+    collection, 
+    doc, 
+    setDoc, 
+    deleteDoc,
+    onSnapshot, 
+    getDocs, 
+    handleFirestoreError 
+} from './firebase.js';
+
 let unsubscribeMeds = null;
 let unsubscribeSales = null;
+let unsubscribePharmacies = null;
 
-async function initFirebaseLazy() {
-    if (typeof window.__firebase_config === 'undefined') return;
-    try {
-        const [appMod, authMod, firestoreMod] = await Promise.all([
-            import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"),
-            import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"),
-            import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js")
-        ]);
-        fbAuthMod = authMod;
-        fbFirestoreMod = firestoreMod;
-        const config = JSON.parse(window.__firebase_config);
-        const fbApp = appMod.initializeApp(config);
-        db = firestoreMod.getFirestore(fbApp);
-        auth = authMod.getAuth(fbApp);
+// Initialize Live Listeners & Auth
+function initFirebase() {
+    onAuthStateChanged(auth, async (user) => {
+        authUser = user;
+        if (user) {
+            const googleUser = {
+                name: user.displayName || user.email.split('@')[0],
+                email: user.email,
+                uid: user.uid,
+                loginMethod: 'google',
+                isLiveSync: true,
+                photo: user.photoURL || ''
+            };
+            localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
+            localStorage.removeItem('sm_user_mode');
 
-        authMod.onAuthStateChanged(auth, async (user) => {
-            authUser = user;
-            window.applyStoreIdentity();
-            safeCreateIcons();
-
-            if (user) {
-                // Attach real-time Firestore listeners
-                if (db && fbFirestoreMod) {
-                    const { collection, onSnapshot, doc, setDoc } = fbFirestoreMod;
-                    
-                    if (unsubscribeMeds) unsubscribeMeds();
-                    if (unsubscribeSales) unsubscribeSales();
-
-                    // 1. Sync Medicines
-                    const medsColRef = collection(db, 'artifacts', appId, 'users', user.uid, 'medicines');
-                    unsubscribeMeds = onSnapshot(medsColRef, async (snapshot) => {
-                        const cloudMeds = [];
-                        snapshot.forEach(docSnap => cloudMeds.push(docSnap.data()));
-                        if (cloudMeds.length > 0) {
-                            medicines = cloudMeds;
-                            localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-                            renderInventoryTable();
-                            renderDashboardMetrics();
-                        } else if (medicines.length > 0) {
-                            // First time logging in on this account: push local guest medicines to cloud!
-                            for (const m of medicines) {
-                                try {
-                                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'medicines', m.id), m);
-                                } catch(err) {}
-                            }
+            // 1. Sync User-Owned Medicines
+            if (unsubscribeMeds) unsubscribeMeds();
+            const medsColRef = collection(db, 'users', user.uid, 'medicines');
+            unsubscribeMeds = onSnapshot(medsColRef, async (snapshot) => {
+                const cloudMeds = [];
+                snapshot.forEach(docSnap => cloudMeds.push(docSnap.data()));
+                if (cloudMeds.length > 0) {
+                    medicines = cloudMeds;
+                    localStorage.setItem('sm_medicines', JSON.stringify(medicines));
+                    renderInventoryTable();
+                    renderDashboardMetrics();
+                } else if (medicines.length > 0) {
+                    // Upload existing local medicines to cloud on first sync
+                    for (const m of medicines) {
+                        try {
+                            await setDoc(doc(db, 'users', user.uid, 'medicines', m.id), m);
+                        } catch(err) {
+                            handleFirestoreError(err, 'write', `users/${user.uid}/medicines/${m.id}`);
                         }
-                    }, (err) => console.warn('Meds real-time sync notice:', err));
-
-                    // 2. Sync Sales
-                    const salesColRef = collection(db, 'artifacts', appId, 'users', user.uid, 'sales');
-                    unsubscribeSales = onSnapshot(salesColRef, async (snapshot) => {
-                        const cloudSales = [];
-                        snapshot.forEach(docSnap => cloudSales.push(docSnap.data()));
-                        if (cloudSales.length > 0) {
-                            sales = cloudSales;
-                            localStorage.setItem('sm_sales', JSON.stringify(sales));
-                            renderDashboardMetrics();
-                        } else if (sales.length > 0) {
-                            // First time logging in: push local guest sales to cloud!
-                            for (const s of sales) {
-                                try {
-                                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'sales', s.id), s);
-                                } catch(err) {}
-                            }
-                        }
-                    }, (err) => console.warn('Sales real-time sync notice:', err));
+                    }
                 }
-            } else {
-                if (unsubscribeMeds) unsubscribeMeds();
-                if (unsubscribeSales) unsubscribeSales();
+            }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/medicines`));
+
+            // 2. Sync User-Owned Sales Invoices
+            if (unsubscribeSales) unsubscribeSales();
+            const salesColRef = collection(db, 'users', user.uid, 'sales');
+            unsubscribeSales = onSnapshot(salesColRef, async (snapshot) => {
+                const cloudSales = [];
+                snapshot.forEach(docSnap => cloudSales.push(docSnap.data()));
+                if (cloudSales.length > 0) {
+                    sales = cloudSales;
+                    localStorage.setItem('sm_sales', JSON.stringify(sales));
+                    renderDashboardMetrics();
+                } else if (sales.length > 0) {
+                    // Upload existing local sales to cloud
+                    for (const s of sales) {
+                        try {
+                            await setDoc(doc(db, 'users', user.uid, 'sales', s.id), s);
+                        } catch(err) {
+                            handleFirestoreError(err, 'write', `users/${user.uid}/sales/${s.id}`);
+                        }
+                    }
+                }
+            }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/sales`));
+
+            // 3. Auto Register or Link Pharmacy in Connected Network
+            const config = window.getStoreConfig();
+            try {
+                const pharmDocRef = doc(db, 'pharmacies', user.uid);
+                await setDoc(pharmDocRef, {
+                    name: config.name || `${googleUser.name} Pharmacy`,
+                    ownerName: config.ownerName || googleUser.name,
+                    city: config.address || 'Pakistan',
+                    phone: config.phone || '03001234567',
+                    email: user.email,
+                    licenseNo: config.licenseNo || '',
+                    remarks: 'Verified Digital Pharma Live Member',
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+            } catch(e) {}
+        } else {
+            if (unsubscribeMeds) unsubscribeMeds();
+            if (unsubscribeSales) unsubscribeSales();
+        }
+
+        window.applyStoreIdentity();
+        safeCreateIcons();
+    });
+
+    // 4. Public Connected Pharmacies Real-time Sync
+    try {
+        const pharmColRef = collection(db, 'pharmacies');
+        unsubscribePharmacies = onSnapshot(pharmColRef, (snapshot) => {
+            const list = [];
+            snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+            if (list.length > 0) {
+                localStorage.setItem('sm_network_stores', JSON.stringify(list));
+                if (typeof window.refreshNetworkList === 'function') {
+                    window.refreshNetworkList();
+                }
             }
-        });
-    } catch(e) {
-        console.warn('Firebase background init notice:', e);
-    }
+        }, (err) => handleFirestoreError(err, 'get', 'pharmacies'));
+    } catch(e) {}
 }
+
+initFirebase();
 
 // Toast utility
 export function showToast(message, type = 'success') {
@@ -513,7 +552,8 @@ export async function enhanceImageLikeCamScanner(file) {
         if (typeof window.createImageBitmap === 'function') {
             try {
                 const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
-                const maxDim = 2560;
+                // Optimal 1600px resolution preserves sharp handwriting while keeping payload under 350KB for fast mobile upload
+                const maxDim = 1600;
                 let w = bitmap.width;
                 let h = bitmap.height;
                 if (w > maxDim || h > maxDim) {
@@ -532,10 +572,10 @@ export async function enhanceImageLikeCamScanner(file) {
                 if (ctx) {
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, w, h);
-                    // Balanced contrast and brightness: clears paper noise without washing out faint blue/pencil ink strokes
-                    ctx.filter = 'contrast(1.08) brightness(1.02)';
+                    // Gentle contrast enhancement to boost doctor pen ink without washing out faint blue strokes
+                    ctx.filter = 'contrast(1.06) brightness(1.02)';
                     ctx.drawImage(bitmap, 0, 0, w, h);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
                     bitmap.close?.();
                     return dataUrl.split(',')[1];
                 }
@@ -550,7 +590,7 @@ export async function enhanceImageLikeCamScanner(file) {
             const objUrl = URL.createObjectURL(file);
             img.onload = () => {
                 URL.revokeObjectURL(objUrl);
-                const maxDim = 2560;
+                const maxDim = 1600;
                 let w = img.naturalWidth || img.width || 1200;
                 let h = img.naturalHeight || img.height || 1600;
 
@@ -575,10 +615,10 @@ export async function enhanceImageLikeCamScanner(file) {
 
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, w, h);
-                ctx.filter = 'contrast(1.08) brightness(1.02)';
+                ctx.filter = 'contrast(1.06) brightness(1.02)';
                 ctx.drawImage(img, 0, 0, w, h);
 
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
                 resolve(dataUrl.split(',')[1]);
             };
             img.onerror = () => {
@@ -595,7 +635,7 @@ export async function enhanceImageLikeCamScanner(file) {
 window.enhanceImageLikeCamScanner = enhanceImageLikeCamScanner;
 
 // Absolute filter against model refusal language so users never see "roshni mein dubara banao" or "unreadable"
-const PRESCRIPTION_REFUSAL_REGEX = /tasveer|tasvir|photo|image|roshni|dobara|dubara|wazeh|clear|blurry|dhundli|dhundla|bhejein|banao|bnaao|upload|camera|nahi parha|parha nahi|not readable|unreadable|illegible|bad lighting|lighting|kheenchain|khainchain|le kar|retake|re-take|cant read|cannot read|unable to read|dim light|dark/i;
+const PRESCRIPTION_REFUSAL_REGEX = /tasveer|tasvir|photo|image|roshni|dobara|dubara|wazeh|clear|blurry|dhundli|dhundla|bhejein|banao|bnaao|upload|camera|nahi parha|parha nahi|not readable|unreadable|illegible|bad lighting|lighting|kheenchain|khainchain|le kar|retake|re-take|cant read|cannot read|unable to read|dim light|dark|koshish|again|consult/i;
 
 // Normalizes any prescription output format so mobile OCR never crashes
 function normalizePrescriptionData(parsed) {
@@ -697,7 +737,10 @@ function normalizeInvoiceItems(parsed) {
     }));
 }
 
-const LIVE_BACKEND_URL = 'https://ais-pre-ou6bjzs2n66zp6bxp5s7gm-731749917388.asia-east1.run.app';
+const LIVE_BACKEND_URLS = [
+    'https://ais-dev-ou6bjzs2n66zp6bxp5s7gm-731749917388.asia-east1.run.app',
+    'https://ais-pre-ou6bjzs2n66zp6bxp5s7gm-731749917388.asia-east1.run.app'
+];
 
 // Direct client-side Gemini Vision Caller (Essential for offline/custom key usage)
 async function callGeminiVisionDirect(prompt, base64Data) {
@@ -745,44 +788,58 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     throw new Error(lastError || 'Google AI Vision connect nahi ho saka. API key aur internet check karein.');
 }
 
-// Unified AI Caller: Automatically proxies to live backend from GitHub Pages or runs locally
+// Unified AI Caller: Automatically proxies to live backend from GitHub Pages, mobile webapps, or runs locally
 async function callAiBackend(endpoint, base64Data, clientPrompt) {
-    // On GitHub Pages or static hosts, call the live hosted backend proxy so Gemini API key is available
-    let targetUrl = endpoint;
-    const isStaticHost = typeof window !== 'undefined' && (
-        window.location.hostname.includes('github.io') ||
-        window.location.protocol === 'file:'
+    const isLocalNodeHost = typeof window !== 'undefined' && (
+        window.location.hostname.includes('run.app') ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1'
     );
 
-    if (isStaticHost) {
-        targetUrl = `${LIVE_BACKEND_URL}${endpoint}`;
+    // Build ordered list of candidate URLs
+    const targetUrls = [];
+    if (isLocalNodeHost) {
+        targetUrls.push(endpoint);
+    }
+    for (const base of LIVE_BACKEND_URLS) {
+        targetUrls.push(`${base}${endpoint}`);
+    }
+    if (!isLocalNodeHost) {
+        targetUrls.push(endpoint);
     }
 
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
-        const res = await fetch(targetUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Data }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-            const data = await res.json();
-            if (data && (data.success || data.data)) return data;
-        }
-    } catch (e) {
-        if (e.message && !e.message.includes('fetch') && !e.message.includes('abort') && !e.message.includes('Failed')) {
-            console.warn('AI Backend call warning:', e.message);
+    for (const url of targetUrls) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 35000);
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ imageBase64: base64Data }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && (data.success || data.data)) return data;
+            }
+        } catch (e) {
+            console.warn(`AI backend candidate attempt (${url}) note:`, e?.message || e);
         }
     }
 
-    // Client-side direct vision fallback if user configured their own key in Account Hub
+    // Direct client-side vision fallback if user configured key in Account Hub
     if (clientPrompt) {
-        const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);
-        const parsed = extractSmartJson(rawText);
-        return { success: true, data: parsed };
+        try {
+            const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);
+            const parsed = extractSmartJson(rawText);
+            if (parsed) return { success: true, data: parsed };
+        } catch (e) {
+            console.warn('Direct vision fallback note:', e?.message || e);
+        }
     }
 
     return null;
@@ -1046,6 +1103,28 @@ window.switchTab = function(tabName) {
         window.switchCalculatorTab('simple');
     }
     if (tabName === 'network') window.refreshNetworkList();
+
+    // Rate Check in topbar only visible on 'dashboard' and 'network' tabs; hidden on POS, Inventory, Calculator
+    const showRateCheck = (tabName === 'dashboard' || tabName === 'network');
+    const deskRate = document.getElementById('header-rate-check-desktop');
+    const mobRate = document.getElementById('header-rate-check-mobile');
+    if (deskRate) {
+        if (showRateCheck) {
+            // Strictly hide on mobile devices (<768px), show only on tablets/desktops (md:)
+            deskRate.className = 'relative flex-1 max-w-xs md:max-w-md mx-2 hidden md:block';
+        } else {
+            deskRate.className = 'relative flex-1 max-w-xs md:max-w-md mx-2 hidden';
+        }
+    }
+    if (mobRate) {
+        if (showRateCheck) {
+            // Strictly hide on tablets/desktops (md:hidden), show only on mobile devices
+            mobRate.className = 'relative md:hidden px-3 pb-2.5 pt-1 border-t border-brand-700 bg-brand-900/80 block';
+        } else {
+            mobRate.className = 'relative md:hidden px-3 pb-2.5 pt-1 border-t border-brand-700 bg-brand-900/80 hidden';
+        }
+    }
+
     safeCreateIcons();
 };
 
@@ -2699,11 +2778,6 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
         (m.distributor && m.distributor.toLowerCase().includes(query)) ||
         (m.batch && m.batch.toLowerCase().includes(query))
     );
-    
-    const otherPharmacies = [
-        { store: 'Al-Madina Pharmacy', phone: '03011234567', name: query.toUpperCase(), rate: 'Market MRP', stock: 'Dastiyab Hai' },
-        { store: 'Qadri Medicos', phone: '03027654321', name: query.toUpperCase(), rate: 'Wholesale Discount', stock: 'Limited Stock' }
-    ];
 
     let html = '';
     if (myMatch.length > 0) {
@@ -2773,53 +2847,57 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
     let savedStores = [];
     try {
         const s = localStorage.getItem('sm_network_stores');
-        if (s) savedStores = JSON.parse(s);
-    } catch(e) {}
-    if (!savedStores || savedStores.length === 0) {
-        savedStores = [
-            { name: 'Al-Madina Pharmacy', city: 'Main Commercial Market', phone: '03011234567' },
-            { name: 'Qadri Medicos & Chemists', city: 'Civil Hospital Road', phone: '03027654321' }
-        ];
+        if (s) {
+            const parsed = JSON.parse(s);
+            if (Array.isArray(parsed)) {
+                // Filter out any stale mock stores
+                savedStores = parsed.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name));
+            }
+        }
+    } catch(e) {
+        savedStores = [];
     }
 
-    const medNameDisplay = myMatch[0] ? myMatch[0].name : (query.charAt(0).toUpperCase() + query.slice(1));
-    const genericDisplay = myMatch[0] ? myMatch[0].generic : 'Authentic Formula';
-    const packDisplay = myMatch[0] ? parsePackSize(myMatch[0].packSize).displayText : '20 Tablets / Pack';
-    const mrpDisplay = myMatch[0] ? Number(myMatch[0].mrp).toFixed(1) : '350.0';
+    if (savedStores.length > 0) {
+        const medNameDisplay = myMatch[0] ? myMatch[0].name : (query.charAt(0).toUpperCase() + query.slice(1));
+        const genericDisplay = myMatch[0] ? myMatch[0].generic : 'Authentic Formula';
+        const packDisplay = myMatch[0] ? parsePackSize(myMatch[0].packSize).displayText : '20 Tablets / Pack';
+        const mrpDisplay = myMatch[0] ? Number(myMatch[0].mrp).toFixed(1) : '350.0';
 
-    html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network (Dastiyab Stock):</span></div>`;
-    html += savedStores.map(p => `
-        <div class="p-3 hover:bg-emerald-50/40 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white">
-            <div class="flex items-start justify-between gap-2">
-                <div>
-                    <strong class="text-slate-900 text-xs sm:text-sm font-black">${medNameDisplay}</strong>
-                    <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${genericDisplay ? genericDisplay + ' • ' : ''}<span class="text-emerald-700 font-bold">🏪 ${p.name || p.store}</span> • <span class="text-slate-500 font-mono text-[10px]">${p.city || 'Near City'}</span></span>
+        html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network:</span><span>${savedStores.length} stores</span></div>`;
+        html += savedStores.map(p => `
+            <div class="p-3 hover:bg-emerald-50/40 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white">
+                <div class="flex items-start justify-between gap-2">
+                    <div>
+                        <strong class="text-slate-900 text-xs sm:text-sm font-black">${medNameDisplay}</strong>
+                        <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${genericDisplay ? genericDisplay + ' • ' : ''}<span class="text-emerald-700 font-bold">🏪 ${p.name || p.store}</span> • <span class="text-slate-500 font-mono text-[10px]">${p.city || 'Near City'}</span></span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <span class="text-[10px] text-slate-400 font-bold uppercase block">Retail MRP</span>
+                        <strong class="text-emerald-700 font-black text-sm block">Rs. ${mrpDisplay}</strong>
+                    </div>
                 </div>
-                <div class="text-right shrink-0">
-                    <span class="text-[10px] text-slate-400 font-bold uppercase block">Retail MRP</span>
-                    <strong class="text-emerald-700 font-black text-sm block">Rs. ${mrpDisplay}</strong>
+                <!-- Product Name, Generic, Pack Size, Availability & WhatsApp -->
+                <div class="grid grid-cols-3 gap-1.5 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80 items-center">
+                    <div>
+                        <span class="text-[9px] uppercase font-bold text-indigo-600 block">Pack Size:</span>
+                        <strong class="text-indigo-950 font-black text-[11px]">📦 ${packDisplay}</strong>
+                    </div>
+                    <div>
+                        <span class="text-[9px] uppercase font-bold text-slate-400 block">Network:</span>
+                        <span class="text-emerald-700 font-bold text-[10px] flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
+                        </span>
+                    </div>
+                    <div class="text-right">
+                        <a href="https://wa.me/92${String(p.phone || '').replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, kya aap ke paas ' + medNameDisplay + ' (Pack: ' + packDisplay + ', MRP: Rs.' + mrpDisplay + ') available hai?')}" target="_blank" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs active:scale-95 transition">
+                            <i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp
+                        </a>
+                    </div>
                 </div>
             </div>
-            <!-- Product Name, Generic, Pack Size, Availability & WhatsApp -->
-            <div class="grid grid-cols-3 gap-1.5 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80 items-center">
-                <div>
-                    <span class="text-[9px] uppercase font-bold text-indigo-600 block">Pack Size:</span>
-                    <strong class="text-indigo-950 font-black text-[11px]">📦 ${packDisplay}</strong>
-                </div>
-                <div>
-                    <span class="text-[9px] uppercase font-bold text-slate-400 block">Availability:</span>
-                    <span class="text-emerald-700 font-bold text-[10px] flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Dastiyab Hai
-                    </span>
-                </div>
-                <div class="text-right">
-                    <a href="https://wa.me/92${(p.phone || '03001234567').replace(/^0/, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, kya aap ke paas ' + medNameDisplay + ' (Pack: ' + packDisplay + ', MRP: Rs.' + mrpDisplay + ') available hai?')}" target="_blank" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs active:scale-95 transition">
-                        <i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp
-                    </a>
-                </div>
-            </div>
-        </div>
-    `).join('');
+        `).join('');
+    }
 
     resultsEl.innerHTML = html;
     resultsEl.classList.remove('hidden');
@@ -2840,16 +2918,108 @@ window.clearMobileSearch = function() {
     document.getElementById('clear-mobile-search')?.classList.add('hidden');
 };
 
+// ==========================================
+// MEDICINE TYPES & FORMS SYSTEM (Tab, Cap, Syp, Drop, Inj, Scht, Surgical + Custom)
+// ==========================================
+const DEFAULT_MED_TYPES = [
+    { id: 'tab', label: 'Tablet (Tab)' },
+    { id: 'cap', label: 'Capsule (Cap)' },
+    { id: 'syp', label: 'Syrup (Syp)' },
+    { id: 'drop', label: 'Drops (Drop)' },
+    { id: 'inj', label: 'Injection (Inj)' },
+    { id: 'scht', label: 'Sachet (Scht)' },
+    { id: 'surgical', label: 'Surgical' }
+];
+
+function getAllMedTypes() {
+    let custom = [];
+    try {
+        const s = localStorage.getItem('sm_custom_med_types');
+        if (s) custom = JSON.parse(s);
+    } catch(e) {}
+    if (!Array.isArray(custom)) custom = [];
+    return [...DEFAULT_MED_TYPES, ...custom];
+}
+
+function addCustomMedType(label) {
+    if (!label || !label.trim()) return null;
+    const cleanLabel = label.trim();
+    const id = cleanLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    let custom = [];
+    try {
+        const s = localStorage.getItem('sm_custom_med_types');
+        if (s) custom = JSON.parse(s);
+    } catch(e) {}
+    if (!Array.isArray(custom)) custom = [];
+    if (!custom.some(c => c.id === id) && !DEFAULT_MED_TYPES.some(d => d.id === id)) {
+        custom.push({ id, label: cleanLabel });
+        localStorage.setItem('sm_custom_med_types', JSON.stringify(custom));
+    }
+    window.populateMedTypeDropdowns();
+    return id;
+}
+
+window.populateMedTypeDropdowns = function() {
+    const types = getAllMedTypes();
+
+    // 1. In Medicine Add/Edit Modal
+    const medTypeSelect = document.getElementById('med-type');
+    if (medTypeSelect) {
+        const currentVal = medTypeSelect.value;
+        medTypeSelect.innerHTML = types.map(t => `<option value="${t.id}">${t.label}</option>`).join('') +
+            `<option value="__custom__" class="font-bold text-brand-700">+ Add Custom Type...</option>`;
+        if (currentVal && (types.some(t => t.id === currentVal) || currentVal === '__custom__')) {
+            medTypeSelect.value = currentVal;
+        }
+    }
+
+    // 2. In Inventory Filter Bar
+    const invFilterSelect = document.getElementById('inv-type-filter');
+    if (invFilterSelect) {
+        const currentVal = invFilterSelect.value;
+        invFilterSelect.innerHTML = `<option value="">All Types (Sab Dawaiyan)</option>` +
+            types.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+        if (currentVal) invFilterSelect.value = currentVal;
+    }
+};
+
+window.handleMedTypeChange = function(el) {
+    if (el.value === '__custom__') {
+        const customName = prompt('Nayi Medicine Type / Form ka naam likhein (e.g. Cream, Gel, Inhaler, Drip, Ointment, Spray):');
+        if (customName && customName.trim()) {
+            const newId = addCustomMedType(customName.trim());
+            if (newId) el.value = newId;
+            else el.value = 'tab';
+            showToast(`Nayi type "${customName.trim()}" shamil ho gayi!`, 'success');
+        } else {
+            el.value = 'tab';
+        }
+    }
+};
+
 // Inventory Table
 function renderInventoryTable() {
     const tbody = document.getElementById('inventory-table-body');
     const mobileCards = document.getElementById('inventory-mobile-cards');
     const searchVal = document.getElementById('inv-search')?.value.toLowerCase().trim() || '';
+    const selectedType = document.getElementById('inv-type-filter')?.value || '';
+    const bannerEl = document.getElementById('inv-filter-status-banner');
 
     let filtered = medicines;
-    if (window.isLowStockFilterActive) {
-        filtered = filtered.filter(m => (Number(m.stock) || 0) < (Number(m.minStock) || 10));
+
+    // Filter by Medicine Type if selected
+    if (selectedType) {
+        filtered = filtered.filter(m => (m.type || 'tab') === selectedType);
     }
+
+    // Low stock filter: ONLY items where stock <= minStock
+    if (window.isLowStockFilterActive) {
+        filtered = filtered.filter(m => (Number(m.stock) || 0) <= (Number(m.minStock) || 5));
+        if (bannerEl) bannerEl.classList.remove('hidden');
+    } else {
+        if (!selectedType && bannerEl) bannerEl.classList.add('hidden');
+    }
+
     if (searchVal) {
         filtered = filtered.filter(m => 
             m.name.toLowerCase().includes(searchVal) ||
@@ -2864,16 +3034,21 @@ function renderInventoryTable() {
         if (filtered.length === 0) {
             tbody.innerHTML = `<tr><td colspan="9" class="text-center py-10 text-slate-400">
                 <i data-lucide="package-open" class="w-8 h-8 mx-auto text-slate-300 mb-2"></i>
-                <p class="font-bold text-slate-600 text-sm">Stock bilkul khali hai</p>
-                <p class="text-xs text-slate-400 mt-1">Oper 'Add New Medicine' button daba kar apni pehli real medicine entry add karein</p>
+                <p class="font-bold text-slate-600 text-sm">${window.isLowStockFilterActive ? 'Koi low stock medicine nahi mili' : (selectedType ? 'Is type ki koi medicine nahi mili' : 'Stock bilkul khali hai')}</p>
+                <p class="text-xs text-slate-400 mt-1">${window.isLowStockFilterActive ? 'Tamam medicines ka stock mutawazan hai.' : 'Oper "Add Medicine" button daba kar apni real medicine add karein'}</p>
             </td></tr>`;
         } else {
             tbody.innerHTML = filtered.map(m => {
                 const packInfo = parsePackSize(m.packSize);
+                const typeLabel = (m.type || 'tab').toUpperCase();
+                const isCriticallyLow = (Number(m.stock) || 0) <= (Number(m.minStock) || 5);
                 return `
                     <tr class="hover:bg-slate-50 border-b border-slate-100">
                         <td class="p-3">
-                            <strong class="text-slate-900 block text-xs sm:text-sm break-words">${m.name}</strong>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <strong class="text-slate-900 block text-xs sm:text-sm break-words">${m.name}</strong>
+                                <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">${typeLabel}</span>
+                            </div>
                             <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span class="text-[10px] text-slate-500">${m.generic || 'Formula'}</span>
                                 <span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-mono font-medium">📍 ${m.location ? m.location : 'None'}</span>
@@ -2886,7 +3061,7 @@ function renderInventoryTable() {
                         <td class="p-3 text-right font-bold text-slate-600">Rs. ${Number(m.buyRate).toFixed(1)}</td>
                         <td class="p-3 text-right font-black text-emerald-700">Rs. ${Number(m.mrp).toFixed(1)}</td>
                         <td class="p-3 text-center">
-                            <span class="px-2 py-0.5 rounded-full font-black text-xs ${m.stock < 10 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}">
+                            <span class="px-2 py-0.5 rounded-full font-black text-xs ${isCriticallyLow ? 'bg-rose-100 text-rose-800 border border-rose-200 animate-pulse' : 'bg-emerald-100 text-emerald-800'}">
                                 ${m.stock}
                             </span>
                         </td>
@@ -2906,30 +3081,35 @@ function renderInventoryTable() {
         }
     }
 
-    // 2. Mobile Responsive Stock Cards (100% Screen Fit, Zero Horizontal Movement!)
+    // 2. Mobile Responsive Stock Cards
     if (mobileCards) {
         if (filtered.length === 0) {
             mobileCards.innerHTML = `<div class="bg-white p-8 rounded-2xl border border-slate-200 text-center text-xs text-slate-400 space-y-2">
                 <i data-lucide="package-open" class="w-8 h-8 mx-auto text-slate-300"></i>
-                <p class="font-bold text-slate-600 text-sm">Stock bilkul khali hai</p>
-                <p class="text-[11px] text-slate-400">Oper 'Add Medicine' daba kar apni pehli medicine add karein</p>
+                <p class="font-bold text-slate-600 text-sm">${window.isLowStockFilterActive ? 'Koi low stock medicine nahi mili' : (selectedType ? 'Is type ki koi medicine nahi mili' : 'Stock bilkul khali hai')}</p>
+                <p class="text-[11px] text-slate-400">${window.isLowStockFilterActive ? 'Tamam medicines ka stock mukammal hai.' : 'Oper "Add Medicine" daba kar apni pehli medicine add karein'}</p>
             </div>`;
         } else {
             mobileCards.innerHTML = filtered.map(m => {
                 const packInfo = parsePackSize(m.packSize);
+                const typeLabel = (m.type || 'tab').toUpperCase();
+                const isCriticallyLow = (Number(m.stock) || 0) <= (Number(m.minStock) || 5);
                 return `
-                    <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+                    <div class="bg-white p-3.5 rounded-2xl border ${isCriticallyLow ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-200'} shadow-xs space-y-2.5">
                         <div class="flex items-start justify-between gap-2">
                             <div>
-                                <h4 class="font-black text-sm text-slate-900 leading-tight break-words">${m.name}</h4>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <h4 class="font-black text-sm text-slate-900 leading-tight break-words">${m.name}</h4>
+                                    <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">${typeLabel}</span>
+                                </div>
                                 <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
                             </div>
-                            <span class="shrink-0 px-2.5 py-1 rounded-full font-black text-xs ${m.stock < 10 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
+                            <span class="shrink-0 px-2.5 py-1 rounded-full font-black text-xs ${isCriticallyLow ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
                                 ${m.stock} Packs
                             </span>
                         </div>
 
-                        <!-- 4-Box Metrics Grid (Clean & Proportionate) -->
+                        <!-- 4-Box Metrics Grid -->
                         <div class="grid grid-cols-2 gap-2 text-xs">
                             <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/70">
                                 <span class="text-[9px] uppercase font-bold text-slate-400 block">Retail MRP:</span>
@@ -2972,6 +3152,18 @@ window.filterInventoryTable = function() {
     renderInventoryTable();
 };
 
+window.clearAllInventoryFilters = function() {
+    window.isLowStockFilterActive = false;
+    const typeFilter = document.getElementById('inv-type-filter');
+    if (typeFilter) typeFilter.value = '';
+    const searchInput = document.getElementById('inv-search');
+    if (searchInput) searchInput.value = '';
+    const bannerEl = document.getElementById('inv-filter-status-banner');
+    if (bannerEl) bannerEl.classList.add('hidden');
+    renderInventoryTable();
+    showToast('Tamam filters clear ho gaye, mukammal stock nazar aa raha hai.', 'info');
+};
+
 window.updateMedPackHintLive = function() {
     const input = document.getElementById('med-pack');
     const hint = document.getElementById('med-pack-hint');
@@ -2986,7 +3178,11 @@ window.openAddMedicineModal = function() {
     if (title) title.innerText = 'Nayi Medicine Shamil Karein';
     document.getElementById('medicine-form')?.reset();
     
-    // Clear ALL fields completely so every box is empty on entry
+    window.populateMedTypeDropdowns();
+    const typeSelect = document.getElementById('med-type');
+    if (typeSelect) typeSelect.value = 'tab';
+
+    // Clear ALL fields completely
     const clearField = (id) => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -3013,7 +3209,6 @@ window.openAddMedicineModal = function() {
     syncModalScrollLock();
     safeCreateIcons();
 
-    // Prominently highlight the MRP box during entry
     const mrpInput = document.getElementById('med-mrp');
     if (mrpInput) {
         mrpInput.classList.add('ring-2', 'ring-emerald-500');
@@ -3026,6 +3221,9 @@ window.openAddMedicineModal = function() {
 window.openEditMedicineModal = function(id) {
     const med = medicines.find(m => m.id === id);
     if (!med) return;
+
+    window.populateMedTypeDropdowns();
+
     document.getElementById('medicine-modal-title').innerText = 'Medicine Update Karein';
     document.getElementById('med-id').value = med.id;
     document.getElementById('med-name').value = med.name;
@@ -3034,7 +3232,10 @@ window.openEditMedicineModal = function(id) {
     document.getElementById('med-pack').value = med.packSize || '20';
     document.getElementById('med-batch').value = med.batch || '';
 
-    // Parse MM and YY from stored expiry date (strictly MM/YY)
+    const typeSelect = document.getElementById('med-type');
+    if (typeSelect) typeSelect.value = med.type || 'tab';
+
+    // Parse MM and YY from stored expiry date
     const mEl = document.getElementById('med-expiry-month');
     const yEl = document.getElementById('med-expiry-year');
     if (med.expiry) {
@@ -3101,6 +3302,8 @@ window.saveMedicineRecord = async function(event) {
         finalExpiry = `12/${yy}`;
     }
 
+    const medType = document.getElementById('med-type')?.value || 'tab';
+
     const newMed = {
         id: id || ('med_' + Date.now()),
         name: document.getElementById('med-name').value.trim(),
@@ -3109,6 +3312,7 @@ window.saveMedicineRecord = async function(event) {
         packSize: document.getElementById('med-pack').value.trim() || '20',
         batch: document.getElementById('med-batch').value.trim() || ('B-' + Math.floor(100 + Math.random() * 900)),
         expiry: finalExpiry,
+        type: medType,
         buyRate: Number(document.getElementById('med-buy').value) || 0,
         mrp: Number(document.getElementById('med-mrp').value) || 0,
         stock: Number(document.getElementById('med-stock').value) || 0,
@@ -3268,18 +3472,29 @@ window.refreshNetworkList = async function() {
     if (!Array.isArray(stores) || stores.length === 0) {
         try {
             const saved = localStorage.getItem('sm_network_stores');
-            if (saved) stores = JSON.parse(saved);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    stores = parsed.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name));
+                }
+            }
         } catch(e) {
             stores = [];
         }
     }
 
     if (!Array.isArray(stores) || stores.length === 0) {
-        stores = [
-            { name: 'Al-Madina Pharmacy', ownerName: 'Hafiz Muhammad Tariq', city: 'Main Commercial Market', phone: '03011234567', remarks: 'Connected Pharmacy • 24/7 Service' },
-            { name: 'Qadri Medicos & Chemists', ownerName: 'Dr. Abdul Qadir', city: 'Civil Hospital Road', phone: '03027654321', remarks: 'Connected Pharmacy • Wholesale Rates' },
-            { name: 'Bismillah Medical Store', ownerName: 'Chaudhry Naveed Akhtar', city: 'Circular Road Gate', phone: '03009876543', remarks: 'Connected Pharmacy • Emergency Sharing' }
-        ];
+        grid.innerHTML = `
+            <div class="col-span-full p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-2">
+                <div class="w-12 h-12 rounded-2xl bg-brand-50 text-brand-700 flex items-center justify-center mx-auto shadow-xs">
+                    <i data-lucide="network" class="w-6 h-6"></i>
+                </div>
+                <h4 class="font-black text-slate-800 text-sm">Koi Partner Pharmacy Abhi Connected Nahi Hai</h4>
+                <p class="text-xs text-slate-500 max-w-sm mx-auto">Jab koi pharmacy Digital Pharma par apni profile info save karegi ya Google sync activate karegi, toh uska verified connection automatically yahan live show ho jayega.</p>
+            </div>
+        `;
+        safeCreateIcons();
+        return;
     }
 
     grid.innerHTML = stores.map((s) => `
@@ -3325,6 +3540,131 @@ window.togglePasswordVisibility = function(inputId, iconId) {
     safeCreateIcons();
 };
 
+// ==========================================
+// EXPIRED & NEAR-EXPIRY FILTER SYSTEM (1 Month, 2 Months, 3 Months, Expired)
+// ==========================================
+let currentExpiryAlertFilter = 'all';
+
+window.setExpiryAlertFilter = function(filter) {
+    currentExpiryAlertFilter = filter;
+    renderExpiryAlertSection();
+};
+
+function renderExpiryAlertSection() {
+    const expiryList = document.getElementById('expiry-alert-list');
+    if (!expiryList) return;
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    let countExpired = 0;
+    let count1m = 0;
+    let count2m = 0;
+    let count3m = 0;
+    let countAll = 0;
+
+    const analyzedMeds = [];
+
+    medicines.forEach(m => {
+        if (!m.expiry) return;
+        const d = parseExpiryToDate(m.expiry);
+        if (!d) return;
+
+        const diffTime = d.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+            countExpired++;
+            countAll++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'expired' });
+        } else if (diffDays <= 30) {
+            count1m++;
+            countAll++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: '1m' });
+        } else if (diffDays <= 60) {
+            count2m++;
+            countAll++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: '2m' });
+        } else if (diffDays <= 90) {
+            count3m++;
+            countAll++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: '3m' });
+        }
+    });
+
+    // Update pill counters
+    const elCntAll = document.getElementById('exp-cnt-all');
+    if (elCntAll) elCntAll.innerText = countAll;
+    const elCnt1m = document.getElementById('exp-cnt-1m');
+    if (elCnt1m) elCnt1m.innerText = count1m;
+    const elCnt2m = document.getElementById('exp-cnt-2m');
+    if (elCnt2m) elCnt2m.innerText = count2m;
+    const elCnt3m = document.getElementById('exp-cnt-3m');
+    if (elCnt3m) elCnt3m.innerText = count3m;
+    const elCntExp = document.getElementById('exp-cnt-expired');
+    if (elCntExp) elCntExp.innerText = countExpired;
+
+    // Update active pill button styling
+    ['all', '1m', '2m', '3m', 'expired'].forEach(p => {
+        const btn = document.getElementById(`exp-pill-${p}`);
+        if (btn) {
+            if (p === currentExpiryAlertFilter) {
+                btn.className = 'flex-1 py-1 px-1.5 rounded-lg transition bg-rose-600 text-white shadow-2xs font-bold';
+            } else {
+                btn.className = 'flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 font-bold';
+            }
+        }
+    });
+
+    let displayList = [];
+    if (currentExpiryAlertFilter === 'all') {
+        displayList = analyzedMeds;
+    } else if (currentExpiryAlertFilter === 'expired') {
+        displayList = analyzedMeds.filter(a => a.bucket === 'expired');
+    } else if (currentExpiryAlertFilter === '1m') {
+        displayList = analyzedMeds.filter(a => a.bucket === '1m');
+    } else if (currentExpiryAlertFilter === '2m') {
+        displayList = analyzedMeds.filter(a => a.bucket === '2m');
+    } else if (currentExpiryAlertFilter === '3m') {
+        displayList = analyzedMeds.filter(a => a.bucket === '3m');
+    }
+
+    // Sort critical first (lowest diffDays)
+    displayList.sort((a, b) => a.diffDays - b.diffDays);
+
+    if (displayList.length === 0) {
+        expiryList.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">Is muddat (${currentExpiryAlertFilter === 'all' ? '90 dino' : (currentExpiryAlertFilter === 'expired' ? 'Expired' : currentExpiryAlertFilter)}) mein koi medicine nahi mili.</p>`;
+    } else {
+        expiryList.innerHTML = displayList.map(({ med, diffDays }) => {
+            let badgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
+            let labelText = '';
+            if (diffDays < 0) {
+                badgeClass = 'bg-red-600 text-white font-black';
+                labelText = `Expired (${Math.abs(diffDays)} din pehle)`;
+            } else if (diffDays <= 30) {
+                badgeClass = 'bg-rose-100 text-rose-800 border border-rose-300 font-black';
+                labelText = `1 Month (${diffDays} din baqi)`;
+            } else if (diffDays <= 60) {
+                badgeClass = 'bg-amber-100 text-amber-900 border border-amber-300 font-bold';
+                labelText = `2 Months (${diffDays} din baqi)`;
+            } else {
+                badgeClass = 'bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold';
+                labelText = `3 Months (${diffDays} din baqi)`;
+            }
+
+            return `
+                <div onclick="window.switchTab('inventory'); const s=document.getElementById('inv-search'); if(s){ s.value='${med.name.replace(/'/g, "\\'")}'; window.filterInventoryTable(); }" class="py-2 flex items-center justify-between text-xs hover:bg-slate-50 px-1 rounded-lg cursor-pointer transition">
+                    <div>
+                        <strong class="text-slate-800 block">${med.name}</strong>
+                        <span class="text-[10px] text-slate-400">Stock: ${med.stock} • Exp: ${formatExpiryMMYY(med.expiry)}</span>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] ${badgeClass}">${labelText}</span>
+                </div>
+            `;
+        }).join('');
+    }
+}
+
 function renderDashboardMetrics() {
     // Box 1: Total Medicines
     const elCardTotalMeds = document.getElementById('dash-card-total-meds');
@@ -3356,27 +3696,7 @@ function renderDashboardMetrics() {
     const elTotalValue = document.getElementById('dash-total-value');
     if (elTotalValue) elTotalValue.innerText = 'Rs. ' + stockCost.toLocaleString('en-PK', { maximumFractionDigits: 1 });
 
-    const expiryList = document.getElementById('expiry-alert-list');
-    if (expiryList) {
-        const now = new Date();
-        const sixtyDaysLater = new Date(now.getTime() + 60*24*60*60*1000);
-        const expiringSoon = medicines.filter(m => {
-            if (!m.expiry) return false;
-            const d = parseExpiryToDate(m.expiry);
-            return d && d >= now && d <= sixtyDaysLater;
-        });
-
-        if (expiringSoon.length === 0) {
-            expiryList.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">Agly 60 dino mein koi medicine expire nahi ho rahi.</p>`;
-        } else {
-            expiryList.innerHTML = expiringSoon.slice(0, 5).map(m => `
-                <div class="py-1.5 flex items-center justify-between text-xs">
-                    <strong class="text-slate-800">${m.name}</strong>
-                    <span class="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded text-[10px]">Exp: ${formatExpiryMMYY(m.expiry)}</span>
-                </div>
-            `).join('');
-        }
-    }
+    renderExpiryAlertSection();
 
     const recentSalesList = document.getElementById('recent-sales-list');
     if (recentSalesList) {
@@ -3401,7 +3721,82 @@ window.filterLowStockInventory = function() {
     window.switchTab('inventory');
     window.isLowStockFilterActive = true;
     renderInventoryTable();
-    showToast('Low stock medicines filter ho gayi hain!', 'info');
+    showToast('Sirf low stock medicines filter ho gayi hain!', 'info');
+};
+
+// Total Medicines & Category Form/Type Filter Modal
+window.openTotalMedicineFilterModal = function() {
+    const modal = document.getElementById('total-medicines-modal');
+    if (!modal) return;
+
+    const countEl = document.getElementById('tm-modal-total-count');
+    const retailEl = document.getElementById('tm-modal-retail-value');
+    const costEl = document.getElementById('tm-modal-cost-value');
+
+    const totalCount = medicines.length;
+    const totalRetail = medicines.reduce((sum, m) => sum + ((Number(m.mrp) || 0) * (Number(m.stock) || 0)), 0);
+    const totalCost = medicines.reduce((sum, m) => sum + ((Number(m.buyRate) || 0) * (Number(m.stock) || 0)), 0);
+
+    if (countEl) countEl.innerText = `${totalCount} Meds`;
+    if (retailEl) retailEl.innerText = 'Rs. ' + totalRetail.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    if (costEl) costEl.innerText = 'Rs. ' + totalCost.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+
+    const btnContainer = document.getElementById('tm-modal-type-buttons');
+    if (btnContainer) {
+        const types = getAllMedTypes();
+        let html = `
+            <button type="button" onclick="window.applyTotalMedicineTypeFilter('')" class="p-2.5 rounded-xl border border-slate-200 hover:border-brand-500 bg-white hover:bg-brand-50 text-left transition shadow-2xs group cursor-pointer">
+                <span class="text-[10px] font-bold text-slate-400 group-hover:text-brand-600 block uppercase">All Stock</span>
+                <div class="flex items-center justify-between mt-0.5">
+                    <strong class="text-xs font-black text-slate-800">All Items</strong>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand-100 text-brand-800">${totalCount}</span>
+                </div>
+            </button>
+        `;
+        types.forEach(t => {
+            const count = medicines.filter(m => (m.type || 'tab') === t.id).length;
+            html += `
+                <button type="button" onclick="window.applyTotalMedicineTypeFilter('${t.id}')" class="p-2.5 rounded-xl border border-slate-200 hover:border-brand-500 bg-white hover:bg-brand-50 text-left transition shadow-2xs group cursor-pointer">
+                    <span class="text-[10px] font-bold text-slate-400 group-hover:text-brand-600 block uppercase">${t.id.toUpperCase()}</span>
+                    <div class="flex items-center justify-between mt-0.5">
+                        <strong class="text-xs font-black text-slate-800 truncate mr-1">${t.label.split(' ')[0]}</strong>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${count > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}">${count}</span>
+                    </div>
+                </button>
+            `;
+        });
+        btnContainer.innerHTML = html;
+    }
+
+    modal.classList.remove('hidden');
+    syncModalScrollLock();
+    safeCreateIcons();
+};
+
+window.closeTotalMedicineModal = function() {
+    document.getElementById('total-medicines-modal')?.classList.add('hidden');
+    syncModalScrollLock();
+};
+
+window.applyTotalMedicineTypeFilter = function(typeId) {
+    window.closeTotalMedicineModal();
+    window.switchTab('inventory');
+    const typeFilter = document.getElementById('inv-type-filter');
+    if (typeFilter) typeFilter.value = typeId;
+    window.isLowStockFilterActive = false;
+    renderInventoryTable();
+    showToast(typeId ? `Filter: ${typeId.toUpperCase()} stock` : 'Full stock view', 'info');
+};
+
+window.viewAllInventoryDirect = function() {
+    window.closeTotalMedicineModal();
+    window.clearAllInventoryFilters();
+    window.switchTab('inventory');
+};
+
+// Today Customers Modal Opener (Customer bills history for all periods: Today, Yesterday, Week, Month, Year, All Time)
+window.openTodayCustomersModal = function(period = 'today') {
+    window.openCustomerInvoicesModal(period);
 };
 
 // ==========================================
@@ -3788,11 +4183,20 @@ window.renderSalesAnalytics = function() {
     const elStockVal = document.getElementById('an-stock-cost-val');
     if (elStockVal) elStockVal.innerText = 'Rs. ' + currentStockCost.toLocaleString('en-PK', { maximumFractionDigits: 1 });
 
-    const elCount = document.getElementById('an-invoices-count');
-    if (elCount) elCount.innerText = filtered.length;
+    // Payment Mode Breakdown (Cash vs Online vs Udhaar)
+    const cashTotal = filtered.filter(s => (s.paymentMode || 'Cash').toLowerCase() === 'cash').reduce((sum, s) => sum + (Number(s.netTotal) || 0), 0);
+    const onlineTotal = filtered.filter(s => (s.paymentMode || '').toLowerCase() === 'online').reduce((sum, s) => sum + (Number(s.netTotal) || 0), 0);
+    const creditTotal = filtered.filter(s => (s.paymentMode || '').toLowerCase() === 'credit').reduce((sum, s) => sum + (Number(s.netTotal) || 0), 0);
 
+    const elCash = document.getElementById('an-mode-cash');
+    if (elCash) elCash.innerText = 'Rs. ' + cashTotal.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    const elOnline = document.getElementById('an-mode-online');
+    if (elOnline) elOnline.innerText = 'Rs. ' + onlineTotal.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    const elCredit = document.getElementById('an-mode-credit');
+    if (elCredit) elCredit.innerText = 'Rs. ' + creditTotal.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+
+    // Render well-structured visual graph without overflowing mobile screens
     generateAnalyticsGraph(period, filtered);
-    renderAnalyticsInvoicesTable(filtered);
     safeCreateIcons();
 };
 
@@ -3822,6 +4226,236 @@ window.closeSalesAnalyticsModal = function() {
 window.setSalesAnalyticsPeriod = function(period) {
     currentAnalyticsPeriod = period;
     window.renderSalesAnalytics();
+};
+
+// ==========================================
+// DEDICATED CUSTOMER BILLS & INVOICE HISTORY SYSTEM
+// (Deep analysis, customer list, items breakdown, all time periods)
+// ==========================================
+let currentCustomerPeriod = 'today';
+
+window.openCustomerInvoicesModal = function(period = 'today') {
+    currentCustomerPeriod = period;
+    document.getElementById('customer-invoices-modal')?.classList.remove('hidden');
+    syncModalScrollLock();
+    window.renderCustomerInvoices();
+    safeCreateIcons();
+};
+
+window.closeCustomerInvoicesModal = function() {
+    document.getElementById('customer-invoices-modal')?.classList.add('hidden');
+    syncModalScrollLock();
+};
+
+window.setCustomerPeriod = function(period) {
+    currentCustomerPeriod = period;
+    window.renderCustomerInvoices();
+};
+
+window.applyCustomerSpecificMonth = function() {
+    currentCustomerPeriod = 'select_month';
+    window.renderCustomerInvoices();
+};
+
+window.applyCustomerCustomDate = function() {
+    currentCustomerPeriod = 'custom';
+    window.renderCustomerInvoices();
+};
+
+window.filterCustomerInvoicesLive = function() {
+    window.renderCustomerInvoices();
+};
+
+window.renderCustomerInvoices = function() {
+    const period = currentCustomerPeriod || 'today';
+
+    // Period buttons active states
+    ['today', 'yesterday', 'week', 'month', 'select_month', 'year', 'custom', 'all'].forEach(p => {
+        const btn = document.getElementById(`cust-filter-${p}`);
+        if (btn) {
+            if (p === period) {
+                btn.className = 'flex-1 min-w-[65px] py-2 px-2 rounded-xl transition bg-blue-600 text-white shadow-xs font-bold';
+            } else {
+                btn.className = 'flex-1 min-w-[65px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60 font-bold';
+            }
+        }
+    });
+
+    // Month picker bar
+    const monthBar = document.getElementById('cust-select-month-bar');
+    if (monthBar) {
+        if (period === 'select_month') {
+            monthBar.classList.remove('hidden');
+            const monthInput = document.getElementById('cust-specific-month');
+            if (monthInput && !monthInput.value) {
+                const now = new Date();
+                monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            }
+        } else {
+            monthBar.classList.add('hidden');
+        }
+    }
+
+    // Custom date bar
+    const customBar = document.getElementById('cust-custom-date-bar');
+    if (customBar) {
+        if (period === 'custom') {
+            customBar.classList.remove('hidden');
+            const startInput = document.getElementById('cust-custom-start');
+            const endInput = document.getElementById('cust-custom-end');
+            if (startInput && !startInput.value) {
+                const todayIso = new Date().toISOString().split('T')[0];
+                startInput.value = todayIso;
+                if (endInput) endInput.value = todayIso;
+            }
+        } else {
+            customBar.classList.add('hidden');
+        }
+    }
+
+    // Filter sales by period
+    let periodSales = getPeriodSales(period);
+
+    // Filter by live search query if present
+    const searchQuery = document.getElementById('cust-invoice-search')?.value.toLowerCase().trim() || '';
+    if (searchQuery) {
+        periodSales = periodSales.filter(s => 
+            String(s.invoiceId || '').toLowerCase().includes(searchQuery) ||
+            String(s.customer || '').toLowerCase().includes(searchQuery) ||
+            (Array.isArray(s.items) && s.items.some(it => String(it.name || '').toLowerCase().includes(searchQuery)))
+        );
+    }
+
+    // In-depth Financial Calculations
+    let totalBilled = 0;
+    let totalCost = 0;
+
+    periodSales.forEach(s => {
+        const fin = getSaleFinancials(s);
+        totalBilled += fin.saleAmount;
+        totalCost += fin.saleCost;
+    });
+
+    const totalProfit = Math.max(0, totalBilled - totalCost);
+    const avgBill = periodSales.length > 0 ? (totalBilled / periodSales.length) : 0;
+
+    // KPI Cards
+    const elCount = document.getElementById('cust-total-count');
+    if (elCount) elCount.innerText = `${periodSales.length} Invoices`;
+    const elBilled = document.getElementById('cust-total-billed');
+    if (elBilled) elBilled.innerText = 'Rs. ' + totalBilled.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    const elProfit = document.getElementById('cust-total-profit');
+    if (elProfit) elProfit.innerText = 'Rs. ' + totalProfit.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    const elAvg = document.getElementById('cust-avg-bill');
+    if (elAvg) elAvg.innerText = 'Rs. ' + avgBill.toLocaleString('en-PK', { maximumFractionDigits: 1 });
+    const elShown = document.getElementById('cust-shown-count');
+    if (elShown) elShown.innerText = periodSales.length;
+
+    // Render Invoices: Reverse order so newest bills are on top
+    const sortedSales = [...periodSales].reverse();
+
+    // 1. Desktop Table
+    const tbody = document.getElementById('cust-invoices-tbody');
+    if (tbody) {
+        if (sortedSales.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center py-8 text-slate-400 text-xs">
+                        <i data-lucide="receipt" class="w-7 h-7 mx-auto text-slate-300 mb-1.5"></i>
+                        Is period mein koi customer invoice nahi mili.
+                    </td>
+                </tr>
+            `;
+        } else {
+            tbody.innerHTML = sortedSales.map(s => {
+                const fin = getSaleFinancials(s);
+                const timeStr = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const dateStr = new Date(s.timestamp).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+                const itemsSummary = Array.isArray(s.items) 
+                    ? s.items.map(it => `${it.name} (${it.qty || 1})`).join(', ') 
+                    : 'Items';
+
+                let payBadge = 'bg-emerald-100 text-emerald-800';
+                if ((s.paymentMode || '').toLowerCase() === 'credit') payBadge = 'bg-amber-100 text-amber-800';
+                if ((s.paymentMode || '').toLowerCase() === 'online') payBadge = 'bg-blue-100 text-blue-800';
+
+                return `
+                    <tr class="hover:bg-slate-50 border-b border-slate-100">
+                        <td class="p-2.5 font-bold text-brand-700 font-mono">#${s.invoiceId}</td>
+                        <td class="p-2.5 text-slate-500 text-[11px] whitespace-nowrap">${dateStr} • ${timeStr}</td>
+                        <td class="p-2.5 text-slate-800">
+                            <strong class="block text-xs">${s.customer || 'Walk-in'}</strong>
+                            <span class="text-[10px] text-slate-500 truncate block max-w-xs" title="${itemsSummary}">${itemsSummary}</span>
+                        </td>
+                        <td class="p-2.5 text-center">
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${payBadge}">${s.paymentMode || 'Cash'}</span>
+                        </td>
+                        <td class="p-2.5 text-right font-semibold text-blue-700">Rs. ${fin.saleCost.toFixed(1)}</td>
+                        <td class="p-2.5 text-right font-black text-slate-900">Rs. ${fin.saleAmount.toFixed(1)}</td>
+                        <td class="p-2.5 text-right font-black text-emerald-700">Rs. ${fin.profit.toFixed(1)}</td>
+                        <td class="p-2.5 text-center">
+                            <button type="button" onclick="window.closeCustomerInvoicesModal(); window.openSaleEditModal('${s.id}')" class="px-2 py-1 bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold text-[11px] rounded-lg border border-brand-200 transition active:scale-95">
+                                View / Print
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // 2. Mobile Responsive Cards
+    const mobContainer = document.getElementById('cust-invoices-mobile-cards');
+    if (mobContainer) {
+        if (sortedSales.length === 0) {
+            mobContainer.innerHTML = `<div class="bg-slate-50 p-6 rounded-2xl text-center text-xs text-slate-400">Is period mein koi customer invoice nahi mili.</div>`;
+        } else {
+            mobContainer.innerHTML = sortedSales.map(s => {
+                const fin = getSaleFinancials(s);
+                const timeStr = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const dateStr = new Date(s.timestamp).toLocaleDateString([], { day: 'numeric', month: 'short' });
+                const itemsSummary = Array.isArray(s.items) 
+                    ? s.items.map(it => `${it.name} (${it.qty || 1})`).join(', ') 
+                    : 'Items';
+
+                let payBadge = 'bg-emerald-100 text-emerald-800';
+                if ((s.paymentMode || '').toLowerCase() === 'credit') payBadge = 'bg-amber-100 text-amber-800';
+                if ((s.paymentMode || '').toLowerCase() === 'online') payBadge = 'bg-blue-100 text-blue-800';
+
+                return `
+                    <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <strong class="font-black text-slate-800 text-xs">#${s.invoiceId} - ${s.customer || 'Walk-in'}</strong>
+                                <span class="text-[10px] text-slate-400 block">${dateStr} • ${timeStr}</span>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${payBadge}">${s.paymentMode || 'Cash'}</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 truncate bg-slate-50 p-1.5 rounded-xl border border-slate-100">${itemsSummary}</p>
+                        <div class="grid grid-cols-3 gap-1.5 text-center text-[10px] bg-slate-50 p-1.5 rounded-xl">
+                            <div>
+                                <span class="text-slate-400 uppercase font-bold block text-[8px]">Cost TP</span>
+                                <strong class="text-blue-700">Rs. ${fin.saleCost.toFixed(0)}</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 uppercase font-bold block text-[8px]">Bill Total</span>
+                                <strong class="text-slate-900 font-black">Rs. ${fin.saleAmount.toFixed(0)}</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 uppercase font-bold block text-[8px]">Profit</span>
+                                <strong class="text-emerald-700 font-black">Rs. ${fin.profit.toFixed(0)}</strong>
+                            </div>
+                        </div>
+                        <button type="button" onclick="window.closeCustomerInvoicesModal(); window.openSaleEditModal('${s.id}')" class="w-full py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold text-xs rounded-xl border border-brand-200 text-center transition">
+                            View / Print Receipt (#${s.invoiceId})
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    safeCreateIcons();
 };
 
 window.openSaleEditModal = function(saleId) {
@@ -3887,20 +4521,24 @@ async function saveMedicineToStore(med) {
     const idx = medicines.findIndex(m => m.id === med.id);
     if (idx !== -1) medicines[idx] = med; else medicines.push(med);
     localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-    if (db && authUser && fbFirestoreMod) {
+    if (db && authUser) {
         try {
-            await fbFirestoreMod.setDoc(fbFirestoreMod.doc(db, 'artifacts', appId, 'users', authUser.uid, 'medicines', med.id), med);
-        } catch(e) {}
+            await setDoc(doc(db, 'users', authUser.uid, 'medicines', med.id), med);
+        } catch(e) {
+            handleFirestoreError(e, 'write', `users/${authUser.uid}/medicines/${med.id}`);
+        }
     }
 }
 
 async function deleteMedicineFromStore(id) {
     medicines = medicines.filter(m => m.id !== id);
     localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-    if (db && authUser && fbFirestoreMod) {
+    if (db && authUser) {
         try {
-            await fbFirestoreMod.deleteDoc(fbFirestoreMod.doc(db, 'artifacts', appId, 'users', authUser.uid, 'medicines', id));
-        } catch(e) {}
+            await deleteDoc(doc(db, 'users', authUser.uid, 'medicines', id));
+        } catch(e) {
+            handleFirestoreError(e, 'delete', `users/${authUser.uid}/medicines/${id}`);
+        }
     }
 }
 
@@ -3908,26 +4546,28 @@ async function saveSaleToStore(sale) {
     const idx = sales.findIndex(s => s.id === sale.id);
     if (idx !== -1) sales[idx] = sale; else sales.push(sale);
     localStorage.setItem('sm_sales', JSON.stringify(sales));
-    if (db && authUser && fbFirestoreMod) {
+    if (db && authUser) {
         try {
-            await fbFirestoreMod.setDoc(fbFirestoreMod.doc(db, 'artifacts', appId, 'users', authUser.uid, 'sales', sale.id), sale);
-        } catch(e) {}
+            await setDoc(doc(db, 'users', authUser.uid, 'sales', sale.id), sale);
+        } catch(e) {
+            handleFirestoreError(e, 'write', `users/${authUser.uid}/sales/${sale.id}`);
+        }
     }
 }
 
 async function deleteSaleFromStore(id) {
     sales = sales.filter(s => s.id !== id);
     localStorage.setItem('sm_sales', JSON.stringify(sales));
-    if (db && authUser && fbFirestoreMod) {
+    if (db && authUser) {
         try {
-            await fbFirestoreMod.deleteDoc(fbFirestoreMod.doc(db, 'artifacts', appId, 'users', authUser.uid, 'sales', id));
-        } catch(e) {}
+            await deleteDoc(doc(db, 'users', authUser.uid, 'sales', id));
+        } catch(e) {
+            handleFirestoreError(e, 'delete', `users/${authUser.uid}/sales/${id}`);
+        }
     }
 }
 
-// Account Hub & Authentication Management (3 Options: Login, Sign Up with Profile Pic, Guest Mode)
-let signupPreviewPhoto = null;
-
+// Account Hub & Authentication Management (Only 2 Clean Options: Official Google Sign-In & Guest Mode)
 window.switchHubAuthTab = function(tab) {
     const btnSync = document.getElementById('hub-tab-btn-sync');
     const btnGuest = document.getElementById('hub-tab-btn-guest');
@@ -3960,103 +4600,70 @@ window.switchHubAuthTab = function(tab) {
     safeCreateIcons();
 };
 
+// Official Google Sign-in with Authentic Device Popup & Account Chooser
 window.loginWithGooglePrompt = async function() {
-    let email = prompt('Apna Google Gmail account enter karein (e.g. yourname@gmail.com):', 'shzdkhkh01@gmail.com');
-    if (!email) return;
-    email = email.trim().toLowerCase();
-    if (!email.includes('@')) {
-        showToast('Durust Gmail address darj karein!', 'error');
-        return;
-    }
-
-    const name = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const googleUser = {
-        name: name,
-        email: email,
-        loginMethod: 'google',
-        isLiveSync: true,
-        photo: ''
-    };
-
-    localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
-    localStorage.removeItem('sm_user_mode');
-
-    // Register pharmacy automatically to central network registry
-    const config = window.getStoreConfig();
     try {
-        await fetch('/api/network/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: config.name || `${name} Pharmacy`,
-                ownerName: config.ownerName || name,
-                city: config.address || 'Pakistan',
-                phone: config.phone || '03001234567',
-                email: email,
-                licenseNo: config.licenseNo || '',
-                remarks: 'Google Verified Connected Pharmacy'
-            })
-        });
-        window.refreshNetworkList();
-    } catch(e) {}
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+        if (!user) return;
+        const googleUser = {
+            name: user.displayName || user.email.split('@')[0],
+            email: user.email,
+            uid: user.uid,
+            loginMethod: 'google',
+            isLiveSync: true,
+            photo: user.photoURL || ''
+        };
+        localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
+        localStorage.removeItem('sm_user_mode');
 
-    window.applyStoreIdentity();
-    window.showHubActiveProfile();
-    showToast(`Google Gmail (${email}) ke sath live sync connect ho gaya!`, 'success');
-};
+        // Automatically sync registered pharmacy in network
+        const config = window.getStoreConfig();
+        try {
+            await fetch('/api/network/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: config.name || `${googleUser.name} Pharmacy`,
+                    ownerName: config.ownerName || googleUser.name,
+                    city: config.address || 'Pakistan',
+                    phone: config.phone || '03001234567',
+                    email: user.email,
+                    licenseNo: config.licenseNo || '',
+                    remarks: 'Verified Google Live Member'
+                })
+            });
+            window.refreshNetworkList();
+        } catch(e) {}
 
-window.submitSignUp = async function() {
-    const email = document.getElementById('login-email')?.value.trim();
-    if (!email) {
-        showToast('Gmail / Email address enter karein!', 'error');
-        return;
+        window.applyStoreIdentity();
+        window.showHubActiveProfile();
+        showToast(`Google account (${user.email}) ke sath live sync connect ho gaya!`, 'success');
+    } catch (err) {
+        const errCode = err?.code || '';
+        const errMsg = err?.message || String(err || '');
+
+        // User intentionally closed or cancelled popup window
+        if (
+            errCode === 'auth/popup-closed-by-user' ||
+            errCode === 'auth/cancelled-popup-request' ||
+            errMsg.includes('popup-closed-by-user') ||
+            errMsg.includes('cancelled-popup-request')
+        ) {
+            showToast('Google login popup band kar diya gaya. Dobara click karein ya Guest Mode use karein.', 'info');
+            return;
+        }
+
+        // Browser popup blocker triggered
+        if (errCode === 'auth/popup-blocked' || errMsg.includes('popup-blocked')) {
+            showToast('Browser ne Google login popup block kar diya. Settings se popups allow karein ya Guest Mode use karein.', 'warning');
+            return;
+        }
+
+        // Only log other unexpected runtime issues with warn
+        console.warn('Google Sign-In note:', errMsg);
+        showToast('Google login error: ' + (errMsg || 'Network issue ya connection timeout'), 'error');
     }
-    return window.submitLogin();
-};
-
-window.submitLogin = async function() {
-    const email = document.getElementById('login-email')?.value.trim();
-    const password = document.getElementById('login-password')?.value.trim();
-
-    if (!email) {
-        showToast('Gmail / Email address enter karein!', 'error');
-        return;
-    }
-
-    const name = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const localUser = {
-        name: name,
-        email: email,
-        loginMethod: 'email',
-        isLiveSync: true,
-        photo: localStorage.getItem('sm_profile_pic') || ''
-    };
-
-    localStorage.setItem('sm_auth_user', JSON.stringify(localUser));
-    localStorage.removeItem('sm_user_mode');
-
-    // Sync to network registry
-    const config = window.getStoreConfig();
-    try {
-        await fetch('/api/network/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: config.name || `${name} Pharmacy`,
-                ownerName: config.ownerName || name,
-                city: config.address || 'Pakistan',
-                phone: config.phone || '03001234567',
-                email: email,
-                licenseNo: config.licenseNo || '',
-                remarks: 'Live Connected Store'
-            })
-        });
-        window.refreshNetworkList();
-    } catch(e) {}
-
-    window.applyStoreIdentity();
-    window.showHubActiveProfile();
-    showToast(`Live Cloud Sync connected! Welcome ${name}`, 'success');
 };
 
 window.submitGuestMode = function() {
@@ -4064,7 +4671,92 @@ window.submitGuestMode = function() {
     localStorage.removeItem('sm_auth_user');
     window.applyStoreIdentity();
     window.showHubActiveProfile();
-    showToast('Guest Mode (Local Storage) activate ho gaya', 'info');
+    showToast('Guest Mode (Local Device Storage) activate ho gaya', 'info');
+};
+
+// Delete Account & Clear All Data Permanently
+window.handleDeleteAccountAndData = function() {
+    customConfirm(
+        'Account & Data Delete Karein?',
+        'Kya aap apna Digital Pharma account, stock inventory aur tamam sales records permanently delete karna chahte hain? Yeh amal wapis nahi ho sakta.',
+        async () => {
+            try {
+                const currentUser = window.getCurrentUser();
+                const currentUid = auth.currentUser?.uid || currentUser?.uid;
+
+                // 1. Delete Firestore user collections
+                if (currentUid && db) {
+                    try {
+                        const medsCol = collection(db, 'users', currentUid, 'medicines');
+                        const medSnaps = await getDocs(medsCol);
+                        for (const d of medSnaps.docs) {
+                            try { await deleteDoc(d.ref); } catch(e) {}
+                        }
+
+                        const salesCol = collection(db, 'users', currentUid, 'sales');
+                        const saleSnaps = await getDocs(salesCol);
+                        for (const d of saleSnaps.docs) {
+                            try { await deleteDoc(d.ref); } catch(e) {}
+                        }
+
+                        try {
+                            await deleteDoc(doc(db, 'pharmacies', currentUid));
+                        } catch(e) {}
+                    } catch(cloudErr) {
+                        console.warn('Cloud purge warning:', cloudErr);
+                    }
+                }
+
+                // 2. Unregister from central network
+                try {
+                    await fetch('/api/network/unregister', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: currentUid,
+                            email: currentUser?.email,
+                            phone: window.getStoreConfig().phone
+                        })
+                    });
+                } catch(e) {}
+
+                // 3. Delete Firebase Auth user if authenticated
+                if (auth.currentUser) {
+                    try {
+                        await auth.currentUser.delete();
+                    } catch(e) {
+                        try { await signOut(auth); } catch(e2) {}
+                    }
+                }
+
+                // 4. Clear all localStorage
+                localStorage.removeItem('sm_auth_user');
+                localStorage.removeItem('sm_user_mode');
+                localStorage.removeItem('sm_medicines');
+                localStorage.removeItem('sm_sales');
+                localStorage.removeItem('sm_store_config');
+                localStorage.removeItem('sm_profile_pic');
+                localStorage.removeItem('sm_network_stores');
+                localStorage.removeItem('sm_custom_med_types');
+
+                // 5. Reset in-memory state
+                medicines = [];
+                sales = [];
+                cart = [];
+                authUser = null;
+
+                window.applyStoreIdentity();
+                renderDashboardMetrics();
+                renderInventoryTable();
+                window.closeAccountHubModal();
+                showToast('Aapka account aur record kamyabi se delete ho gaya.', 'info');
+                setTimeout(() => window.switchTab('dashboard'), 80);
+            } catch(err) {
+                console.error('Delete account error:', err);
+                showToast('Masla aya: ' + err.message, 'error');
+            }
+        }
+    );
 };
 
 window.showHubChoiceSection = function() {
@@ -4259,7 +4951,7 @@ function initApp() {
     window.updateSimpleCalcDisplay();
     safeCreateIcons();
     syncModalScrollLock();
-    initFirebaseLazy();
+    window.switchTab('dashboard');
 }
 
 // Instant startup without waiting for full window.load

@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "Pharmacy": {
+      "title": "Pharmacy",
+      "description": "Public directory of connected network pharmacies",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "ownerName": { "type": "string", "maxLength": 100 },
+        "city": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 120 },
+        "licenseNo": { "type": "string", "maxLength": 60 },
+        "remarks": { "type": "string", "maxLength": 200 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "city", "phone"]
+    },
+    "Medicine": {
+      "title": "Medicine",
+      "description": "Pharmacy stock inventory item",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "generic": { "type": "string", "maxLength": 120 },
+        "distributor": { "type": "string", "maxLength": 100 },
+        "packSize": { "type": "string", "maxLength": 40 },
+        "batch": { "type": "string", "maxLength": 40 },
+        "expiry": { "type": "string", "maxLength": 20 },
+        "buyRate": { "type": "number" },
+        "mrp": { "type": "number" },
+        "stock": { "type": "number" },
+        "location": { "type": "string", "maxLength": 60 },
+        "minStock": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "mrp", "stock"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Customer sale invoice record",
+      "type": "object",
+      "properties": {
+        "invoiceId": { "type": "string", "maxLength": 50 },
+        "customer": { "type": "string", "maxLength": 100 },
+        "paymentMode": { "type": "string", "maxLength": 40 },
+        "subtotal": { "type": "number" },
+        "discountPercent": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "netTotal": { "type": "number" },
+        "cost": { "type": "number" },
+        "profit": { "type": "number" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["invoiceId", "netTotal"]
+    }
+  },
+  "firestore": {
+    "/pharmacies/{pharmacyId}": {
+      "schema": { "$ref": "#/entities/Pharmacy" },
+      "description": "Public directory of connected pharmacies"
+    },
+    "/users/{userId}/medicines/{medicineId}": {
+      "schema": { "$ref": "#/entities/Medicine" },
+      "description": "Private stock inventory for an authenticated pharmacy owner"
+    },
+    "/users/{userId}/sales/{saleId}": {
+      "schema": { "$ref": "#/entities/Sale" },
+      "description": "Private sale bills for an authenticated pharmacy owner"
+    }
+  }
+}

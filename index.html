@@ -105,6 +105,18 @@
             -webkit-text-fill-color: #93c5fd !important;
         }
 
+        /* Strict separation: Never show desktop search bar on mobile (<768px) */
+        @media (max-width: 767px) {
+            #header-rate-check-desktop {
+                display: none !important;
+            }
+        }
+        @media (min-width: 768px) {
+            #header-rate-check-mobile {
+                display: none !important;
+            }
+        }
+
         /* Clean Receipt Print Styling (Dynamic height according to items count) */
         @page {
             size: auto;
@@ -217,8 +229,8 @@
                 </div>
             </div>
 
-            <!-- Desktop Quick Rate & Stock Search -->
-            <div class="relative flex-1 max-w-xs md:max-w-md mx-2 hidden sm:block">
+            <!-- Desktop Quick Rate & Stock Search (Visible only on Dashboard and Network tabs on tablets and desktops) -->
+            <div id="header-rate-check-desktop" class="relative flex-1 max-w-xs md:max-w-md mx-2 hidden md:block">
                 <div class="relative">
                     <input type="text" id="global-search-input" oninput="window.globalQuickSearch()" placeholder="Rate & Stock Quick Lookup..." class="w-full pl-8 pr-10 py-1.5 text-xs text-white placeholder-brand-200 bg-brand-900/60 border border-brand-600 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-400">
                     <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-2 text-brand-300"></i>
@@ -255,8 +267,8 @@
             </div>
         </div>
 
-        <!-- Mobile Rate & Stock Lookup Bar -->
-        <div class="relative sm:hidden px-3 pb-2.5 pt-1 border-t border-brand-700 bg-brand-900/80">
+        <!-- Mobile Rate & Stock Lookup Bar (Visible only on Dashboard and Network tabs on mobile) -->
+        <div id="header-rate-check-mobile" class="relative md:hidden px-3 pb-2.5 pt-1 border-t border-brand-700 bg-brand-900/80">
             <div class="relative">
                 <input type="text" id="mobile-search-input" oninput="window.mobileQuickSearch()" placeholder="Rate check (medicine name likhein)..." class="w-full pl-8 pr-7 py-2 text-sm text-white placeholder-brand-200 bg-brand-950/60 border border-brand-600 rounded-xl focus:outline-none focus:ring-1 focus:ring-emerald-400">
                 <i data-lucide="search" class="w-4 h-4 absolute left-2.5 top-2.5 text-brand-300"></i>
@@ -343,8 +355,8 @@
 
             <!-- 4 Interactive Metric Boxes: Total Medicines, Today Sale (Sale & Invest Depth), Today Customers, Low Stock Medicines -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-                <!-- Box 1: Total Medicines -->
-                <div onclick="window.switchTab('inventory')" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2 cursor-pointer hover:border-brand-400 hover:shadow-md transition active:scale-[0.99] group" title="Stock Inventory check karein">
+                <!-- Box 1: Total Medicines (Count & Type Filter) -->
+                <div onclick="window.openTotalMedicineFilterModal()" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2 cursor-pointer hover:border-brand-400 hover:shadow-md transition active:scale-[0.99] group" title="Click: Total Medicines count & type filter">
                     <div class="flex items-center justify-between">
                         <span class="text-[11px] font-bold text-slate-500">Total Medicines</span>
                         <div class="p-1.5 bg-brand-50 text-brand-700 rounded-lg group-hover:bg-brand-600 group-hover:text-white transition">
@@ -371,8 +383,8 @@
                     </div>
                 </div>
 
-                <!-- Box 3: Today Customers -->
-                <div onclick="window.openSalesAnalyticsModal('today', 'sale')" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2 cursor-pointer hover:border-blue-400 hover:shadow-md transition active:scale-[0.99] group" title="Click: Today Customer bills record">
+                <!-- Box 3: Today Customers (With All-Time / Today History filter) -->
+                <div onclick="window.openCustomerInvoicesModal('today')" class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2 cursor-pointer hover:border-blue-400 hover:shadow-md transition active:scale-[0.99] group" title="Click: Customer bills history (Today, Yesterday, Week, Month, Year, All Time)">
                     <div class="flex items-center justify-between">
                         <span class="text-[11px] font-bold text-slate-500">Today Customers</span>
                         <div class="p-1.5 bg-blue-50 text-blue-700 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition">
@@ -402,17 +414,30 @@
 
             <!-- Two-Column Alerts & Sales History: Expired Medicines First, Recent Invoices Second -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-                <!-- 1st Section: Expired & Near-Expiry Medicines -->
+                <!-- 1st Section: Expired & Near-Expiry Medicines (1 Mo, 2 Mo, 3 Mo & Expired Filter Pills) -->
                 <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs space-y-2.5 flex flex-col">
                     <div class="flex items-center justify-between border-b pb-2">
                         <div class="flex items-center gap-2">
                             <div class="p-1.5 bg-rose-50 text-rose-600 rounded-lg">
                                 <i data-lucide="alert-triangle" class="w-4 h-4"></i>
                             </div>
-                            <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Expired & Near Expiry Medicines (Next 60 Days)</h3>
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Expired & Near Expiry Medicines</h3>
+                                <p class="text-[10px] text-slate-400">1, 2, 3 maheeny aur expired medicines</p>
+                            </div>
                         </div>
-                        <button onclick="window.switchTab('inventory')" class="text-[11px] text-brand-600 font-bold hover:underline">View All</button>
+                        <button onclick="window.switchTab('inventory')" class="text-[11px] text-brand-600 font-bold hover:underline">View Stock</button>
                     </div>
+
+                    <!-- Expiry Period Filter Pills -->
+                    <div class="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl text-[10px] font-bold">
+                        <button type="button" id="exp-pill-all" onclick="window.setExpiryAlertFilter('all')" class="flex-1 py-1 px-1.5 rounded-lg transition bg-rose-600 text-white shadow-2xs">All (<span id="exp-cnt-all">0</span>)</button>
+                        <button type="button" id="exp-pill-1m" onclick="window.setExpiryAlertFilter('1m')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">1 Mo (<span id="exp-cnt-1m">0</span>)</button>
+                        <button type="button" id="exp-pill-2m" onclick="window.setExpiryAlertFilter('2m')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">2 Mo (<span id="exp-cnt-2m">0</span>)</button>
+                        <button type="button" id="exp-pill-3m" onclick="window.setExpiryAlertFilter('3m')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">3 Mo (<span id="exp-cnt-3m">0</span>)</button>
+                        <button type="button" id="exp-pill-expired" onclick="window.setExpiryAlertFilter('expired')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Expired (<span id="exp-cnt-expired">0</span>)</button>
+                    </div>
+
                     <div id="expiry-alert-list" class="divide-y divide-slate-100 max-h-48 overflow-y-auto flex-1">
                         <p class="text-xs text-slate-400 py-3 text-center">Checking expiry status...</p>
                     </div>
@@ -427,7 +452,7 @@
                             </div>
                             <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Recent Sales Invoices</h3>
                         </div>
-                        <span class="text-[10px] text-slate-400">Click to Re-Print / Edit</span>
+                        <button type="button" onclick="window.openCustomerInvoicesModal('today')" class="text-[11px] text-brand-600 font-bold hover:underline">All Bills</button>
                     </div>
                     <div id="recent-sales-list" class="space-y-1.5 max-h-48 overflow-y-auto flex-1">
                         <p class="text-xs text-slate-400 py-3 text-center">Aaj abhi tak koi sale invoice generate nahi hui.</p>
@@ -504,8 +529,8 @@
                     </div>
                 </div>
 
-                <!-- Cart Table -->
-                <div class="overflow-x-auto flex-1 border border-slate-200 rounded-xl">
+                <!-- Cart Table (Bounded height so checkout summary stays on screen) -->
+                <div class="overflow-x-auto overflow-y-auto max-h-56 sm:max-h-72 flex-1 border border-slate-200 rounded-xl">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50 text-slate-500 font-bold">
@@ -605,6 +630,34 @@
                     </button>
                     <button type="button" onclick="window.openAddMedicineModal()" class="w-full sm:w-auto bg-brand-600 hover:bg-brand-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow active:scale-95">
                         <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Add Medicine
+                    </button>
+                </div>
+            </div>
+
+            <!-- Inventory Type Filter & Low Stock Status Bar -->
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-2xl border border-slate-200 text-xs shadow-2xs">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-bold text-slate-500 uppercase text-[10px] flex items-center gap-1">
+                        <i data-lucide="filter" class="w-3.5 h-3.5 text-brand-600"></i> Medicine Type:
+                    </span>
+                    <select id="inv-type-filter" onchange="window.filterInventoryTable()" class="px-2.5 py-1.5 rounded-xl border border-slate-300 font-bold text-slate-800 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-brand-500 text-xs">
+                        <option value="">All Types (Sab Dawaiyan)</option>
+                        <option value="tab">Tablet (Tab)</option>
+                        <option value="cap">Capsule (Cap)</option>
+                        <option value="syp">Syrup (Syp)</option>
+                        <option value="drop">Drops (Drop)</option>
+                        <option value="inj">Injection (Inj)</option>
+                        <option value="scht">Sachet (Scht)</option>
+                        <option value="surgical">Surgical</option>
+                    </select>
+                </div>
+
+                <div id="inv-filter-status-banner" class="hidden flex items-center gap-2">
+                    <span id="inv-filter-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                        <i data-lucide="alert-triangle" class="w-3 h-3 text-rose-600"></i> Low Stock Only
+                    </span>
+                    <button type="button" onclick="window.clearAllInventoryFilters()" class="text-[11px] text-brand-700 font-bold hover:underline px-2 py-0.5 rounded bg-brand-50 border border-brand-200">
+                        Show All
                     </button>
                 </div>
             </div>
@@ -950,11 +1003,13 @@
         </section>
 
         <!-- Main Content Bottom Developer Credit -->
-        <footer class="mt-4 mb-1 text-center px-2">
-            <div class="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-full bg-slate-900 text-white shadow-md border border-slate-700/80">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span class="text-[10px] sm:text-xs font-black tracking-[0.22em] uppercase font-sans text-slate-100">
-                    DIGITAL PHARMA • SMART PHARMACY SYSTEM
+        <footer class="mt-4 mb-2 text-center px-3">
+            <div class="inline-flex flex-col items-center justify-center px-7 py-3 rounded-2xl bg-gradient-to-r from-slate-900 via-brand-950 to-slate-900 text-white shadow-xl border border-slate-700/80">
+                <span class="text-xs sm:text-sm font-black tracking-wider text-amber-400 font-sans">
+                    Digital Pharma - Software
+                </span>
+                <span class="text-[11px] sm:text-xs font-bold tracking-wide text-slate-200 mt-0.5 font-sans">
+                    Developed by Shahzad Khakh
                 </span>
             </div>
         </footer>
@@ -1094,7 +1149,10 @@
                     <p>• Fridge items aur khuli patti wapis ya tabdeel nahi hogi.</p>
                     <p>• Dawai tabdeeli kelye asal receipt 3 din ke andar lazmi hai.</p>
                     <p class="font-black text-slate-900 uppercase">Shukriya / Get Well Soon!</p>
-                    <p class="text-[7.5px] text-slate-600 pt-1 border-t border-dotted border-slate-400 mt-1 uppercase tracking-widest font-black">DIGITAL PHARMA DEVELOPED BY SHAHZAD KHAKH</p>
+                    <div class="pt-2 border-t-2 border-dotted border-slate-700 mt-1.5 text-center">
+                        <span class="block font-black text-[10px] uppercase tracking-wider text-slate-900 font-sans">Digital Pharma - Software</span>
+                        <span class="block font-bold text-[9px] tracking-wide text-slate-800 mt-0.5 font-sans">Developed by Shahzad Khakh</span>
+                    </div>
                 </div>
             </div>
 
@@ -1290,9 +1348,24 @@
 
             <form id="medicine-form" onsubmit="window.saveMedicineRecord(event)" class="space-y-2.5 text-xs">
                 <input type="hidden" id="med-id">
-                <div>
-                    <label class="block font-bold text-slate-600 mb-1">Dawai Ka Name (Brand):</label>
-                    <input type="text" id="med-name" required placeholder="e.g. Panadol 500mg" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-1">Dawai Ka Name (Brand) *:</label>
+                        <input type="text" id="med-name" required placeholder="e.g. Panadol 500mg" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-1">Medicine Type / Form *:</label>
+                        <select id="med-type" onchange="window.handleMedTypeChange(this)" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="tab">Tablet (Tab)</option>
+                            <option value="cap">Capsule (Cap)</option>
+                            <option value="syp">Syrup (Syp)</option>
+                            <option value="drop">Drops (Drop)</option>
+                            <option value="inj">Injection (Inj)</option>
+                            <option value="scht">Sachet (Scht)</option>
+                            <option value="surgical">Surgical</option>
+                            <option value="__custom__" class="font-bold text-brand-700">+ Add Custom Type...</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -1356,6 +1429,62 @@
                     <button type="submit" class="flex-1 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow active:scale-95">Save Medicine</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- TOTAL MEDICINES & CATEGORY TYPE FILTER MODAL -->
+    <div id="total-medicines-modal" onclick="if(event.target===this) window.closeTotalMedicineModal()" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 max-h-[92vh] overflow-y-auto border border-slate-200">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-2 bg-brand-100 text-brand-700 rounded-xl">
+                        <i data-lucide="pill" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-slate-900 text-sm sm:text-base leading-tight">Total Medicines Inventory</h3>
+                        <p class="text-[11px] text-slate-500 font-medium">Items count & Type / Form filter</p>
+                    </div>
+                </div>
+                <button onclick="window.closeTotalMedicineModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Total Counts Summary Box -->
+            <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                <div class="p-2.5 bg-brand-50 border border-brand-200 rounded-2xl">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase block">Total Items</span>
+                    <strong id="tm-modal-total-count" class="text-base font-black text-brand-700">0 Meds</strong>
+                </div>
+                <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase block">Retail Value</span>
+                    <strong id="tm-modal-retail-value" class="text-base font-black text-emerald-700">Rs. 0</strong>
+                </div>
+                <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase block">Cost TP Value</span>
+                    <strong id="tm-modal-cost-value" class="text-base font-black text-amber-800">Rs. 0</strong>
+                </div>
+            </div>
+
+            <!-- Type Filter Buttons Section -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wide">Filter Stock By Type:</span>
+                    <span class="text-[10px] text-slate-400">Type select kar ke stock dekhein</span>
+                </div>
+                <div id="tm-modal-type-buttons" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <!-- Dynamic Types Populated by JS -->
+                </div>
+            </div>
+
+            <div class="pt-2 border-t flex gap-2">
+                <button type="button" onclick="window.closeTotalMedicineModal()" class="flex-1 py-2.5 border rounded-xl font-bold text-slate-600 text-xs">
+                    Close
+                </button>
+                <button type="button" onclick="window.viewAllInventoryDirect()" class="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs shadow-xs active:scale-95 transition">
+                    View Full Inventory
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1562,33 +1691,187 @@
                 </div>
             </div>
 
-            <!-- Detailed Invoices Data Record Table -->
-            <div class="space-y-2">
-                <div class="flex items-center justify-between">
-                    <h4 class="font-black text-xs sm:text-sm text-slate-800 flex items-center gap-1.5">
-                        <i data-lucide="receipt" class="w-4 h-4 text-brand-600"></i> Invoices Record (<span id="an-invoices-count">0</span>)
-                    </h4>
-                    <span class="text-[10px] text-slate-400">Bills ki complete detail & re-print</span>
+            <!-- Payment Methods & Profit Health Breakdown Card (No Invoices table here!) -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                <div class="p-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase block">Cash Sale:</span>
+                        <strong id="an-mode-cash" class="text-xs sm:text-sm font-black text-emerald-700">Rs. 0</strong>
+                    </div>
+                    <span class="p-2 bg-emerald-50 text-emerald-700 rounded-xl font-bold text-xs">💵 Cash</span>
                 </div>
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-x-auto max-h-60">
+                <div class="p-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase block">Online / Bank:</span>
+                        <strong id="an-mode-online" class="text-xs sm:text-sm font-black text-blue-700">Rs. 0</strong>
+                    </div>
+                    <span class="p-2 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs">📱 Online</span>
+                </div>
+                <div class="p-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase block">Credit (Udhaar):</span>
+                        <strong id="an-mode-credit" class="text-xs sm:text-sm font-black text-amber-700">Rs. 0</strong>
+                    </div>
+                    <span class="p-2 bg-amber-50 text-amber-700 rounded-xl font-bold text-xs">📒 Udhaar</span>
+                </div>
+            </div>
+
+            <!-- Link to Dedicated Customer Invoices Analysis Section -->
+            <div class="p-3 bg-blue-50/90 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-2 bg-blue-600 text-white rounded-xl shrink-0">
+                        <i data-lucide="receipt" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <strong class="text-blue-950 font-black block sm:text-sm">Customer Invoices & Bills Section</strong>
+                        <span class="text-[11px] text-blue-700">Tamam customer bills ki tafseelat aur deep analysis Customers section mein dekhein</span>
+                    </div>
+                </div>
+                <button type="button" onclick="window.closeSalesAnalyticsModal(); window.openCustomerInvoicesModal(currentAnalyticsPeriod)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-xs active:scale-95 transition flex items-center justify-center gap-1.5 shrink-0">
+                    <span>Customer Invoices Kholein</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DEDICATED CUSTOMER BILLS & INVOICE HISTORY MODAL (Deep Analysis, All Periods) -->
+    <div id="customer-invoices-modal" onclick="if(event.target===this) window.closeCustomerInvoicesModal()" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-3.5 max-h-[92vh] overflow-y-auto border border-slate-200">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between border-b pb-3">
+                <div class="flex items-center gap-3">
+                    <div class="p-2.5 bg-blue-100 text-blue-800 rounded-2xl">
+                        <i data-lucide="users" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-slate-900 text-base sm:text-lg leading-tight">Customer Bills & Invoices History</h3>
+                        <p class="text-xs text-slate-500 font-medium">Customer-wise mukammal sales invoices aur deep analysis</p>
+                    </div>
+                </div>
+                <button onclick="window.closeCustomerInvoicesModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Time Period Filter Tabs -->
+            <div class="flex flex-col gap-2">
+                <div class="flex flex-wrap gap-1.5 p-1.5 bg-slate-100 rounded-2xl text-xs font-bold">
+                    <button type="button" id="cust-filter-today" onclick="window.setCustomerPeriod('today')" class="flex-1 min-w-[60px] py-2 px-2 rounded-xl transition bg-blue-600 text-white shadow-xs">Today</button>
+                    <button type="button" id="cust-filter-yesterday" onclick="window.setCustomerPeriod('yesterday')" class="flex-1 min-w-[65px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60">Yesterday</button>
+                    <button type="button" id="cust-filter-week" onclick="window.setCustomerPeriod('week')" class="flex-1 min-w-[70px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60">This Week</button>
+                    <button type="button" id="cust-filter-month" onclick="window.setCustomerPeriod('month')" class="flex-1 min-w-[75px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60">This Month</button>
+                    <button type="button" id="cust-filter-select-month" onclick="window.setCustomerPeriod('select_month')" class="flex-1 min-w-[95px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1">
+                        <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Select Month
+                    </button>
+                    <button type="button" id="cust-filter-year" onclick="window.setCustomerPeriod('year')" class="flex-1 min-w-[65px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60">This Year</button>
+                    <button type="button" id="cust-filter-custom" onclick="window.setCustomerPeriod('custom')" class="flex-1 min-w-[95px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1">
+                        <i data-lucide="calendar-range" class="w-3.5 h-3.5"></i> Custom Date
+                    </button>
+                    <button type="button" id="cust-filter-all" onclick="window.setCustomerPeriod('all')" class="flex-1 min-w-[55px] py-2 px-2 rounded-xl transition text-slate-600 hover:bg-white/60">All Time</button>
+                </div>
+
+                <!-- Select Specific Month Bar -->
+                <div id="cust-select-month-bar" class="hidden p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-2">
+                        <div class="p-1.5 bg-indigo-600 text-white rounded-lg">
+                            <i data-lucide="calendar" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <strong class="text-indigo-950 font-black block">Choose Specific Month:</strong>
+                            <span class="text-[11px] text-indigo-700">Kisi bhi maheeny ke customer bills filter karein</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="month" id="cust-specific-month" onchange="window.applyCustomerSpecificMonth()" class="bg-white px-3 py-1.5 rounded-xl border border-indigo-300 font-bold text-slate-800 text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button type="button" onclick="window.applyCustomerSpecificMonth()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs active:scale-95 transition">Check</button>
+                    </div>
+                </div>
+
+                <!-- Custom Calendar Date Range Bar -->
+                <div id="cust-custom-date-bar" class="hidden p-3 bg-blue-50 border border-blue-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-2">
+                        <div class="p-1.5 bg-blue-600 text-white rounded-lg">
+                            <i data-lucide="calendar-range" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <strong class="text-blue-950 font-black block">Custom Date Range:</strong>
+                            <span class="text-[11px] text-blue-800">Makhsoos tareekhon ka record dekhein</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                        <div class="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-blue-300 shadow-xs">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase">From:</span>
+                            <input type="date" id="cust-custom-start" onchange="window.applyCustomerCustomDate()" class="text-xs font-bold text-slate-800 bg-transparent focus:outline-none">
+                        </div>
+                        <div class="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-blue-300 shadow-xs">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase">To:</span>
+                            <input type="date" id="cust-custom-end" onchange="window.applyCustomerCustomDate()" class="text-xs font-bold text-slate-800 bg-transparent focus:outline-none">
+                        </div>
+                        <button type="button" onclick="window.applyCustomerCustomDate()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs active:scale-95 transition">Check</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Customer Summary 4 KPI Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div class="p-3 bg-blue-50 border border-blue-200 rounded-2xl space-y-0.5">
+                    <span class="text-[10px] text-blue-700 font-bold uppercase block">Total Customers / Bills</span>
+                    <h4 id="cust-total-count" class="text-base sm:text-xl font-black text-blue-900">0 Invoices</h4>
+                </div>
+                <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-0.5">
+                    <span class="text-[10px] text-emerald-700 font-bold uppercase block">Total Billed Amount</span>
+                    <h4 id="cust-total-billed" class="text-base sm:text-xl font-black text-emerald-900">Rs. 0</h4>
+                </div>
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl space-y-0.5">
+                    <span class="text-[10px] text-amber-700 font-bold uppercase block">Total Net Profit</span>
+                    <h4 id="cust-total-profit" class="text-base sm:text-xl font-black text-amber-900">Rs. 0</h4>
+                </div>
+                <div class="p-3 bg-purple-50 border border-purple-200 rounded-2xl space-y-0.5">
+                    <span class="text-[10px] text-purple-700 font-bold uppercase block">Avg Bill Amount</span>
+                    <h4 id="cust-avg-bill" class="text-base sm:text-xl font-black text-purple-900">Rs. 0</h4>
+                </div>
+            </div>
+
+            <!-- Customer Search Filter Bar -->
+            <div class="relative">
+                <input type="text" id="cust-invoice-search" oninput="window.filterCustomerInvoicesLive()" placeholder="Customer name, phone number ya Invoice # dhoondein..." class="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800">
+                <i data-lucide="search" class="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400"></i>
+            </div>
+
+            <!-- Invoices List Container (Desktop Table & Mobile Responsive Cards) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="font-bold text-slate-600">Showing <span id="cust-shown-count" class="font-black text-blue-700">0</span> Invoices</span>
+                    <span class="text-[10px] text-slate-400">Tap invoice to edit or re-print</span>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden sm:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-x-auto max-h-72">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold sticky top-0">
                             <tr>
                                 <th class="p-2.5">Invoice #</th>
                                 <th class="p-2.5">Date & Time</th>
-                                <th class="p-2.5">Customer / Items</th>
+                                <th class="p-2.5">Customer Name & Items</th>
+                                <th class="p-2.5 text-center">Payment</th>
                                 <th class="p-2.5 text-right">Cost TP</th>
-                                <th class="p-2.5 text-right">Sale Amount</th>
+                                <th class="p-2.5 text-right">Bill Total</th>
                                 <th class="p-2.5 text-right">Profit</th>
                                 <th class="p-2.5 text-center">Action</th>
                             </tr>
                         </thead>
-                        <tbody id="an-invoices-tbody" class="divide-y divide-slate-100">
+                        <tbody id="cust-invoices-tbody" class="divide-y divide-slate-100">
                             <tr>
-                                <td colspan="7" class="text-center py-6 text-slate-400">Loading invoices...</td>
+                                <td colspan="8" class="text-center py-6 text-slate-400">Invoices load ho rahi hain...</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Mobile Cards Container -->
+                <div id="cust-invoices-mobile-cards" class="sm:hidden space-y-2.5 max-h-72 overflow-y-auto">
+                    <p class="text-xs text-slate-400 py-4 text-center">Invoices load ho rahi hain...</p>
                 </div>
             </div>
         </div>
@@ -1677,43 +1960,28 @@
                     </button>
                 </div>
 
-                <!-- 1. LIVE SYNC WITH GMAIL / GOOGLE ACCOUNT -->
+                <!-- 1. LIVE SYNC WITH GMAIL / GOOGLE ACCOUNT (Zero Fake Login, Official Google Popup Only) -->
                 <div id="hub-panel-sync" class="space-y-3 text-xs">
+                    <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 space-y-1">
+                        <div class="flex items-center gap-1.5 font-bold">
+                            <i data-lucide="cloud" class="w-4 h-4 text-brand-600"></i>
+                            <span>Official Google Cloud Live Sync</span>
+                        </div>
+                        <p class="text-[11px] leading-relaxed text-blue-800">
+                            Apne official Google (Gmail) account ke sath connect karein. Device par mojood tamam Gmails ki popup list se apna account select karein.
+                        </p>
+                    </div>
+
                     <!-- Continue with Google Button -->
-                    <button type="button" onclick="window.loginWithGooglePrompt()" class="w-full py-2.5 px-3 bg-white hover:bg-slate-50 border-2 border-slate-300 text-slate-800 font-black rounded-xl shadow-xs flex items-center justify-center gap-2.5 text-xs active:scale-95 transition">
-                        <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <button type="button" onclick="window.loginWithGooglePrompt()" class="w-full py-3 px-3 bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-brand-500 text-slate-800 font-black rounded-xl shadow-xs flex items-center justify-center gap-2.5 text-xs sm:text-sm active:scale-95 transition cursor-pointer">
+                        <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                             <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.28-2.1 3.66-5.2 3.66-9.12z"/>
                             <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.26 21.36 7.33 24 12 24z"/>
                             <path fill="#FBBC05" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.57H1.25C.45 8.16 0 9.98 0 12s.45 3.84 1.25 5.43l4.03-3.14z"/>
                             <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.57l4.03 3.14c.95-2.83 3.6-4.96 6.72-4.96z"/>
                         </svg>
-                        <span>Continue with Google (Gmail)</span>
+                        <span>Continue with Google Account</span>
                     </button>
-
-                    <div class="relative flex py-1 items-center">
-                        <div class="flex-grow border-t border-slate-200"></div>
-                        <span class="flex-shrink mx-2 text-[10px] text-slate-400 font-bold uppercase">Ya Email Se Login Karein</span>
-                        <div class="flex-grow border-t border-slate-200"></div>
-                    </div>
-
-                    <div class="space-y-2">
-                        <div>
-                            <label class="block font-bold text-slate-600 mb-0.5">Gmail / Email Address:</label>
-                            <input type="email" id="login-email" placeholder="apna_name@gmail.com" class="w-full px-2.5 py-1.5 border rounded-xl text-slate-900 bg-white font-medium">
-                        </div>
-                        <div>
-                            <label class="block font-bold text-slate-600 mb-0.5">Password:</label>
-                            <div class="relative">
-                                <input type="password" id="login-password" placeholder="Password (Min 6)" class="w-full pl-2.5 pr-8 py-1.5 border rounded-xl font-mono text-slate-900 bg-white">
-                                <button type="button" onclick="window.togglePasswordVisibility('login-password', 'login-pwd-icon')" class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700" title="Show/Hide Password">
-                                    <i id="login-pwd-icon" data-lucide="eye" class="w-3.5 h-3.5"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <button type="button" onclick="window.submitLogin()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs active:scale-95 transition">
-                            Login / Live Cloud Connect
-                        </button>
-                    </div>
                 </div>
 
                 <!-- 2. USE AS GUEST LOCAL USER MODE TAB -->
@@ -1756,11 +2024,11 @@
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-0.5">Pharmacy / Store Name *:</label>
-                        <input type="text" id="hub-store-name" placeholder="e.g. Al-Madina Pharmacy" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white">
+                        <input type="text" id="hub-store-name" placeholder="e.g. My Medical Store" class="w-full px-2.5 py-1.5 border rounded-xl font-bold text-slate-900 bg-white">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-0.5">Pharmacist / Owner Name *:</label>
-                        <input type="text" id="hub-store-owner" placeholder="e.g. Muhammad Shahzad" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
+                        <input type="text" id="hub-store-owner" placeholder="e.g. Owner Name" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-0.5">WhatsApp / Contact Phone *:</label>
@@ -1768,7 +2036,7 @@
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-0.5">Store Address / City *:</label>
-                        <input type="text" id="hub-store-address" placeholder="Main Commercial Market, Lahore" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
+                        <input type="text" id="hub-store-address" placeholder="City / Address" class="w-full px-2.5 py-1.5 border rounded-xl font-semibold text-slate-900 bg-white">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-0.5">Drug Sale License (D.S.L #) - Optional:</label>
@@ -1779,10 +2047,17 @@
                     </button>
                 </div>
 
-                <!-- Logout Button -->
-                <button type="button" onclick="window.handleHubLogout()" class="w-full py-2 border border-red-200 text-red-600 hover:bg-red-50 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Logout & Reset Mode
-                </button>
+                <div class="pt-2 border-t space-y-2">
+                    <!-- Logout Button -->
+                    <button type="button" onclick="window.handleHubLogout()" class="w-full py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Logout / Switch Account
+                    </button>
+
+                    <!-- Account Delete & Clear All Data Button -->
+                    <button type="button" onclick="window.handleDeleteAccountAndData()" class="w-full py-2 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95" title="Permanently delete account and all records">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-600"></i> Delete Account & Clear All Data
+                    </button>
+                </div>
             </div>
         </div>
     </div>

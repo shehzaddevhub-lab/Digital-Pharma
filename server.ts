@@ -16,8 +16,8 @@ const PORT = Number(process.env.PORT) || 3000;
 // Enable CORS for all origins (allowing GitHub Pages and mobile web to call AI endpoints)
 app.use((_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
   if (_req.method === 'OPTIONS') {
     res.sendStatus(200);
     return;
@@ -611,40 +611,15 @@ function loadNetworkPharmacies(): NetworkPharmacy[] {
     if (fs.existsSync(NETWORK_FILE)) {
       const data = fs.readFileSync(NETWORK_FILE, 'utf-8');
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        // Filter out any stale mock entries if they exist
+        return parsed.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical & General Store'].includes(p.name));
+      }
     }
   } catch (e) {
     console.error('Error reading network pharmacies file:', e);
   }
-  return [
-    {
-      id: 'net_1',
-      name: 'Al-Madina Pharmacy',
-      ownerName: 'Hafiz Muhammad Tariq',
-      city: 'Main Commercial Market',
-      phone: '03011234567',
-      remarks: 'Digital Pharma Network Member • 24/7 Service',
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'net_2',
-      name: 'Qadri Medicos & Chemists',
-      ownerName: 'Dr. Abdul Qadir',
-      city: 'Civil Hospital Road',
-      phone: '03027654321',
-      remarks: 'Digital Pharma Network Member • Wholesale Rates',
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'net_3',
-      name: 'Bismillah Medical & General Store',
-      ownerName: 'Chaudhry Naveed Akhtar',
-      city: 'Circular Road Gate',
-      phone: '03009876543',
-      remarks: 'Digital Pharma Network Member • Emergency Sharing',
-      updatedAt: new Date().toISOString()
-    }
-  ];
+  return [];
 }
 
 function saveNetworkPharmacies(list: NetworkPharmacy[]) {
@@ -714,6 +689,22 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
   } catch (err: any) {
     console.error('Network registration error:', err);
     res.status(500).json({ success: false, error: 'Network registration failed' });
+  }
+});
+
+app.post('/api/network/unregister', (req: Request, res: Response): void => {
+  try {
+    const { id, email, phone } = req.body;
+    activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
+      if (id && p.id === id) return false;
+      if (email && p.email && p.email.toLowerCase() === String(email).toLowerCase()) return false;
+      if (phone && p.phone && p.phone.replace(/\D/g, '') === String(phone).replace(/\D/g, '')) return false;
+      return true;
+    });
+    saveNetworkPharmacies(activeNetworkPharmacies);
+    res.json({ success: true, count: activeNetworkPharmacies.length });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Unregister failed' });
   }
 });
 
