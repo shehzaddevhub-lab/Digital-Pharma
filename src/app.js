@@ -713,13 +713,13 @@ function isModelRefusalText(text) {
     return /tasveer.*(roshni|dubara|saf|wazeh|dhundli|dobara)|tasvir.*(roshni|dubara)|cannot read|unable to read|unreadable image|please (upload|take) a (clear|clearer)|retake the photo/i.test(s);
 }
 
-// Top App Reload / Live Refresh Webapp Button
+// Top App Reload / Live Refresh Webapp Button (Direct complete reload across all servers/hosts)
 window.reloadAppLive = async function() {
     const icon = document.getElementById('nav-reload-icon');
     if (icon) {
         icon.classList.add('animate-spin');
     }
-    showToast('App taaza (refresh) ho rahi hai...', 'info');
+    showToast('Webapp taaza (hard refresh) ho rahi hai...', 'info');
 
     try {
         if ('caches' in window) {
@@ -728,9 +728,11 @@ window.reloadAppLive = async function() {
         }
     } catch(e) {}
 
+    // Force complete direct webapp reload from server regardless of hosting environment
     setTimeout(() => {
-        window.location.reload();
-    }, 250);
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.location.href = cleanUrl + '?_r=' + Date.now();
+    }, 150);
 };
 
 // Normalizes any prescription output format so mobile OCR never crashes
@@ -833,28 +835,26 @@ function normalizeInvoiceItems(parsed) {
     }));
 }
 
-const LIVE_BACKEND_URLS = [
-    'https://ais-dev-ou6bjzs2n66zp6bxp5s7gm-731749917388.asia-east1.run.app',
-    'https://ais-pre-ou6bjzs2n66zp6bxp5s7gm-731749917388.asia-east1.run.app'
-];
-
-// Direct client-side Gemini Vision Caller (Essential for offline/custom key usage)
+// Universal client-side Gemini Vision Caller (Works across ANY hosting server, GitHub Pages, Vercel, Firebase & Installed PWA)
 async function callGeminiVisionDirect(prompt, base64Data) {
-    const customKey = localStorage.getItem('gemini_api_key') || "";
-    if (!customKey) {
-        throw new Error('AI Scanner connect nahi ho saka. Barah-e-karam apna internet connection check karein.');
+    const key = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+                localStorage.getItem('gemini_api_key') ||
+                "";
+    if (!key) {
+        throw new Error('AI Scanner connect nahi ho saka. Barah-e-karam internet connection check karein.');
     }
-    const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+    const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    const models = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
     let lastError = null;
 
     for (const modelName of models) {
         try {
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${customKey}`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;
             const payload = {
                 contents: [{
                     parts: [
                         { text: prompt },
-                        { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
+                        { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } }
                     ]
                 }],
                 generationConfig: {
@@ -881,35 +881,17 @@ async function callGeminiVisionDirect(prompt, base64Data) {
         }
     }
 
-    throw new Error(lastError || 'Google AI Vision connect nahi ho saka. API key aur internet check karein.');
+    throw new Error(lastError || 'Google AI Vision connect nahi ho saka. Barah-e-karam dobara koshish karein.');
 }
 
-// Unified AI Caller: Automatically proxies to live backend from GitHub Pages, mobile webapps, or runs locally
+// Unified AI Caller: Seamlessly supports full-stack Node backends, GitHub Pages, Firebase Hosting, Vercel, and installed mobile PWA
 async function callAiBackend(endpoint, base64Data, clientPrompt) {
-    const isLocalNodeHost = typeof window !== 'undefined' && (
-        window.location.hostname.includes('run.app') ||
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
-    );
-
-    // Build ordered list of candidate URLs - Prioritizing local origin
-    const targetUrls = [];
+    // 1. Try local Express backend if server endpoint is available on current origin
     if (typeof window !== 'undefined' && window.location.origin) {
-        targetUrls.push(`${window.location.origin}${endpoint}`);
-        targetUrls.push(endpoint);
-    }
-    for (const base of LIVE_BACKEND_URLS) {
-        const fullUrl = `${base}${endpoint}`;
-        if (!targetUrls.includes(fullUrl)) {
-            targetUrls.push(fullUrl);
-        }
-    }
-
-    for (const url of targetUrls) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 35000);
-            const res = await fetch(url, {
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            const res = await fetch(`${window.location.origin}${endpoint}`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -924,18 +906,19 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
                 if (data && (data.success || data.data)) return data;
             }
         } catch (e) {
-            console.warn(`AI backend candidate attempt (${url}) note:`, e?.message || e);
+            console.warn(`Local endpoint (${endpoint}) fallback to direct Vision:`, e?.message || e);
         }
     }
 
-    // Direct client-side vision fallback if user configured key in Account Hub
+    // 2. Direct client-side Vision fallback (Guarantees scanning works on ANY static host, GitHub Pages, Vercel, & Installed PWA)
     if (clientPrompt) {
         try {
             const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);
             const parsed = extractSmartJson(rawText);
             if (parsed) return { success: true, data: parsed };
         } catch (e) {
-            console.warn('Direct vision fallback note:', e?.message || e);
+            console.warn('Direct vision note:', e?.message || e);
+            throw e;
         }
     }
 
@@ -5325,6 +5308,23 @@ window.handleAuthSignup = async function() {
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.removeItem('sm_user_mode');
 
+        // Save to registered accounts list so system knows this user was explicitly registered
+        try {
+            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            if (!regUsers.some(u => u.email === email)) {
+                regUsers.push({
+                    email,
+                    uid: userUid,
+                    ownerName,
+                    pharmacyName: storeName,
+                    phone,
+                    city,
+                    passwordHash: btoa(pass)
+                });
+                localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
+            }
+        } catch(eReg) {}
+
         const config = window.getStoreConfig();
         config.name = storeName;
         config.ownerName = ownerName;
@@ -5350,7 +5350,7 @@ window.handleAuthSignup = async function() {
     }
 };
 
-// Direct Login with Registered Email/Gmail & Password
+// Direct Login with Registered Email/Gmail & Password (Strict Registration Check)
 window.handleAuthLogin = async function() {
     const email = document.getElementById('auth-login-email')?.value.trim().toLowerCase();
     const pass = document.getElementById('auth-login-pass')?.value;
@@ -5369,112 +5369,151 @@ window.handleAuthLogin = async function() {
 
     try {
         let userUid = null;
-        let loggedUser = null;
+        let authRecord = null;
+        let isRegistered = false;
 
         // 1. Try Firebase Auth sign in
         try {
             const userCred = await signInWithEmailAndPassword(auth, email, pass);
-            loggedUser = userCred.user;
+            const loggedUser = userCred.user;
             userUid = loggedUser.uid;
+            isRegistered = true;
         } catch(authErr) {
             console.warn('Firebase login note:', authErr?.code, authErr?.message);
-            // Check fallback for stored credentials or anonymous sync
+
+            if (authErr?.code === 'auth/wrong-password') {
+                showToast('Ghalat password darj kiya gaya hai! Sahi password enter karein.', 'error');
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                return;
+            }
+
+            if (authErr?.code === 'auth/user-not-found') {
+                showToast('Aapka account pehle se mojood nahi hai! Barah-e-karam pehle Sign Up karein.', 'error');
+                window.switchHubAuthTab('signup');
+                const suEmail = document.getElementById('auth-signup-email');
+                if (suEmail) suEmail.value = email;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                return;
+            }
+
+            // 2. Check if user was registered in local registry or Firestore
             const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
             const fallbackUid = `ph_${cleanHash}`;
 
-            // Check if user exists in local or Firestore
-            let matched = false;
-            const existingLocal = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
-            if (existingLocal && existingLocal.email === email) {
-                matched = true;
-                userUid = existingLocal.uid || fallbackUid;
+            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            const localUser = regUsers.find(u => u.email === email);
+
+            if (localUser) {
+                isRegistered = true;
+                if (localUser.passwordHash && localUser.passwordHash !== btoa(pass)) {
+                    showToast('Ghalat password darj kiya gaya hai!', 'error');
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                    return;
+                }
+                userUid = localUser.uid || fallbackUid;
+                authRecord = {
+                    name: localUser.ownerName || localUser.name,
+                    email: localUser.email,
+                    phone: localUser.phone || '',
+                    city: localUser.city || '',
+                    pharmacyName: localUser.pharmacyName || 'My Pharmacy',
+                    uid: userUid,
+                    loginMethod: 'email_password',
+                    isLiveSync: true
+                };
             } else {
+                // Check Firestore users collection to verify if registered
                 try {
                     const snap = await getDoc(doc(db, 'users', fallbackUid));
                     if (snap.exists()) {
                         const data = snap.data();
-                        if (data.passwordHash === btoa(pass)) {
-                            matched = true;
-                            userUid = fallbackUid;
+                        isRegistered = true;
+                        if (data.passwordHash && data.passwordHash !== btoa(pass)) {
+                            showToast('Ghalat password darj kiya gaya hai!', 'error');
+                            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                            return;
                         }
+                        userUid = fallbackUid;
+                        authRecord = {
+                            name: data.ownerName || data.name || email.split('@')[0],
+                            email: email,
+                            phone: data.phone || '',
+                            city: data.city || '',
+                            pharmacyName: data.pharmacyName || (email.split('@')[0].toUpperCase() + ' Pharmacy'),
+                            uid: userUid,
+                            loginMethod: 'email_password',
+                            isLiveSync: true
+                        };
                     }
-                } catch(eSnap) {}
-            }
-
-            if (!matched) {
-                if (authErr?.code === 'auth/wrong-password' || authErr?.code === 'auth/invalid-credential') {
-                    showToast('Ghalat password darj kiya gaya hai. Password bhool gaye hain toh OTP reset use karein.', 'error');
-                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
-                    return;
-                }
-                // Try anonymous authentication to ensure Firestore rules allow access
-                try {
-                    const anonResult = await signInAnonymously(auth);
-                    userUid = anonResult.user.uid;
-                } catch(eAnon) {
-                    userUid = fallbackUid;
-                }
+                } catch(eFirestore) {}
             }
         }
 
-        if (!userUid) {
-            const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-            userUid = `ph_${cleanHash}`;
+        // STRICT REGISTRATION ENFORCEMENT: Never allow unregistered accounts to log in!
+        if (!isRegistered || !userUid) {
+            showToast('Aapka account pehle se mojood nahi hai! Barah-e-karam pehle Sign Up karein.', 'error');
+            window.switchHubAuthTab('signup');
+            const suEmail = document.getElementById('auth-signup-email');
+            if (suEmail) suEmail.value = email;
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+            return;
         }
 
-        const config = window.getStoreConfig();
-        const pharmacyName = config.name && config.name !== 'Shahzad Medical Store' 
-            ? config.name 
-            : (email.split('@')[0].toUpperCase() + ' Pharmacy');
+        // Fetch Firestore profile if not loaded
+        if (!authRecord) {
+            try {
+                const snap = await getDoc(doc(db, 'users', userUid));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    authRecord = {
+                        name: data.ownerName || data.name || email.split('@')[0],
+                        email: email,
+                        phone: data.phone || '',
+                        city: data.city || '',
+                        pharmacyName: data.pharmacyName || (email.split('@')[0].toUpperCase() + ' Pharmacy'),
+                        uid: userUid,
+                        loginMethod: 'email_password',
+                        isLiveSync: true
+                    };
+                }
+            } catch(e) {}
+        }
 
-        const authRecord = {
-            name: config.ownerName || email.split('@')[0],
-            email: email,
-            phone: config.phone || '03001234567',
-            city: config.address || 'Pakistan',
-            pharmacyName: pharmacyName,
+        if (!authRecord) {
+            const config = window.getStoreConfig();
+            authRecord = {
+                name: config.ownerName || email.split('@')[0],
+                email: email,
+                phone: config.phone || '',
+                city: config.address || '',
+                pharmacyName: config.name || (email.split('@')[0].toUpperCase() + ' Pharmacy'),
+                uid: userUid,
+                loginMethod: 'email_password',
+                isLiveSync: true
+            };
+        }
+
+        authUser = {
             uid: userUid,
-            loginMethod: 'email_password',
-            isLiveSync: true
+            email: email,
+            displayName: authRecord.name
         };
-
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.removeItem('sm_user_mode');
 
-        // Register in Public Connected Network
-        try {
-            await setDoc(doc(db, 'pharmacies', userUid), {
-                name: pharmacyName,
-                ownerName: config.ownerName || authRecord.name,
-                city: config.address || 'Pakistan',
-                phone: config.phone || '03001234567',
-                email: email,
-                remarks: 'Verified Digital Pharma Live Member',
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
-        } catch(ePharm) {}
+        const config = window.getStoreConfig();
+        if (authRecord.pharmacyName) config.name = authRecord.pharmacyName;
+        if (authRecord.name) config.ownerName = authRecord.name;
+        if (authRecord.phone) config.phone = authRecord.phone;
+        if (authRecord.city) config.address = authRecord.city;
+        localStorage.setItem('sm_store_config', JSON.stringify(config));
 
-        // Backend network register
-        try {
-            await fetch('/api/network/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: pharmacyName,
-                    ownerName: config.ownerName || authRecord.name,
-                    city: config.address || 'Pakistan',
-                    phone: config.phone || '03001234567',
-                    email: email,
-                    remarks: 'Verified Digital Pharma Live Member'
-                })
-            });
-        } catch(eNet) {}
-
-        // Attach listeners
+        // Connect live listeners
         attachFirestoreSyncListeners(userUid);
 
         window.applyStoreIdentity();
         window.showHubActiveProfile();
+        showToast(`Kamyabi! Welcome back, ${authRecord.name || authRecord.pharmacyName}!`, 'success');
         window.refreshNetworkList();
         showToast(`Khush Amdeed! Aapki pharmacy (${email}) live connect ho gayi!`, 'success');
     } catch(err) {
