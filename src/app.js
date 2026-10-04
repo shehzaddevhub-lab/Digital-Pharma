@@ -603,38 +603,7 @@ export function extractSmartJson(text) {
 }
 window.extractSmartJson = extractSmartJson;
 
-// Convolution-based Unsharp Masking & Edge-Sharpening for low-contrast/dim camera images
-function applyImageSharpening(ctx, w, h) {
-    try {
-        const imgData = ctx.getImageData(0, 0, w, h);
-        const d = imgData.data;
-        const copy = new Uint8ClampedArray(d);
-        const weight = 0.32;
-        // Edge sharpening pass to crisp up faint doctor handwriting & thermal bill print
-        for (let y = 1; y < h - 1; y += 2) {
-            const rowOffset = y * w;
-            const upOffset = (y - 1) * w;
-            const downOffset = (y + 1) * w;
-            for (let x = 1; x < w - 1; x += 2) {
-                const idx = (rowOffset + x) * 4;
-                for (let c = 0; c < 3; c++) {
-                    const val = copy[idx + c];
-                    const up = copy[(upOffset + x) * 4 + c];
-                    const down = copy[(downOffset + x) * 4 + c];
-                    const left = copy[(rowOffset + (x - 1)) * 4 + c];
-                    const right = copy[(rowOffset + (x + 1)) * 4 + c];
-                    const laplacian = 4 * val - up - down - left - right;
-                    d[idx + c] = Math.min(255, Math.max(0, val + weight * laplacian));
-                }
-            }
-        }
-        ctx.putImageData(imgData, 0, 0);
-    } catch (e) {
-        // Fallback without canvas convolution
-    }
-}
-
-// Universal Orientation-Aware & High-Resolution Document Reader (Mobile & Desktop)
+// Universal High-Resolution Document & Handwriting Reader (Mobile & Desktop)
 export async function enhanceImageLikeCamScanner(file) {
     if (!file) throw new Error("Tasweer select nahi hui.");
 
@@ -649,12 +618,11 @@ export async function enhanceImageLikeCamScanner(file) {
     });
 
     try {
-        // Modern createImageBitmap natively auto-rotates EXIF orientation from mobile phone cameras
+        // Modern createImageBitmap natively handles EXIF orientation from mobile phone cameras
         if (typeof window.createImageBitmap === 'function') {
             try {
                 const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
-                // Optimal 1600px resolution preserves sharp handwriting while keeping payload under 350KB for fast mobile upload
-                const maxDim = 1600;
+                const maxDim = 1800;
                 let w = bitmap.width;
                 let h = bitmap.height;
                 if (w > maxDim || h > maxDim) {
@@ -671,39 +639,11 @@ export async function enhanceImageLikeCamScanner(file) {
                 canvas.height = h;
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, w, h);
-
-                    // First pass: Draw to sample luminance
                     ctx.drawImage(bitmap, 0, 0, w, h);
-                    let avgLum = 135;
-                    try {
-                        const sampleW = Math.min(w, 150);
-                        const sampleH = Math.min(h, 150);
-                        const pData = ctx.getImageData(0, 0, sampleW, sampleH).data;
-                        let sum = 0;
-                        for (let i = 0; i < pData.length; i += 16) {
-                            sum += (0.299 * pData[i] + 0.587 * pData[i+1] + 0.114 * pData[i+2]);
-                        }
-                        avgLum = sum / (pData.length / 16);
-                    } catch(eLum) {}
-
-                    // Clear and redraw with adaptive contrast & brightness boost for dark/dim mobile photos
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, w, h);
-                    if (avgLum < 95) {
-                        ctx.filter = 'contrast(1.36) brightness(1.36) saturate(1.08)';
-                    } else if (avgLum < 135) {
-                        ctx.filter = 'contrast(1.25) brightness(1.20) saturate(1.04)';
-                    } else {
-                        ctx.filter = 'contrast(1.15) brightness(1.06)';
-                    }
-
-                    ctx.drawImage(bitmap, 0, 0, w, h);
-                    ctx.filter = 'none';
-
-                    // Apply optical edge-sharpening pass
-                    applyImageSharpening(ctx, w, h);
 
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
                     bitmap.close?.();
@@ -720,7 +660,7 @@ export async function enhanceImageLikeCamScanner(file) {
             const objUrl = URL.createObjectURL(file);
             img.onload = () => {
                 URL.revokeObjectURL(objUrl);
-                const maxDim = 1600;
+                const maxDim = 1800;
                 let w = img.naturalWidth || img.width || 1200;
                 let h = img.naturalHeight || img.height || 1600;
 
@@ -743,13 +683,11 @@ export async function enhanceImageLikeCamScanner(file) {
                     return;
                 }
 
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, w, h);
-                ctx.filter = 'contrast(1.25) brightness(1.18)';
                 ctx.drawImage(img, 0, 0, w, h);
-                ctx.filter = 'none';
-
-                applyImageSharpening(ctx, w, h);
 
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
                 resolve(dataUrl.split(',')[1]);
@@ -760,15 +698,40 @@ export async function enhanceImageLikeCamScanner(file) {
             };
             img.src = objUrl;
         });
-    } catch(err) {
+    } catch (err) {
         console.warn("enhanceImageLikeCamScanner fallback:", err);
         return await readFileAsBase64();
     }
 }
 window.enhanceImageLikeCamScanner = enhanceImageLikeCamScanner;
 
-// Absolute filter against model refusal language so users never see "roshni mein dubara banao" or "unreadable"
-const PRESCRIPTION_REFUSAL_REGEX = /tasveer|tasvir|photo|image|roshni|dobara|dubara|wazeh|clear|blurry|dhundli|dhundla|bhejein|banao|bnaao|upload|camera|nahi parha|parha nahi|not readable|unreadable|illegible|bad lighting|lighting|kheenchain|khainchain|le kar|retake|re-take|cant read|cannot read|unable to read|dim light|dark|koshish|again|consult/i;
+// Absolute filter against model refusal language without rejecting real medicines
+function isModelRefusalText(text) {
+    if (!text || typeof text !== 'string') return false;
+    const s = text.trim().toLowerCase();
+    if (s.length < 20) return false;
+    return /tasveer.*(roshni|dubara|saf|wazeh|dhundli|dobara)|tasvir.*(roshni|dubara)|cannot read|unable to read|unreadable image|please (upload|take) a (clear|clearer)|retake the photo/i.test(s);
+}
+
+// Top App Reload / Live Refresh Webapp Button
+window.reloadAppLive = async function() {
+    const icon = document.getElementById('nav-reload-icon');
+    if (icon) {
+        icon.classList.add('animate-spin');
+    }
+    showToast('App taaza (refresh) ho rahi hai...', 'info');
+
+    try {
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+    } catch(e) {}
+
+    setTimeout(() => {
+        window.location.reload();
+    }, 250);
+};
 
 // Normalizes any prescription output format so mobile OCR never crashes
 function normalizePrescriptionData(parsed) {
@@ -791,22 +754,22 @@ function normalizePrescriptionData(parsed) {
     }
 
     let rawAdvice = String(parsed.advice || parsed.precautions || parsed.instructions || '');
-    if (!rawAdvice || PRESCRIPTION_REFUSAL_REGEX.test(rawAdvice)) {
+    if (!rawAdvice || isModelRefusalText(rawAdvice)) {
         rawAdvice = 'Dawai hidayat ke mutabiq waqt par lein. Thandi, tali hui aur khatti cheezon se mukammal parhez karein, saaf paani zyada piyen aur aaram karein.';
     }
 
     let rawSummary = String(parsed.treatmentSummary || parsed.summary || parsed.treatment || '');
-    if (!rawSummary || PRESCRIPTION_REFUSAL_REGEX.test(rawSummary)) {
+    if (!rawSummary || isModelRefusalText(rawSummary)) {
         rawSummary = 'Nuskha ke mutabiq adviyaat aur ilaj ki mukammal tafseelat darj hain.';
     }
 
     let rawDoctor = String(parsed.doctor || parsed.doctor_name || parsed.clinic || '');
-    if (!rawDoctor || PRESCRIPTION_REFUSAL_REGEX.test(rawDoctor) || /n\/a|not readable|unknown|mojood nahi/i.test(rawDoctor)) {
+    if (!rawDoctor || isModelRefusalText(rawDoctor) || /n\/a|not readable|unknown|mojood nahi/i.test(rawDoctor)) {
         rawDoctor = 'Doctor / Clinic Slip';
     }
 
     let rawPatient = String(parsed.patient || parsed.patient_name || '');
-    if (!rawPatient || PRESCRIPTION_REFUSAL_REGEX.test(rawPatient) || /n\/a|not readable|unknown|mojood nahi/i.test(rawPatient)) {
+    if (!rawPatient || isModelRefusalText(rawPatient) || /n\/a|not readable|unknown|mojood nahi/i.test(rawPatient)) {
         rawPatient = 'General Patient';
     }
 
@@ -814,19 +777,19 @@ function normalizePrescriptionData(parsed) {
         .filter(m => m && (m.name || m.medicine || m.brand))
         .filter(m => {
             const nameStr = String(m.name || m.medicine || m.brand || '');
-            return !PRESCRIPTION_REFUSAL_REGEX.test(nameStr);
+            return !isModelRefusalText(nameStr);
         })
         .map(m => ({
             name: String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim(),
             formula: String(m.formula || m.generic || m.salt || '').trim(),
             form: String(m.form || m.type || 'Goli (Tablet)').trim(),
-            timing: PRESCRIPTION_REFUSAL_REGEX.test(String(m.timing || '')) 
+            timing: isModelRefusalText(String(m.timing || '')) 
                 ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
                 : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
-            usage: PRESCRIPTION_REFUSAL_REGEX.test(String(m.usage || '')) 
+            usage: isModelRefusalText(String(m.usage || '')) 
                 ? 'Taza paani ke sath lein' 
                 : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
-            purpose: PRESCRIPTION_REFUSAL_REGEX.test(String(m.purpose || '')) 
+            purpose: isModelRefusalText(String(m.purpose || '')) 
                 ? 'Ilaj' 
                 : String(m.purpose || m.indication || m.use || 'Ilaj').trim()
         }));
@@ -857,8 +820,8 @@ function normalizeInvoiceItems(parsed) {
     } else if (parsed.data && typeof parsed.data === 'object') {
         return normalizeInvoiceItems(parsed.data);
     }
-    return list.filter(item => item && (item.name || item.item || item.description)).map(item => ({
-        name: item.name || item.item || item.description || 'Medicine',
+    return list.filter(item => item && (item.name || item.item || item.description) && !isModelRefusalText(String(item.name || item.item))).map(item => ({
+        name: String(item.name || item.item || item.description || 'Medicine').trim(),
         generic: item.generic || item.formula || '',
         batch: item.batch || item.batch_no || item.batchNumber || 'B-01',
         expiry: item.expiry || item.exp || '',
@@ -1845,19 +1808,16 @@ window.addEventListener('keydown', (e) => {
 });
 
 const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist and forensic prescription OCR reader.
-Your mission is to perform strict, accurate OCR on this doctor prescription slip or clinic pad.
-
-STRICT ZERO-HALLUCINATION & HONESTY MANDATE:
-1. STRICT OCR TRANSCRIBING: Transcribe ONLY the actual medicines visibly written on this specific slip. DO NOT GUESS, DO NOT INVENT, AND DO NOT ADD MEDICINES THAT ARE NOT WRITTEN ON THE PAPER.
-2. If 2 medicines are written, return only 2. If 5 are written, return 5.
-3. If no medicines can be deciphered or the image is not a prescription, return an empty array [] for "medicines". NEVER generate dummy, placeholder, or sample medicines like Panadol, Augmentin, Risek, etc.
-4. Convert medical timing abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-5. Never output refusal messages; always return valid JSON conforming to the schema:
+Your mission is to read doctor handwriting, clinic pads, hospital slips, and prescription slips.
+Use your pharmaceutical domain expertise to decipher doctor handwriting, brands, active generic salts, strengths (e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg), and dosage forms (Tab, Cap, Syp, Inj, Drop, Sachet).
+Decipher every prescribed medicine line visibly written under Rx.
+Translate dosage schedule abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
+Never output refusal notes; return valid JSON conforming to the schema:
 {
   "doctor": "Doctor or Clinic name from slip",
   "patient": "Patient name and details if visible",
-  "treatmentSummary": "Short treatment reason in Roman Urdu e.g. Bukhar aur infection ka ilaj",
-  "advice": "Precautions in Roman Urdu e.g. Tali hui aur thandi cheezon se parhez karein",
+  "treatmentSummary": "Short treatment reason in Roman Urdu if written",
+  "advice": "Precautions in Roman Urdu if written",
   "medicines": [
     {
       "name": "Exact brand name and strength written on slip",
@@ -1870,23 +1830,18 @@ STRICT ZERO-HALLUCINATION & HONESTY MANDATE:
   ]
 }`;
 
-const INVOICE_PROMPT = `You are a specialist pharmacy wholesale bill and distributor invoice OCR reader.
-Carefully examine the image to detect REAL line items printed or written on this invoice/delivery slip.
-DO NOT INVENT or hallucinate fake medicines. Extract ONLY what is visible on the bill.
-If no invoice rows or medicines are visible, return an empty array [].
-
-For each real item found, extract:
+const INVOICE_PROMPT = `You are an expert pharmacy wholesale bill and distributor invoice OCR reader.
+Examine this invoice, delivery challan, or receipt slip. Read all table rows and medicine line items.
+Extract:
 - name: brand name and strength as printed on the bill
 - generic: generic formula if visible, else empty string
 - batch: batch number if visible, else empty string
-- expiry: expiry date in YYYY-MM-DD if visible, else empty string
+- expiry: expiry date in YYYY-MM if visible, else empty string
 - packSize: pack size e.g. "20", "2x7", "10x10"
 - qty: quantity of packs invoiced (number)
-- buyRate: wholesale buy rate per pack (number)
+- buyRate: wholesale buy rate TP per pack (number)
 - distributor: distributor/supplier name from bill header if visible
-
-STRICT RULE: Leave 'mrp' as an empty string ("").
-Return a JSON array of objects.`;
+Return a JSON array of objects or object with items array.`;
 
 const MARGIN_PROMPT = `You are a specialist pharmacy wholesale trade margin and bonus scheme auditor.
 Scan this distributor invoice or scheme slip to extract ONLY REAL items present on the paper.
@@ -3912,8 +3867,79 @@ function renderDashboardMetrics() {
 
     renderExpiryAlertSection();
 
-    // 2nd Section: Dedicated Dashboard Financial & Scenario Graph Box
-    renderDashboardGraphBox();
+    // 2nd Section: Recent Invoices List on Dashboard (Graph moved into Today Sale 2nd Tab)
+    renderDashboardRecentInvoices();
+}
+
+// Renders the live Recent Customer Invoices list on Dashboard
+function renderDashboardRecentInvoices() {
+    const listEl = document.getElementById('dash-recent-invoices-list');
+    if (!listEl) return;
+
+    if (!sales || sales.length === 0) {
+        listEl.innerHTML = `
+            <div class="py-8 text-center space-y-2">
+                <div class="w-10 h-10 mx-auto rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <i data-lucide="receipt" class="w-5 h-5"></i>
+                </div>
+                <strong class="text-xs font-bold text-slate-700 block">Aaj abhi tak koi customer bill nahi bana</strong>
+                <p class="text-[11px] text-slate-400 max-w-xs mx-auto">
+                    POS Counter se naya bill banayein, customer aur sales ka record yahan show hoga.
+                </p>
+                <button type="button" onclick="window.switchTab('pos')" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> Open POS Counter
+                </button>
+            </div>
+        `;
+        safeCreateIcons();
+        return;
+    }
+
+    // Sort descending by timestamp, display up to 10 latest bills
+    const sorted = [...sales].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10);
+
+    listEl.innerHTML = sorted.map(s => {
+        const fin = getSaleFinancials(s);
+        const timeStr = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const dateStr = new Date(s.timestamp).toLocaleDateString([], { day: 'numeric', month: 'short' });
+        const itemCount = Array.isArray(s.items) ? s.items.length : 1;
+
+        let payBadge = 'bg-emerald-100 text-emerald-800';
+        if ((s.paymentMode || '').toLowerCase() === 'credit') payBadge = 'bg-amber-100 text-amber-800';
+        if ((s.paymentMode || '').toLowerCase() === 'online') payBadge = 'bg-blue-100 text-blue-800';
+
+        const invNum = s.invoiceId ? String(s.invoiceId).slice(-4) : 'INV';
+
+        return `
+            <div class="py-2 px-1 flex items-center justify-between text-xs hover:bg-slate-50 rounded-xl transition gap-2 group border-b border-slate-50 last:border-b-0">
+                <div class="flex items-center gap-2 min-w-0">
+                    <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-mono font-black text-[10px] border border-blue-100">
+                        #${invNum}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <strong class="text-slate-800 text-xs font-bold truncate">${s.customer || 'Walk-in Customer'}</strong>
+                            <span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold ${payBadge}">${s.paymentMode || 'Cash'}</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 block truncate">
+                            ${dateStr} • ${timeStr} • ${itemCount} Item${itemCount > 1 ? 's' : ''}
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <div class="text-right">
+                        <strong class="text-xs sm:text-sm font-black text-slate-900 block">Rs. ${(Number(s.netTotal) || 0).toLocaleString('en-PK', { maximumFractionDigits: 1 })}</strong>
+                        ${fin.profit > 0 ? `<span class="text-[9px] font-extrabold text-emerald-600 block leading-tight">+Rs. ${fin.profit.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</span>` : ''}
+                    </div>
+                    <button type="button" onclick="window.openSaleEditModal('${s.id}')" class="p-1.5 bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-slate-600 rounded-lg transition active:scale-95" title="View / Print Bill">
+                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    safeCreateIcons();
 }
 
 let currentDashboardGraphPeriod = 'today';
@@ -4515,8 +4541,43 @@ function generateAnalyticsGraph(period, filteredSales) {
 
     const maxVal = Math.max(50, ...buckets.map(b => Math.max(b.sale, b.cost)));
 
+    let totalPeriodSale = 0;
+    let totalPeriodCost = 0;
+    filteredSales.forEach(s => {
+        const fin = getSaleFinancials(s);
+        totalPeriodSale += fin.saleAmount;
+        totalPeriodCost += fin.saleCost;
+    });
+    const totalPeriodProfit = Math.max(0, totalPeriodSale - totalPeriodCost);
+    const periodMarginPct = totalPeriodSale > 0 ? ((totalPeriodProfit / totalPeriodSale) * 100).toFixed(1) : '0.0';
+    const currentStockTPValue = medicines.reduce((sum, m) => sum + ((Number(m.buyRate) || 0) * (Number(m.stock) || 0)), 0);
+
     container.innerHTML = `
         <div class="w-full max-w-full flex flex-col gap-3 box-border">
+            <!-- Scenario Overview Cards directly inside Graph Section -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-0.5">
+                    <span class="text-[10px] font-bold text-emerald-800 block">Total Sale (فروخت)</span>
+                    <strong class="text-sm sm:text-base font-black text-emerald-950 block">Rs. ${totalPeriodSale.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</strong>
+                    <span class="text-[9px] text-emerald-700 block">${filteredSales.length} Invoices</span>
+                </div>
+                <div class="p-2.5 bg-blue-50 border border-blue-200 rounded-xl space-y-0.5">
+                    <span class="text-[10px] font-bold text-blue-800 block">Kharid TP Cost (سرمایہ)</span>
+                    <strong class="text-sm sm:text-base font-black text-blue-950 block">Rs. ${totalPeriodCost.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</strong>
+                    <span class="text-[9px] text-blue-700 block">Sold Stock Cost</span>
+                </div>
+                <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl space-y-0.5">
+                    <span class="text-[10px] font-bold text-amber-800 block">Net Profit (منافع)</span>
+                    <strong class="text-sm sm:text-base font-black text-amber-950 block">Rs. ${totalPeriodProfit.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</strong>
+                    <span class="text-[9px] text-amber-700 font-extrabold block">Margin: ${periodMarginPct}%</span>
+                </div>
+                <div class="p-2.5 bg-slate-900 text-white rounded-xl space-y-0.5 border border-slate-800">
+                    <span class="text-[10px] font-bold text-slate-300 block">Current Stock TP Value</span>
+                    <strong class="text-sm sm:text-base font-black text-amber-400 block">Rs. ${currentStockTPValue.toLocaleString('en-PK', { maximumFractionDigits: 1 })}</strong>
+                    <span class="text-[9px] text-slate-400 block">Mojood Sarmaya</span>
+                </div>
+            </div>
+
             <!-- Visual Dual Bar Chart (Mobile Responsive with values on top) -->
             <div class="relative w-full bg-slate-50/70 rounded-2xl p-3 border border-slate-200">
                 <!-- Y-Axis Max guide -->
@@ -4710,11 +4771,44 @@ window.applySpecificMonthAnalytics = function() {
     window.renderSalesAnalytics();
 };
 
-window.openSalesAnalyticsModal = function(period = 'today') {
+let currentSaleAnalyticsModalTab = 'data';
+
+window.switchSaleAnalyticsModalTab = function(mode) {
+    currentSaleAnalyticsModalTab = mode;
+    const btnData = document.getElementById('sale-modal-tab-btn-data');
+    const btnGraph = document.getElementById('sale-modal-tab-btn-graph');
+    const contentData = document.getElementById('sale-modal-tab-data-content');
+    const contentGraph = document.getElementById('sale-modal-tab-graph-content');
+
+    if (mode === 'data') {
+        if (btnData) {
+            btnData.className = 'flex-1 py-2 px-3 rounded-xl transition bg-emerald-600 text-white shadow-xs flex items-center justify-center gap-1.5 cursor-pointer font-bold';
+        }
+        if (btnGraph) {
+            btnGraph.className = 'flex-1 py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5 cursor-pointer font-bold';
+        }
+        if (contentData) contentData.classList.remove('hidden');
+        if (contentGraph) contentGraph.classList.add('hidden');
+    } else {
+        if (btnGraph) {
+            btnGraph.className = 'flex-1 py-2 px-3 rounded-xl transition bg-emerald-600 text-white shadow-xs flex items-center justify-center gap-1.5 cursor-pointer font-bold';
+        }
+        if (btnData) {
+            btnData.className = 'flex-1 py-2 px-3 rounded-xl transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5 cursor-pointer font-bold';
+        }
+        if (contentGraph) contentGraph.classList.remove('hidden');
+        if (contentData) contentData.classList.add('hidden');
+    }
+
+    window.renderSalesAnalytics();
+    safeCreateIcons();
+};
+
+window.openSalesAnalyticsModal = function(period = 'today', tab = 'data') {
     currentAnalyticsPeriod = period;
     document.getElementById('sales-analytics-modal')?.classList.remove('hidden');
     syncModalScrollLock();
-    window.renderSalesAnalytics();
+    window.switchSaleAnalyticsModalTab(tab === 'graph' ? 'graph' : 'data');
     safeCreateIcons();
 };
 
