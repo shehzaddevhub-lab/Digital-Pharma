@@ -421,12 +421,78 @@ window.addEventListener('beforeinstallprompt', (e) => {
     updateInstallUiState();
 });
 
-// Unregister any legacy Service Workers to prevent iframe cache lockouts
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then((regs) => {
-        for (let r of regs) { r.unregister(); }
+// Live PWA Auto-Updater & Service Worker Registration
+function initPwaLiveAutoUpdater() {
+    if (!('serviceWorker' in navigator)) return;
+
+    // Register modern Service Worker with cache-busting
+    navigator.serviceWorker.register('/sw.js?v=' + Date.now(), { updateViaCache: 'none' })
+        .then((reg) => {
+            // Listen for waiting or newly installed worker
+            reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                if (!newWorker) return;
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                });
+            });
+
+            // Periodic check for SW update (every 45s)
+            setInterval(() => {
+                reg.update().catch(() => {});
+            }, 45000);
+
+            // Check on app resume or focus
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    reg.update().catch(() => {});
+                    checkForAppVersionUpdate();
+                }
+            });
+        })
+        .catch((err) => {
+            console.warn('SW registration note:', err);
+        });
+
+    // Auto-reload when new controller takes over
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+        }
     });
 }
+
+// Live App Version Poller (Auto-updates without uninstalling)
+async function checkForAppVersionUpdate() {
+    try {
+        const res = await fetch('/api/app-version', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.version) {
+            const currentSaved = localStorage.getItem('dp_installed_app_version');
+            if (!currentSaved) {
+                localStorage.setItem('dp_installed_app_version', data.version);
+            } else if (currentSaved !== data.version) {
+                localStorage.setItem('dp_installed_app_version', data.version);
+                showToast('Naya App Update dastyab hai! Live update ho raha hai...', 'info');
+                if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                }
+                setTimeout(() => {
+                    window.location.reload();
+                }, 800);
+            }
+        }
+    } catch(e) {}
+}
+
+initPwaLiveAutoUpdater();
+setInterval(checkForAppVersionUpdate, 30000);
 
 window.openAppInstallModal = function() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
@@ -863,16 +929,17 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         window.location.hostname === '127.0.0.1'
     );
 
-    // Build ordered list of candidate URLs
+    // Build ordered list of candidate URLs - Prioritizing local origin
     const targetUrls = [];
-    if (isLocalNodeHost) {
+    if (typeof window !== 'undefined' && window.location.origin) {
+        targetUrls.push(`${window.location.origin}${endpoint}`);
         targetUrls.push(endpoint);
     }
     for (const base of LIVE_BACKEND_URLS) {
-        targetUrls.push(`${base}${endpoint}`);
-    }
-    if (!isLocalNodeHost) {
-        targetUrls.push(endpoint);
+        const fullUrl = `${base}${endpoint}`;
+        if (!targetUrls.includes(fullUrl)) {
+            targetUrls.push(fullUrl);
+        }
     }
 
     for (const url of targetUrls) {
@@ -1433,6 +1500,7 @@ window.switchCalculatorTab = function(type) {
         secSimple?.classList.remove('hidden');
         setActive(btnSimple);
         window.updateSimpleCalcDisplay();
+        window.scrollTo({ top: 0, behavior: 'instant' });
     } else if (type === 'bonus') {
         marginBanner?.classList.remove('hidden');
         secBonus?.classList.remove('hidden');
@@ -1887,7 +1955,7 @@ window.handlePrescriptionScan = async function(event) {
                         <div class="w-10 h-10 mx-auto rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
                             <i data-lucide="scan" class="w-5 h-5"></i>
                         </div>
-                        <strong class="text-xs sm:text-sm font-black text-slate-800 block">Tasveer se koi dawai detect nahi hui</strong>
+                        <strong class="text-xs sm:text-sm font-black text-slate-800 block">Dawai ki tafseelat detect nahi hui</strong>
                         <p class="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
                             Prescription slip upload karein ya POS Counter par search bar se direct dawai select karein.
                         </p>
@@ -1940,7 +2008,7 @@ window.handlePrescriptionScan = async function(event) {
         if (parsed.medicines.length > 0) {
             showToast(`${parsed.medicines.length} medicines detect ho gayin!`, 'success');
         } else {
-            showToast('Tasveer se koi dawai detect nahi hui.', 'info');
+            showToast('Slip se koi dawai detect nahi hui.', 'info');
         }
     } catch(err) {
         console.error('Prescription OCR Error:', err);
@@ -3844,51 +3912,300 @@ function renderDashboardMetrics() {
 
     renderExpiryAlertSection();
 
-    // 2nd Section: Sale, Purchase & Investment Financial Overview (Hidden depth graph behind dedicated button!)
-    const dashGraphContainer = document.getElementById('dash-today-graph-container');
-    if (dashGraphContainer) {
-        let todayCost = 0;
-        todaySales.forEach(s => {
-            const fin = getSaleFinancials(s);
-            todayCost += fin.saleCost;
-        });
-        const todayProfit = Math.max(0, todayTotal - todayCost);
-        const todayMargin = todayTotal > 0 ? ((todayProfit / todayTotal) * 100).toFixed(1) : '0.0';
+    // 2nd Section: Dedicated Dashboard Financial & Scenario Graph Box
+    renderDashboardGraphBox();
+}
 
-        dashGraphContainer.innerHTML = `
-            <!-- Live Financial Overview Chips -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-                <div class="p-2.5 bg-emerald-50 rounded-2xl border border-emerald-200">
-                    <span class="text-[9px] uppercase font-bold text-emerald-800 block">Today Sale</span>
-                    <strong class="text-sm font-black text-emerald-950">Rs. ${todayTotal.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
-                    <span class="text-[9px] text-emerald-700 font-semibold block mt-0.5">${todaySales.length} Total Bills</span>
+let currentDashboardGraphPeriod = 'today';
+
+window.setDashboardGraphPeriod = function(period) {
+    currentDashboardGraphPeriod = period;
+
+    ['today', 'yesterday', 'week', 'month', 'year', 'select_month', 'custom'].forEach(p => {
+        const btn = document.getElementById(`dash-btn-${p}`);
+        if (btn) {
+            if (p === period) {
+                btn.className = 'flex-1 min-w-[50px] py-1.5 px-1.5 rounded-lg transition bg-emerald-600 text-white shadow-2xs font-bold';
+            } else {
+                btn.className = 'flex-1 min-w-[50px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 font-bold';
+            }
+        }
+    });
+
+    const monthBar = document.getElementById('dash-graph-month-bar');
+    if (monthBar) {
+        if (period === 'select_month') {
+            monthBar.classList.remove('hidden');
+            const inp = document.getElementById('dash-graph-specific-month');
+            if (inp && !inp.value) {
+                const now = new Date();
+                inp.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            }
+        } else {
+            monthBar.classList.add('hidden');
+        }
+    }
+
+    const customBar = document.getElementById('dash-graph-custom-bar');
+    if (customBar) {
+        if (period === 'custom') {
+            customBar.classList.remove('hidden');
+            const startInp = document.getElementById('dash-graph-start-date');
+            const endInp = document.getElementById('dash-graph-end-date');
+            const todayIso = new Date().toISOString().split('T')[0];
+            if (startInp && !startInp.value) startInp.value = todayIso;
+            if (endInp && !endInp.value) endInp.value = todayIso;
+        } else {
+            customBar.classList.add('hidden');
+        }
+    }
+
+    const labelMap = {
+        'today': 'Today (Aaj)',
+        'yesterday': 'Yesterday (Kal)',
+        'week': 'This Week (Hafta)',
+        'month': 'This Month (Mahina)',
+        'year': 'This Year (Saal)',
+        'select_month': 'Selected Month',
+        'custom': 'Custom Date'
+    };
+    const activeLabelEl = document.getElementById('dash-graph-active-label');
+    if (activeLabelEl) activeLabelEl.innerText = labelMap[period] || period;
+
+    renderDashboardGraphBox();
+};
+
+window.applyDashboardSpecificMonth = function() {
+    renderDashboardGraphBox();
+};
+
+window.applyDashboardCustomDate = function() {
+    renderDashboardGraphBox();
+};
+
+function renderDashboardGraphBox() {
+    const container = document.getElementById('dash-today-graph-container');
+    if (!container) return;
+
+    const period = currentDashboardGraphPeriod || 'today';
+    const filteredSales = getPeriodSales(period);
+
+    let totalSale = 0;
+    let totalCost = 0;
+    filteredSales.forEach(s => {
+        const fin = getSaleFinancials(s);
+        totalSale += fin.saleAmount;
+        totalCost += fin.saleCost;
+    });
+
+    const totalProfit = Math.max(0, totalSale - totalCost);
+    const marginPct = totalSale > 0 ? ((totalProfit / totalSale) * 100).toFixed(1) : '0.0';
+    const stockCost = medicines.reduce((sum, m) => sum + ((Number(m.buyRate) || 0) * (Number(m.stock) || 0)), 0);
+
+    // Calculate dynamic time buckets for interval chart
+    let buckets = [];
+    if (period === 'today' || period === 'yesterday') {
+        buckets = [
+            { label: '08-11h', fullLabel: '08:00 - 11:00', startH: 8, endH: 11, sale: 0, cost: 0 },
+            { label: '11-14h', fullLabel: '11:00 - 14:00', startH: 11, endH: 14, sale: 0, cost: 0 },
+            { label: '14-17h', fullLabel: '14:00 - 17:00', startH: 14, endH: 17, sale: 0, cost: 0 },
+            { label: '17-20h', fullLabel: '17:00 - 20:00', startH: 17, endH: 20, sale: 0, cost: 0 },
+            { label: '20-23h', fullLabel: '20:00 - 23:00', startH: 20, endH: 23, sale: 0, cost: 0 },
+            { label: 'Night', fullLabel: 'Night / Early', startH: 23, endH: 8, sale: 0, cost: 0 }
+        ];
+        filteredSales.forEach(s => {
+            const h = new Date(s.timestamp).getHours();
+            const fin = getSaleFinancials(s);
+            const b = buckets.find(bk => (bk.startH < bk.endH ? (h >= bk.startH && h < bk.endH) : (h >= bk.startH || h < bk.endH)));
+            if (b) {
+                b.sale += fin.saleAmount;
+                b.cost += fin.saleCost;
+            } else if (buckets[5]) {
+                buckets[5].sale += fin.saleAmount;
+                buckets[5].cost += fin.saleCost;
+            }
+        });
+    } else if (period === 'week') {
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        buckets = days.map((d, i) => ({ label: d, fullLabel: d, dayIdx: i, sale: 0, cost: 0 }));
+        filteredSales.forEach(s => {
+            const d = new Date(s.timestamp);
+            const dIdx = (d.getDay() + 6) % 7;
+            const fin = getSaleFinancials(s);
+            if (buckets[dIdx]) {
+                buckets[dIdx].sale += fin.saleAmount;
+                buckets[dIdx].cost += fin.saleCost;
+            }
+        });
+    } else if (period === 'month' || period === 'select_month') {
+        buckets = [
+            { label: 'W1 (1-7)', fullLabel: 'Days 1-7', startD: 1, endD: 7, sale: 0, cost: 0 },
+            { label: 'W2 (8-14)', fullLabel: 'Days 8-14', startD: 8, endD: 14, sale: 0, cost: 0 },
+            { label: 'W3 (15-21)', fullLabel: 'Days 15-21', startD: 15, endD: 21, sale: 0, cost: 0 },
+            { label: 'W4 (22-28)', fullLabel: 'Days 22-28', startD: 22, endD: 28, sale: 0, cost: 0 },
+            { label: 'W5 (29+)', fullLabel: 'Days 29-31', startD: 29, endD: 31, sale: 0, cost: 0 }
+        ];
+        filteredSales.forEach(s => {
+            const d = new Date(s.timestamp).getDate();
+            const fin = getSaleFinancials(s);
+            const b = buckets.find(bk => d >= bk.startD && d <= bk.endD);
+            if (b) {
+                b.sale += fin.saleAmount;
+                b.cost += fin.saleCost;
+            }
+        });
+    } else if (period === 'year') {
+        buckets = [
+            { label: 'Q1', fullLabel: 'Quarter 1 (Jan-Mar)', qIdx: 0, sale: 0, cost: 0 },
+            { label: 'Q2', fullLabel: 'Quarter 2 (Apr-Jun)', qIdx: 1, sale: 0, cost: 0 },
+            { label: 'Q3', fullLabel: 'Quarter 3 (Jul-Sep)', qIdx: 2, sale: 0, cost: 0 },
+            { label: 'Q4', fullLabel: 'Quarter 4 (Oct-Dec)', qIdx: 3, sale: 0, cost: 0 }
+        ];
+        filteredSales.forEach(s => {
+            const q = Math.floor(new Date(s.timestamp).getMonth() / 3);
+            const fin = getSaleFinancials(s);
+            if (buckets[q]) {
+                buckets[q].sale += fin.saleAmount;
+                buckets[q].cost += fin.saleCost;
+            }
+        });
+    } else {
+        // Custom
+        buckets = [
+            { label: 'Part 1', fullLabel: 'First Half', sale: 0, cost: 0 },
+            { label: 'Part 2', fullLabel: 'Second Half', sale: 0, cost: 0 }
+        ];
+        const half = Math.floor(filteredSales.length / 2);
+        filteredSales.forEach((s, idx) => {
+            const fin = getSaleFinancials(s);
+            if (idx < half) {
+                buckets[0].sale += fin.saleAmount;
+                buckets[0].cost += fin.saleCost;
+            } else {
+                buckets[1].sale += fin.saleAmount;
+                buckets[1].cost += fin.saleCost;
+            }
+        });
+    }
+
+    // Proportional Heights for 4 Core Scenario Pillar Bars (Sale, Purchase, Profit, Investment)
+    const maxScenarioVal = Math.max(100, totalSale, totalCost, totalProfit, stockCost);
+    const saleBarHeight = Math.max(8, Math.round((totalSale / maxScenarioVal) * 85));
+    const costBarHeight = Math.max(8, Math.round((totalCost / maxScenarioVal) * 85));
+    const profitBarHeight = Math.max(8, Math.round((totalProfit / maxScenarioVal) * 85));
+    const stockBarHeight = Math.max(8, Math.round((stockCost / maxScenarioVal) * 85));
+
+    // Timeline Max
+    const maxTimelineVal = Math.max(50, ...buckets.map(b => Math.max(b.sale, b.cost)));
+
+    container.innerHTML = `
+        <div class="w-full max-w-full flex flex-col gap-3.5 box-border overflow-hidden">
+            <!-- 1. Four Pillar Financial Scenario Graph (Sale vs Purchase vs Profit vs Investment) -->
+            <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 rounded-2xl p-3 sm:p-4 text-white shadow-md border border-slate-700/60 w-full max-w-full overflow-hidden">
+                <div class="flex items-center justify-between border-b border-slate-700/80 pb-2 mb-2.5">
+                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-emerald-400"></i>
+                        <span>Scenario Graph Comparison</span>
+                    </span>
+                    <span class="text-[9px] font-bold bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full border border-slate-700">Margin: ${marginPct}%</span>
                 </div>
-                <div class="p-2.5 bg-blue-50 rounded-2xl border border-blue-200">
-                    <span class="text-[9px] uppercase font-bold text-blue-800 block">Kharid TP Sarmaya</span>
-                    <strong class="text-sm font-black text-blue-950">Rs. ${todayCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
-                    <span class="text-[9px] text-blue-700 font-semibold block mt-0.5">Sold Stock Cost</span>
-                </div>
-                <div class="p-2.5 bg-amber-50 rounded-2xl border border-amber-200">
-                    <span class="text-[9px] uppercase font-bold text-amber-800 block">Net Munafa</span>
-                    <strong class="text-sm font-black text-amber-950">Rs. ${todayProfit.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
-                    <span class="text-[9px] font-extrabold text-amber-700 block mt-0.5">Margin: ${todayMargin}%</span>
-                </div>
-                <div class="p-2.5 bg-slate-900 text-white rounded-2xl border border-slate-800">
-                    <span class="text-[9px] uppercase font-bold text-slate-300 block">Inventory Sarmaya</span>
-                    <strong class="text-sm font-black text-amber-400">Rs. ${stockCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
-                    <span class="text-[9px] text-slate-400 font-semibold block mt-0.5">Dukan Total Stock</span>
+
+                <!-- 4 Visual Vertical Bars Side-by-Side (Mobile Fit) -->
+                <div class="h-[125px] w-full flex items-end justify-between gap-1.5 sm:gap-3 px-1">
+                    <!-- Pillar 1: Total Sale -->
+                    <div class="flex-1 min-w-0 flex flex-col items-center justify-end h-full group cursor-pointer" title="Total Sale: Rs. ${totalSale.toLocaleString('en-PK')}">
+                        <span class="text-[9px] sm:text-[10px] font-black text-emerald-400 truncate w-full text-center mb-1">
+                            ${totalSale >= 1000 ? 'Rs ' + (totalSale/1000).toFixed(1) + 'k' : 'Rs ' + Math.round(totalSale)}
+                        </span>
+                        <div class="w-full max-w-[36px] bg-gradient-to-t from-emerald-600 via-emerald-500 to-emerald-400 rounded-t-lg transition-all duration-300 shadow-sm group-hover:brightness-125" style="height: ${saleBarHeight}px;"></div>
+                        <span class="text-[9px] sm:text-[10px] font-bold text-emerald-200 mt-1.5 truncate text-center block">Sale</span>
+                    </div>
+
+                    <!-- Pillar 2: Purchase Cost (Kharidari) -->
+                    <div class="flex-1 min-w-0 flex flex-col items-center justify-end h-full group cursor-pointer" title="Kharidari Cost: Rs. ${totalCost.toLocaleString('en-PK')}">
+                        <span class="text-[9px] sm:text-[10px] font-black text-blue-400 truncate w-full text-center mb-1">
+                            ${totalCost >= 1000 ? 'Rs ' + (totalCost/1000).toFixed(1) + 'k' : 'Rs ' + Math.round(totalCost)}
+                        </span>
+                        <div class="w-full max-w-[36px] bg-gradient-to-t from-blue-600 via-indigo-500 to-sky-400 rounded-t-lg transition-all duration-300 shadow-sm group-hover:brightness-125" style="height: ${costBarHeight}px;"></div>
+                        <span class="text-[9px] sm:text-[10px] font-bold text-blue-200 mt-1.5 truncate text-center block">Kharid</span>
+                    </div>
+
+                    <!-- Pillar 3: Net Profit (Munafa) -->
+                    <div class="flex-1 min-w-0 flex flex-col items-center justify-end h-full group cursor-pointer" title="Net Munafa: Rs. ${totalProfit.toLocaleString('en-PK')}">
+                        <span class="text-[9px] sm:text-[10px] font-black text-amber-400 truncate w-full text-center mb-1">
+                            ${totalProfit >= 1000 ? 'Rs ' + (totalProfit/1000).toFixed(1) + 'k' : 'Rs ' + Math.round(totalProfit)}
+                        </span>
+                        <div class="w-full max-w-[36px] bg-gradient-to-t from-amber-600 via-yellow-500 to-amber-300 rounded-t-lg transition-all duration-300 shadow-sm group-hover:brightness-125" style="height: ${profitBarHeight}px;"></div>
+                        <span class="text-[9px] sm:text-[10px] font-bold text-amber-200 mt-1.5 truncate text-center block">Profit</span>
+                    </div>
+
+                    <!-- Pillar 4: Stock Investment (Sarmaya) -->
+                    <div class="flex-1 min-w-0 flex flex-col items-center justify-end h-full group cursor-pointer" title="Total Stock Sarmaya: Rs. ${stockCost.toLocaleString('en-PK')}">
+                        <span class="text-[9px] sm:text-[10px] font-black text-purple-300 truncate w-full text-center mb-1">
+                            ${stockCost >= 1000 ? 'Rs ' + (stockCost/1000).toFixed(1) + 'k' : 'Rs ' + Math.round(stockCost)}
+                        </span>
+                        <div class="w-full max-w-[36px] bg-gradient-to-t from-purple-700 via-fuchsia-600 to-pink-400 rounded-t-lg transition-all duration-300 shadow-sm group-hover:brightness-125" style="height: ${stockBarHeight}px;"></div>
+                        <span class="text-[9px] sm:text-[10px] font-bold text-purple-200 mt-1.5 truncate text-center block">Sarmaya</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Dedicated Deep Graph Action Button (Clean external trigger) -->
-            <button type="button" onclick="window.openSalesAnalyticsModal('today', 'sale')" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold rounded-2xl shadow text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer border border-emerald-500/30">
-                <i data-lucide="bar-chart-3" class="w-4 h-4 text-emerald-200"></i>
-                <span>Sale, Purchase & Investment Graph Depth (گراف تفصیلی جائزہ)</span>
-                <i data-lucide="chevron-right" class="w-4 h-4 text-emerald-200"></i>
-            </button>
-        `;
-        safeCreateIcons();
-    }
+            <!-- 2. Timeline Breakdown Dual-Bar Graph (Sale & Purchase over time) -->
+            <div class="bg-slate-50 rounded-2xl p-3 border border-slate-200 w-full max-w-full overflow-hidden">
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-500 mb-2 border-b border-dashed border-slate-200 pb-1">
+                    <span class="flex items-center gap-2">
+                        <span class="flex items-center gap-1 text-emerald-700"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Farokht</span>
+                        <span class="flex items-center gap-1 text-blue-700"><span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span> Kharid</span>
+                    </span>
+                    <span>Max: Rs. ${maxTimelineVal.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</span>
+                </div>
+
+                <div class="h-[95px] w-full flex items-end justify-between gap-1 sm:gap-2 px-0.5">
+                    ${buckets.map(b => {
+                        const sH = Math.max(3, Math.round((b.sale / maxTimelineVal) * 65));
+                        const cH = Math.max(3, Math.round((b.cost / maxTimelineVal) * 65));
+                        const valTxt = b.sale > 0 ? (b.sale >= 1000 ? (b.sale/1000).toFixed(1) + 'k' : Math.round(b.sale)) : '';
+                        return `
+                            <div class="flex-1 min-w-0 flex flex-col items-center justify-end h-full group relative cursor-pointer">
+                                <div class="text-[8px] font-black text-emerald-800 text-center truncate w-full h-3 mb-0.5">${valTxt}</div>
+                                <div class="w-full flex items-end justify-center gap-0.5 h-[65px]">
+                                    <div class="flex-1 max-w-[12px] sm:max-w-[16px] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-sm shadow-2xs" style="height: ${sH}px;" title="Sale: Rs. ${b.sale}"></div>
+                                    <div class="flex-1 max-w-[12px] sm:max-w-[16px] bg-gradient-to-t from-blue-600 to-indigo-400 rounded-t-sm shadow-2xs" style="height: ${cH}px;" title="Kharid: Rs. ${b.cost}"></div>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-bold text-slate-500 mt-1 truncate w-full text-center block">${b.label}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+
+            <!-- 3. Key Financial Summary Chips (Sale, Kharid, Profit, Stock Investment) -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center text-xs">
+                <div class="p-2 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <span class="text-[9px] uppercase font-bold text-emerald-800 block">Total Sale</span>
+                    <strong class="text-xs sm:text-sm font-black text-emerald-950">Rs. ${totalSale.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[8px] text-emerald-700 font-semibold block mt-0.5">${filteredSales.length} Invoices</span>
+                </div>
+                <div class="p-2 bg-blue-50 rounded-xl border border-blue-200">
+                    <span class="text-[9px] uppercase font-bold text-blue-800 block">Kharid Cost</span>
+                    <strong class="text-xs sm:text-sm font-black text-blue-950">Rs. ${totalCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[8px] text-blue-700 font-semibold block mt-0.5">Sold Cost TP</span>
+                </div>
+                <div class="p-2 bg-amber-50 rounded-xl border border-amber-200">
+                    <span class="text-[9px] uppercase font-bold text-amber-800 block">Net Profit</span>
+                    <strong class="text-xs sm:text-sm font-black text-amber-950">Rs. ${totalProfit.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[8px] font-extrabold text-amber-700 block mt-0.5">Margin: ${marginPct}%</span>
+                </div>
+                <div class="p-2 bg-purple-50 rounded-xl border border-purple-200">
+                    <span class="text-[9px] uppercase font-bold text-purple-800 block">Stock Sarmaya</span>
+                    <strong class="text-xs sm:text-sm font-black text-purple-950">Rs. ${stockCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[8px] text-purple-700 font-semibold block mt-0.5">Total Inventory</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    safeCreateIcons();
 }
 
 window.filterLowStockInventory = function() {
@@ -4016,7 +4333,7 @@ function getPeriodSales(period) {
         } else if (period === 'month') {
             return sDate >= monthStart;
         } else if (period === 'select_month') {
-            const chosen = document.getElementById('an-specific-month')?.value;
+            const chosen = document.getElementById('dash-graph-specific-month')?.value || document.getElementById('an-specific-month')?.value;
             if (chosen) {
                 const [selYear, selMonth] = chosen.split('-').map(Number);
                 return sDate.getFullYear() === selYear && (sDate.getMonth() + 1) === selMonth;
@@ -4025,8 +4342,8 @@ function getPeriodSales(period) {
         } else if (period === 'year') {
             return sDate >= yearStart;
         } else if (period === 'custom') {
-            const startStr = document.getElementById('an-custom-start')?.value;
-            const endStr = document.getElementById('an-custom-end')?.value;
+            const startStr = document.getElementById('dash-graph-start-date')?.value || document.getElementById('an-custom-start')?.value;
+            const endStr = document.getElementById('dash-graph-end-date')?.value || document.getElementById('an-custom-end')?.value;
             if (startStr && endStr) {
                 return sDateStr >= startStr && sDateStr <= endStr;
             } else if (startStr) {
@@ -4750,14 +5067,6 @@ async function deleteSaleFromStore(id) {
     }
 }
 
-// Active OTP Tracker for Forgot Password
-let activeResetState = {
-    otp: null,
-    target: null,
-    channel: null,
-    timestamp: 0
-};
-
 // Account Hub & Authentication Management (3 Clear Options: Direct Login, Sign Up & Guest Mode)
 window.switchHubAuthTab = function(tab) {
     const btnLogin = document.getElementById('hub-tab-btn-login');
@@ -4913,7 +5222,12 @@ window.handleAuthSignup = async function() {
             });
         } catch(eNet) {}
 
-        // Update local session
+        // Update local session & auto-login
+        authUser = {
+            uid: userUid,
+            email: email,
+            displayName: ownerName
+        };
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.removeItem('sm_user_mode');
 
@@ -4930,7 +5244,7 @@ window.handleAuthSignup = async function() {
         window.applyStoreIdentity();
         window.showHubActiveProfile();
         window.refreshNetworkList();
-        showToast(`Mubarak! ${storeName} ka account ban gaya aur live network connect ho gaya!`, 'success');
+        showToast(`Mubarak! ${storeName} ka account ban gaya aur direct login ho gaya!`, 'success');
     } catch(err) {
         console.error('Signup error:', err);
         showToast('Registration mein masla aya: ' + (err?.message || err), 'error');
@@ -5129,6 +5443,31 @@ window.openForgotPasswordModal = function() {
     safeCreateIcons();
 };
 
+// ==========================================
+// FORGOT PASSWORD & SERIAL KEY SYSTEM
+// ==========================================
+let activeResetState = {
+    email: null,
+    serialKey: null,
+    uid: null,
+    timestamp: 0
+};
+
+window.openForgotPasswordModal = function() {
+    const modal = document.getElementById('forgot-password-modal');
+    modal?.classList.remove('hidden');
+    syncModalScrollLock();
+    window.switchFpStep('request');
+    const contactInput = document.getElementById('fp-contact-input');
+    const loginEmailInput = document.getElementById('auth-login-email');
+    const notFoundEl = document.getElementById('fp-not-found-msg');
+    notFoundEl?.classList.add('hidden');
+    if (contactInput && loginEmailInput && loginEmailInput.value) {
+        contactInput.value = loginEmailInput.value.trim();
+    }
+    safeCreateIcons();
+};
+
 window.closeForgotPasswordModal = function() {
     const modal = document.getElementById('forgot-password-modal');
     modal?.classList.add('hidden');
@@ -5141,7 +5480,7 @@ window.switchFpStep = function(step) {
     if (step === 'verify') {
         stepRequest?.classList.add('hidden');
         stepVerify?.classList.remove('hidden');
-        document.getElementById('fp-otp-input')?.focus();
+        document.getElementById('fp-serial-input')?.focus();
     } else {
         stepVerify?.classList.add('hidden');
         stepRequest?.classList.remove('hidden');
@@ -5150,86 +5489,124 @@ window.switchFpStep = function(step) {
     safeCreateIcons();
 };
 
-window.sendWhatsAppOtp = async function() {
-    const contact = document.getElementById('fp-contact-input')?.value.trim();
-    if (!contact) {
-        showToast('Barah-e-karam apna WhatsApp phone number darj karein.', 'warning');
+window.generateAccountSerialKey = async function() {
+    const email = document.getElementById('fp-contact-input')?.value.trim().toLowerCase();
+    const notFoundEl = document.getElementById('fp-not-found-msg');
+    notFoundEl?.classList.add('hidden');
+
+    if (!email || !email.includes('@')) {
+        showToast('Barah-e-karam apna durust registered Gmail address darj karein.', 'warning');
         return;
     }
 
-    const cleanPhone = contact.replace(/\D/g, '').replace(/^0/, '92');
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    activeResetState = {
-        otp: otp,
-        target: contact,
-        channel: 'whatsapp',
-        timestamp: Date.now()
-    };
-
-    const waMsg = encodeURIComponent(`Digital Pharma Software:\nAapka Password Reset OTP code hai: *${otp}*.\nBarah-e-karam yeh code app mein enter karein.`);
-    const waUrl = `https://wa.me/${cleanPhone}?text=${waMsg}`;
-    
-    // Trigger via standard anchor click to comply with iFrame environment
-    const link = document.createElement('a');
-    link.href = waUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    const notice = document.getElementById('fp-verify-notice');
-    if (notice) {
-        notice.innerText = `Aapke WhatsApp (${contact}) par OTP code bhej diya gaya hai. Code darj kar ke naya password save karein.`;
+    const genBtn = document.getElementById('btn-fp-generate-key');
+    const origText = genBtn ? genBtn.innerHTML : '';
+    if (genBtn) {
+        genBtn.disabled = true;
+        genBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Account check ho raha hai...`;
     }
 
-    window.switchFpStep('verify');
-    showToast(`WhatsApp OTP (${otp}) generate ho gaya!`, 'success');
-};
-
-window.sendEmailOtp = async function() {
-    const contact = document.getElementById('fp-contact-input')?.value.trim().toLowerCase();
-    if (!contact || !contact.includes('@')) {
-        showToast('Barah-e-karam durust Gmail address darj karein.', 'warning');
-        return;
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    activeResetState = {
-        otp: otp,
-        target: contact,
-        channel: 'gmail',
-        timestamp: Date.now()
-    };
-
-    // Also attempt Firebase official reset email
     try {
-        await sendPasswordResetEmail(auth, contact);
-    } catch(e) {
-        console.warn('sendPasswordResetEmail note:', e);
-    }
+        const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+        const targetUid = `ph_${cleanHash}`;
+        let accountExists = false;
 
-    const notice = document.getElementById('fp-verify-notice');
-    if (notice) {
-        notice.innerText = `Aapke Gmail (${contact}) par OTP code bhej diya gaya hai (Code: ${otp}).`;
-    }
+        // 1. Check local session
+        const localAuth = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
+        if (localAuth && localAuth.email && localAuth.email.toLowerCase() === email) {
+            accountExists = true;
+        }
 
-    window.switchFpStep('verify');
-    showToast(`Gmail OTP (${otp}) bhej diya gaya hai!`, 'success');
+        // 2. Check Firestore users collection
+        if (!accountExists && db) {
+            try {
+                const userSnap = await getDoc(doc(db, 'users', targetUid));
+                if (userSnap.exists()) {
+                    accountExists = true;
+                }
+            } catch (eDoc) {
+                console.warn('Firestore user check note:', eDoc);
+            }
+        }
+
+        // 3. Check Firestore pharmacies directory
+        if (!accountExists && db) {
+            try {
+                const pharmSnap = await getDoc(doc(db, 'pharmacies', targetUid));
+                if (pharmSnap.exists()) {
+                    accountExists = true;
+                }
+            } catch (ePharm) {}
+        }
+
+        // 4. Check backend network registry
+        if (!accountExists) {
+            try {
+                const res = await fetch('/api/network/stores');
+                if (res.ok) {
+                    const list = await res.json();
+                    if (Array.isArray(list) && list.some(s => s.email && s.email.toLowerCase() === email)) {
+                        accountExists = true;
+                    }
+                }
+            } catch (eNet) {}
+        }
+
+        // If account not found in system
+        if (!accountExists) {
+            if (notFoundEl) notFoundEl.classList.remove('hidden');
+            showToast('Aapka account already mojood nahi hai! Barah-e-karam pehle sign up karein.', 'error');
+            return;
+        }
+
+        // Account is verified to exist! Generate dynamic random Serial Key
+        const randomNum = Math.floor(100000 + Math.random() * 900000);
+        const randomSerial = `DP-${randomNum}`;
+
+        activeResetState = {
+            email: email,
+            serialKey: randomSerial,
+            uid: targetUid,
+            timestamp: Date.now()
+        };
+
+        const keyDisplay = document.getElementById('fp-generated-serial-key');
+        if (keyDisplay) {
+            keyDisplay.innerText = randomSerial;
+        }
+
+        const serialInput = document.getElementById('fp-serial-input');
+        if (serialInput) serialInput.value = '';
+        const newPass = document.getElementById('fp-new-pass');
+        if (newPass) newPass.value = '';
+        const confPass = document.getElementById('fp-confirm-pass');
+        if (confPass) confPass.value = '';
+
+        window.switchFpStep('verify');
+        showToast(`Account mil gaya! Serial Key (${randomSerial}) generate ho chuki hai.`, 'success');
+    } catch(err) {
+        console.error('Serial key generation error:', err);
+        showToast('Check karne mein masla aya: ' + (err?.message || err), 'error');
+    } finally {
+        if (genBtn) {
+            genBtn.disabled = false;
+            genBtn.innerHTML = origText;
+        }
+    }
 };
 
-window.verifyOtpAndResetPassword = async function() {
-    const enteredOtp = document.getElementById('fp-otp-input')?.value.trim();
+window.verifySerialKeyAndResetPassword = async function() {
+    const enteredKey = document.getElementById('fp-serial-input')?.value.trim().toUpperCase();
     const newPass = document.getElementById('fp-new-pass')?.value;
     const confirmPass = document.getElementById('fp-confirm-pass')?.value;
 
-    if (!enteredOtp) {
-        showToast('Barah-e-karam 6-digit OTP code darj karein.', 'warning');
+    if (!enteredKey) {
+        showToast('Barah-e-karam screen par mojood Serial Key darj karein.', 'warning');
         return;
     }
 
-    if (!activeResetState.otp || enteredOtp !== activeResetState.otp) {
-        showToast('Ghalat OTP code! Barah-e-karam durust 6-digit code enter karein.', 'error');
+    if (!activeResetState.serialKey || enteredKey !== activeResetState.serialKey.toUpperCase()) {
+        showToast('Ghalat Serial Key! Barah-e-karam screen par di gayi Serial Key enter karein.', 'error');
         return;
     }
 
@@ -5244,33 +5621,42 @@ window.verifyOtpAndResetPassword = async function() {
     }
 
     try {
-        const target = activeResetState.target || '';
-        const cleanHash = btoa(unescape(encodeURIComponent(target.toLowerCase()))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-        const uid = `ph_${cleanHash}`;
+        const uid = activeResetState.uid;
+        const email = activeResetState.email;
 
-        // Update password in Firestore
-        try {
-            await setDoc(doc(db, 'users', uid), {
-                passwordHash: btoa(newPass),
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
-        } catch(e) {}
+        // 1. Update password in Firestore
+        if (db && uid) {
+            try {
+                await setDoc(doc(db, 'users', uid), {
+                    passwordHash: btoa(newPass),
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+            } catch(e) {
+                console.warn('Firestore reset password save note:', e);
+            }
+        }
 
-        // Update local auth user if matching
+        // 2. Update local storage session
         const existingLocal = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
-        if (existingLocal) {
+        if (existingLocal && existingLocal.email && existingLocal.email.toLowerCase() === email) {
             existingLocal.passwordHash = btoa(newPass);
             localStorage.setItem('sm_auth_user', JSON.stringify(existingLocal));
         }
 
         window.closeForgotPasswordModal();
-        showToast('Kamyabi! Naya password save ho gaya hai. Ab aap login kar sakte hain.', 'success');
+        showToast('Kamyabi! Naya password save ho gaya hai.', 'success');
+
         window.switchHubAuthTab('login');
+        const loginEmailInput = document.getElementById('auth-login-email');
         const loginPassInput = document.getElementById('auth-login-pass');
+        if (loginEmailInput) loginEmailInput.value = email;
         if (loginPassInput) loginPassInput.value = newPass;
+
+        // Trigger login with updated password
+        window.handleAuthLogin();
     } catch(err) {
         console.error('Password reset error:', err);
-        showToast('Password reset mein masla aya: ' + err.message, 'error');
+        showToast('Password reset mein masla aya: ' + (err?.message || err), 'error');
     }
 };
 
@@ -5370,7 +5756,7 @@ window.handleDeleteAccountAndData = function() {
 window.showHubChoiceSection = function() {
     document.getElementById('hub-choice-section')?.classList.remove('hidden');
     document.getElementById('hub-active-profile-section')?.classList.add('hidden');
-    window.switchHubAuthTab('sync');
+    window.switchHubAuthTab('signup');
     safeCreateIcons();
 };
 
@@ -5407,8 +5793,9 @@ window.showHubActiveProfile = function() {
 
 window.openAccountHubModal = function() {
     const mode = window.getCurrentUserMode();
-    if (!mode) {
+    if (!mode || mode === 'guest') {
         window.showHubChoiceSection();
+        window.switchHubAuthTab('signup');
     } else {
         window.showHubActiveProfile();
     }

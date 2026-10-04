@@ -29,21 +29,35 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '35mb' }));
 app.use(express.urlencoded({ limit: '35mb', extended: true }));
 
-// Static PWA & Asset routes
+const APP_BUILD_TIMESTAMP = 'dp-build-' + Date.now();
+
+// Static PWA & Asset routes with strict freshness headers
 app.get('/manifest.json', (_req, res) => {
   res.setHeader('Content-Type', 'application/manifest+json');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.sendFile(path.resolve(__dirname, 'public/manifest.json'));
 });
 app.get('/sw.js', (_req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Service-Worker-Allowed', '/');
   res.sendFile(path.resolve(__dirname, 'public/sw.js'));
 });
 app.get('/icon.svg', (_req, res) => {
   res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   res.sendFile(path.resolve(__dirname, 'public/icon.svg'));
+});
+
+// Real-time app version check for seamless live PWA updates without reinstalling
+app.get('/api/app-version', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.json({
+    version: APP_BUILD_TIMESTAMP,
+    timestamp: Date.now(),
+    app: 'Digital Pharma',
+    status: 'live-sync'
+  });
 });
 
 // Helper to extract JSON from Gemini text output
@@ -285,7 +299,7 @@ Your sole mission is to accurately transcribe genuine doctor handwriting and pri
 
 CRITICAL ZERO-HALLUCINATION & HONESTY MANDATE:
 1. STRICT OCR TRANSCRIBING: Transcribe ONLY the actual medicines visibly written on this specific slip. DO NOT GUESS, DO NOT INVENT, AND DO NOT ADD MEDICINES THAT ARE NOT WRITTEN ON THE PAPER.
-2. If 2 medicines are written, return only 2. If 5 are written, return 5.
+2. If 1 medicine is written, return 1. If 3 are written, return 3.
 3. If no medicines can be identified from the image, return an empty array [] for "medicines". NEVER generate dummy, placeholder, or sample medicines like Panadol, Augmentin, etc. unless they are clearly written by the doctor on the slip.
 4. Translate doctor frequency abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite, natural Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
 5. Never output refusal messages or apologies; always return strictly valid JSON conforming to the schema.`;
@@ -300,26 +314,26 @@ DO NOT hallucinate or output example medications. If the paper has no medicines,
       properties: {
         doctor: { type: Type.STRING, description: 'Doctor or Clinic name from slip' },
         patient: { type: Type.STRING, description: 'Patient name and details if visible' },
-        treatmentSummary: { type: Type.STRING, description: 'Treatment indication in Roman Urdu e.g. Bukhar, sozish aur dard ka ilaj' },
-        advice: { type: Type.STRING, description: 'Precautions in Roman Urdu e.g. Tali hui aur thandi cheezon se parhez karein aur aaram karein' },
+        treatmentSummary: { type: Type.STRING, description: 'Brief diagnosis/indication if explicitly written on the slip in Roman Urdu. Return empty string if not written. DO NOT invent or guess fever (bukhar).' },
+        advice: { type: Type.STRING, description: 'Doctor precautions or advice in Roman Urdu if written.' },
         medicines: {
           type: Type.ARRAY,
-          description: 'Exhaustive list of ALL medicines written on this prescription',
+          description: 'Exhaustive list of ALL genuine medicines written on this prescription',
           items: {
             type: Type.OBJECT,
             properties: {
               name: { type: Type.STRING, description: 'Exact brand name and strength e.g. Augmentin 625mg' },
-              formula: { type: Type.STRING, description: 'Generic salt e.g. Co-Amoxiclav' },
+              formula: { type: Type.STRING, description: 'Generic salt if known or visible' },
               form: { type: Type.STRING, description: 'Form e.g. Goli (Tablet), Capsule, Sharbath (Syrup), Injection, Drops, Sachet' },
               timing: { type: Type.STRING, description: 'Dosage schedule in Roman Urdu e.g. Subah sham khane ke baad (1+0+1)' },
               usage: { type: Type.STRING, description: 'Usage instructions in Roman Urdu e.g. Taza paani ke sath lein' },
-              purpose: { type: Type.STRING, description: 'Indication in Roman Urdu e.g. Bukhar aur infection' }
+              purpose: { type: Type.STRING, description: 'Specific medical reason only if clearly written. Return empty string if not written. DO NOT guess bukhar.' }
             },
             required: ['name', 'timing']
           }
         }
       },
-      required: ['medicines', 'treatmentSummary']
+      required: ['medicines']
     };
 
     const text = await generateWithVisionFallback(prompt, imageBase64, prescriptionSchema, prescriptionSystemInstruction);
@@ -530,7 +544,7 @@ Never output refusal notes; return valid JSON adhering to schema.`;
     const parsed = text ? extractJsonFromText(text) : null;
 
     const targetObj = Array.isArray(parsed) ? parsed[0] : (parsed?.medicine || parsed?.item || parsed?.data || parsed || {});
-    const extractedName = String(targetObj.name || targetObj.brand || targetObj.brandName || targetObj.medicineName || targetObj.title || '').trim();
+    const extractedName = String(targetObj.name || targetObj.brand || targetObj.brandName || targetObj.medicineName || targetObj.title || targetObj.product || targetObj.productName || targetObj.description || '').trim();
 
     if (extractedName && !REFUSAL_REGEX.test(extractedName)) {
       res.json({

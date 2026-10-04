@@ -2,19 +2,6 @@
 <html lang="ur" class="h-full bg-slate-50 overflow-x-hidden">
 <head>
     <meta charset="UTF-8">
-    <script>
-        // Force-clear any stale Service Workers and CacheStorage from preview iframe
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for (let r of registrations) { r.unregister(); }
-            });
-        }
-        if ('caches' in window) {
-            caches.keys().then(function(keys) {
-                keys.forEach(function(k) { caches.delete(k); });
-            });
-        }
-    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="color-scheme" content="light">
     <meta name="theme-color" content="#1e40af">
@@ -293,9 +280,6 @@
             <button onclick="window.switchTab('inventory')" id="tab-inventory" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100">
                 <i data-lucide="pill" class="w-4 h-4"></i> Stock Inventory
             </button>
-            <button onclick="window.openCustomerInvoicesModal('all')" id="tab-customers" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100" title="Customer Invoices & Bills Khata">
-                <i data-lucide="users" class="w-4 h-4"></i> Customers & Invoices
-            </button>
 
             <!-- Calculator Dropdown Container (Desktop) -->
             <div class="relative flex-1" id="desktop-calc-dropdown-container">
@@ -446,22 +430,53 @@
                     </div>
                 </div>
 
-                <!-- 2nd Section: Sale, Purchase & Investment Overview (Depth Button to Graph) -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs space-y-2.5 flex flex-col justify-between">
+                <!-- 2nd Section: Dedicated Dashboard Financial & Scenario Graph Box -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs space-y-3 flex flex-col justify-between w-full max-w-full overflow-hidden">
                     <div class="flex items-center justify-between border-b pb-2">
                         <div class="flex items-center gap-2">
                             <div class="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
-                                <i data-lucide="trending-up" class="w-4 h-4"></i>
+                                <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
                             </div>
                             <div>
-                                <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Sale, Purchase & Investment Overview</h3>
-                                <p class="text-[10px] text-slate-400">Real-time sale, kharid TP sarmaya aur munafa</p>
+                                <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Sale, Purchase, Profit & Sarmaya Graph</h3>
+                                <p class="text-[10px] text-slate-400">Tamam hisaab graph ki shakal mein (Mobile Fit Scenario)</p>
                             </div>
                         </div>
+                        <span id="dash-graph-active-label" class="text-[10px] font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">Today</span>
                     </div>
-                    <!-- Financial Overview & Dedicated Deep Graph Action Button -->
-                    <div id="dash-today-graph-container" class="space-y-3 flex-1 flex flex-col justify-between">
-                        <p class="text-xs text-slate-400 py-4 text-center">Sale hisaab load ho raha hai...</p>
+
+                    <!-- Filter Tabs: Today, Yesterday, This Week, This Month, This Year, Select Month, Custom Date -->
+                    <div class="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl text-[10px] font-bold">
+                        <button type="button" id="dash-btn-today" onclick="window.setDashboardGraphPeriod('today')" class="flex-1 min-w-[50px] py-1.5 px-1.5 rounded-lg transition bg-emerald-600 text-white shadow-2xs">Today</button>
+                        <button type="button" id="dash-btn-yesterday" onclick="window.setDashboardGraphPeriod('yesterday')" class="flex-1 min-w-[55px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Yesterday</button>
+                        <button type="button" id="dash-btn-week" onclick="window.setDashboardGraphPeriod('week')" class="flex-1 min-w-[55px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">This Week</button>
+                        <button type="button" id="dash-btn-month" onclick="window.setDashboardGraphPeriod('month')" class="flex-1 min-w-[55px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">This Month</button>
+                        <button type="button" id="dash-btn-year" onclick="window.setDashboardGraphPeriod('year')" class="flex-1 min-w-[50px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">This Year</button>
+                        <button type="button" id="dash-btn-select-month" onclick="window.setDashboardGraphPeriod('select_month')" class="flex-1 min-w-[68px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Select Month</button>
+                        <button type="button" id="dash-btn-custom" onclick="window.setDashboardGraphPeriod('custom')" class="flex-1 min-w-[68px] py-1.5 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Custom Date</button>
+                    </div>
+
+                    <!-- Dynamic Month Picker Bar (Hidden unless select_month selected) -->
+                    <div id="dash-graph-month-bar" class="hidden flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                        <span class="text-[10px] font-bold text-slate-500 whitespace-nowrap">Mahina Muntakhib Karein:</span>
+                        <input type="month" id="dash-graph-specific-month" onchange="window.applyDashboardSpecificMonth()" class="flex-1 text-xs p-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 focus:ring-1 focus:ring-emerald-500">
+                    </div>
+
+                    <!-- Dynamic Custom Date Range Bar (Hidden unless custom selected) -->
+                    <div id="dash-graph-custom-bar" class="hidden flex flex-wrap items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div class="flex items-center gap-1 flex-1 min-w-[120px]">
+                            <span class="text-[10px] font-bold text-slate-500">From:</span>
+                            <input type="date" id="dash-graph-start-date" onchange="window.applyDashboardCustomDate()" class="w-full text-xs p-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800">
+                        </div>
+                        <div class="flex items-center gap-1 flex-1 min-w-[120px]">
+                            <span class="text-[10px] font-bold text-slate-500">To:</span>
+                            <input type="date" id="dash-graph-end-date" onchange="window.applyDashboardCustomDate()" class="w-full text-xs p-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800">
+                        </div>
+                    </div>
+
+                    <!-- Main Dynamic Graph Container: Fits Mobile Screen Perfectly -->
+                    <div id="dash-today-graph-container" class="space-y-3 flex-1 flex flex-col justify-between w-full max-w-full overflow-hidden">
+                        <p class="text-xs text-slate-400 py-4 text-center">Graph load ho raha hai...</p>
                     </div>
                 </div>
             </div>
@@ -703,29 +718,9 @@
         <!-- CALCULATOR VIEW -->
         <section id="view-margin" class="tab-content hidden max-w-3xl mx-auto w-full flex flex-col gap-4">
             <!-- CALCULATOR 1: Simple Standard Math Hisaab Calculator (Digital Shop / Citizen Style) -->
-            <div id="calc-section-simple" class="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-md space-y-3.5 max-w-md mx-auto w-full">
-                <div class="border-b border-slate-100 pb-2.5 flex items-center justify-between gap-2">
-                    <div class="flex items-center gap-2">
-                        <span class="p-1.5 bg-emerald-100 text-emerald-800 rounded-xl">
-                            <i data-lucide="calculator" class="w-4 h-4"></i>
-                        </span>
-                        <div>
-                            <h3 class="font-black text-slate-900 text-sm sm:text-base leading-tight">Digital Shop Calculator</h3>
-                            <p class="text-[10px] text-slate-400 font-semibold font-mono">Accurate Commercial Precision</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.simpleCalcClearEntry()" class="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95" title="Sirf aakhri number saaf karein">
-                            CE
-                        </button>
-                        <button type="button" onclick="window.simpleCalcClear()" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95" title="Pura hisaab saaf karein">
-                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> AC
-                        </button>
-                    </div>
-                </div>
-
+            <div id="calc-section-simple" class="bg-white p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-md flex flex-col justify-between max-w-md mx-auto w-full h-[calc(100dvh-130px)] sm:h-auto overflow-hidden select-none touch-manipulation gap-2">
                 <!-- Digital LCD Screen (Shop Style with Memory & Operator Indicators) -->
-                <div class="bg-gradient-to-b from-slate-950 to-slate-900 text-white rounded-2xl p-4 shadow-2xl space-y-1.5 border-2 border-slate-800 relative overflow-hidden">
+                <div class="bg-gradient-to-b from-slate-950 to-slate-900 text-white rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xl border-2 border-slate-800 relative overflow-hidden shrink-0 space-y-1">
                     <div class="flex items-center justify-between text-xs text-slate-400 font-mono border-b border-slate-800/80 pb-1">
                         <div class="flex items-center gap-2">
                             <span id="simple-calc-mem-indicator" class="hidden px-1.5 py-0.2 bg-amber-400/20 text-amber-300 border border-amber-400/40 rounded text-[9px] font-black tracking-widest uppercase">M</span>
@@ -736,49 +731,45 @@
                     <div id="simple-calc-display" class="text-3xl sm:text-4xl font-black text-emerald-400 font-mono tracking-wider text-right overflow-x-auto no-scrollbar select-all py-1">0</div>
                 </div>
 
-                <!-- Memory Toolbar (MC, MR, M-, M+, GT/Sound) -->
-                <div class="grid grid-cols-4 gap-1.5 text-xs font-bold select-none">
-                    <button type="button" onclick="window.simpleCalcMemClear()" class="py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition active:scale-95" title="Memory Clear">MC</button>
-                    <button type="button" onclick="window.simpleCalcMemRecall()" class="py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Recall">MR</button>
-                    <button type="button" onclick="window.simpleCalcMemSub()" class="py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Minus">M−</button>
-                    <button type="button" onclick="window.simpleCalcMemAdd()" class="py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-black transition active:scale-95" title="Memory Add">M+</button>
+                <!-- Memory Toolbar (MC, MR, M-, M+) -->
+                <div class="grid grid-cols-4 gap-1.5 text-xs font-bold select-none shrink-0">
+                    <button type="button" onclick="window.simpleCalcMemClear()" class="py-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition active:scale-95" title="Memory Clear">MC</button>
+                    <button type="button" onclick="window.simpleCalcMemRecall()" class="py-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Recall">MR</button>
+                    <button type="button" onclick="window.simpleCalcMemSub()" class="py-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Minus">M−</button>
+                    <button type="button" onclick="window.simpleCalcMemAdd()" class="py-1.5 rounded-lg sm:rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-black transition active:scale-95" title="Memory Add">M+</button>
                 </div>
 
                 <!-- Calculator Main Keypad (5 Rows, Digital Store Arrangement with 00 key) -->
-                <div class="grid grid-cols-4 gap-2 pt-1 select-none">
+                <div class="grid grid-cols-4 gap-1.5 sm:gap-2 select-none flex-1 content-stretch">
                     <!-- Row 1: AC, Backspace, %, Divide -->
-                    <button type="button" onclick="window.simpleCalcClear()" class="py-3 rounded-2xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-base transition active:scale-95 shadow-xs">AC</button>
-                    <button type="button" onclick="window.simpleCalcBackspace()" class="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base transition active:scale-95 shadow-xs flex items-center justify-center">⌫</button>
-                    <button type="button" onclick="window.simpleCalcPercent()" class="py-3 rounded-2xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-lg transition active:scale-95 shadow-xs">%</button>
-                    <button type="button" onclick="window.simpleCalcOp('÷')" class="py-3 rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs">÷</button>
+                    <button type="button" onclick="window.simpleCalcClear()" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-base sm:text-lg transition active:scale-95 shadow-xs flex items-center justify-center">AC</button>
+                    <button type="button" onclick="window.simpleCalcBackspace()" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base sm:text-lg transition active:scale-95 shadow-xs flex items-center justify-center">⌫</button>
+                    <button type="button" onclick="window.simpleCalcPercent()" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-lg transition active:scale-95 shadow-xs flex items-center justify-center">%</button>
+                    <button type="button" onclick="window.simpleCalcOp('÷')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">÷</button>
 
                     <!-- Row 2: 7, 8, 9, Multiply -->
-                    <button type="button" onclick="window.simpleCalcDigit('7')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">7</button>
-                    <button type="button" onclick="window.simpleCalcDigit('8')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">8</button>
-                    <button type="button" onclick="window.simpleCalcDigit('9')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">9</button>
-                    <button type="button" onclick="window.simpleCalcOp('×')" class="py-3 rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs">×</button>
+                    <button type="button" onclick="window.simpleCalcDigit('7')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">7</button>
+                    <button type="button" onclick="window.simpleCalcDigit('8')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">8</button>
+                    <button type="button" onclick="window.simpleCalcDigit('9')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">9</button>
+                    <button type="button" onclick="window.simpleCalcOp('×')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">×</button>
 
                     <!-- Row 3: 4, 5, 6, Subtract -->
-                    <button type="button" onclick="window.simpleCalcDigit('4')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">4</button>
-                    <button type="button" onclick="window.simpleCalcDigit('5')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">5</button>
-                    <button type="button" onclick="window.simpleCalcDigit('6')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">6</button>
-                    <button type="button" onclick="window.simpleCalcOp('-')" class="py-3 rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs">−</button>
+                    <button type="button" onclick="window.simpleCalcDigit('4')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">4</button>
+                    <button type="button" onclick="window.simpleCalcDigit('5')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">5</button>
+                    <button type="button" onclick="window.simpleCalcDigit('6')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">6</button>
+                    <button type="button" onclick="window.simpleCalcOp('-')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">−</button>
 
                     <!-- Row 4: 1, 2, 3, Add -->
-                    <button type="button" onclick="window.simpleCalcDigit('1')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">1</button>
-                    <button type="button" onclick="window.simpleCalcDigit('2')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">2</button>
-                    <button type="button" onclick="window.simpleCalcDigit('3')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">3</button>
-                    <button type="button" onclick="window.simpleCalcOp('+')" class="py-3 rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs">+</button>
+                    <button type="button" onclick="window.simpleCalcDigit('1')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">1</button>
+                    <button type="button" onclick="window.simpleCalcDigit('2')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">2</button>
+                    <button type="button" onclick="window.simpleCalcDigit('3')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">3</button>
+                    <button type="button" onclick="window.simpleCalcOp('+')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">+</button>
 
                     <!-- Row 5: 0, 00, ., Equals -->
-                    <button type="button" onclick="window.simpleCalcDigit('0')" class="py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs">0</button>
-                    <button type="button" onclick="window.simpleCalcDoubleZero()" class="py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs" title="Double Zero (00)">00</button>
-                    <button type="button" onclick="window.simpleCalcDigit('.')" class="py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-2xl transition active:scale-95 shadow-xs">.</button>
-                    <button type="button" onclick="window.simpleCalcEquals()" class="py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-2xl transition shadow-lg active:scale-95">=</button>
-                </div>
-
-                <div class="text-[10px] text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-200/70 font-mono text-center">
-                    💡 Tip: Keyboard Numpad bhi use kar sakte hain (+ - * / % Enter Backspace)
+                    <button type="button" onclick="window.simpleCalcDigit('0')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">0</button>
+                    <button type="button" onclick="window.simpleCalcDoubleZero()" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200/80 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center" title="Double Zero (00)">00</button>
+                    <button type="button" onclick="window.simpleCalcDigit('.')" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">.</button>
+                    <button type="button" onclick="window.simpleCalcEquals()" class="h-full min-h-[44px] max-h-[58px] rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-2xl transition shadow-lg active:scale-95 flex items-center justify-center">=</button>
                 </div>
             </div>
 
@@ -1035,10 +1026,6 @@
         <button onclick="window.switchTab('inventory')" id="mob-tab-inventory" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
             <i data-lucide="pill" class="w-5 h-5"></i>
             <span class="text-[10px]">Stock</span>
-        </button>
-        <button onclick="window.openCustomerInvoicesModal('all')" id="mob-tab-invoices" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
-            <i data-lucide="users" class="w-5 h-5"></i>
-            <span class="text-[10px]">Invoices</span>
         </button>
         
         <!-- Calculator Tab with Direct Dropdown Menu Trigger (Mobile) -->
@@ -1942,16 +1929,16 @@
                 </button>
             </div>
 
-            <!-- VIEW 1: AUTHENTICATION OPTIONS (Direct Email & Password Login / Signup vs Guest Local User Mode) -->
+            <!-- VIEW 1: AUTHENTICATION OPTIONS (Direct Email & Password Sign Up / Login vs Guest Local User Mode) -->
             <div id="hub-choice-section" class="space-y-3">
                 <div class="flex p-1 bg-slate-100 rounded-xl gap-1 text-xs font-bold">
-                    <button type="button" id="hub-tab-btn-login" onclick="window.switchHubAuthTab('login')" class="flex-1 py-1.5 rounded-lg transition bg-brand-600 text-white shadow-xs flex items-center justify-center gap-1.5">
-                        <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
-                        <span>Login</span>
-                    </button>
-                    <button type="button" id="hub-tab-btn-signup" onclick="window.switchHubAuthTab('signup')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5">
+                    <button type="button" id="hub-tab-btn-signup" onclick="window.switchHubAuthTab('signup')" class="flex-1 py-1.5 rounded-lg transition bg-brand-600 text-white shadow-xs flex items-center justify-center gap-1.5">
                         <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
                         <span>Sign Up</span>
+                    </button>
+                    <button type="button" id="hub-tab-btn-login" onclick="window.switchHubAuthTab('login')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5">
+                        <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                        <span>Login</span>
                     </button>
                     <button type="button" id="hub-tab-btn-guest" onclick="window.switchHubAuthTab('guest')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5">
                         <i data-lucide="user" class="w-3.5 h-3.5"></i>
@@ -1959,52 +1946,15 @@
                     </button>
                 </div>
 
-                <!-- 1. LOGIN PANEL (Email/Gmail & Password) -->
-                <div id="hub-panel-login" class="space-y-3 text-xs">
-                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
-                        <div class="flex items-center gap-1.5 font-bold text-emerald-800">
-                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
-                            <span>Pharmacy Owner Secure Login</span>
-                        </div>
-                        <p class="text-[11px] leading-relaxed text-emerald-900">
-                            Apne registered Gmail aur password se login karein. Central Firebase ke zariye aapki pharmacy live connect ho jayegi.
-                        </p>
-                    </div>
-
-                    <form onsubmit="event.preventDefault(); window.handleAuthLogin();" class="space-y-2.5 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                        <div>
-                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Gmail / Email Address:</label>
-                            <input type="email" id="auth-login-email" required placeholder="e.g. pharmacy@gmail.com" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
-                        </div>
-                        <div>
-                            <div class="flex items-center justify-between mb-1">
-                                <label class="block text-[11px] font-bold text-slate-700">Password:</label>
-                                <button type="button" onclick="window.openForgotPasswordModal()" class="text-[10px] text-brand-700 font-bold hover:underline">Password bhool gaye?</button>
-                            </div>
-                            <input type="password" id="auth-login-pass" required placeholder="Apna password likhein" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
-                        </div>
-                        <button type="submit" id="btn-auth-login-submit" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
-                            <i data-lucide="log-in" class="w-4 h-4"></i>
-                            <span>Login Karein & Connect</span>
-                        </button>
-                    </form>
-
-                    <div class="text-center pt-1">
-                        <button type="button" onclick="window.switchHubAuthTab('signup')" class="text-xs text-brand-700 font-bold hover:underline">
-                            Naya account banana chahte hain? <strong>Yahan Sign Up karein</strong>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 2. SIGN UP PANEL (Email/Gmail, Password, Pharmacy Info) -->
-                <div id="hub-panel-signup" class="hidden space-y-3 text-xs">
+                <!-- 1. SIGN UP PANEL (Active By Default on Profile Mode Click) -->
+                <div id="hub-panel-signup" class="space-y-3 text-xs">
                     <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-950 space-y-1">
                         <div class="flex items-center gap-1.5 font-bold text-blue-800">
                             <i data-lucide="user-plus" class="w-4 h-4 text-blue-600"></i>
-                            <span>Nayi Pharmacy Registration</span>
+                            <span>Nayi Pharmacy Registration (Sign Up)</span>
                         </div>
                         <p class="text-[11px] leading-relaxed text-blue-900">
-                            Apni pharmacy register karein. Tamam data Firebase mein mehfooz rahega aur network directory mein add hoga.
+                            Apna account banayein. Sign up hote hi aapka account direct login ho jayega aur Firebase par live connect ho jayega.
                         </p>
                     </div>
 
@@ -2038,19 +1988,66 @@
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-700 mb-1">Password (Min 6 Characters) *:</label>
-                                <input type="password" id="auth-signup-pass" minlength="6" required placeholder="••••••••" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                <div class="relative">
+                                    <input type="password" id="auth-signup-pass" minlength="6" required placeholder="••••••••" class="w-full pl-2.5 pr-8 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                    <button type="button" onclick="window.togglePasswordVisibility('auth-signup-pass', 'auth-signup-pass-icon')" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 transition" title="Show / Hide Password">
+                                        <i data-lucide="eye" id="auth-signup-pass-icon" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
                         <button type="submit" id="btn-auth-signup-submit" class="w-full py-2.5 mt-1 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
                             <i data-lucide="user-plus" class="w-4 h-4"></i>
-                            <span>Sign Up & Register Pharmacy</span>
+                            <span>Sign Up Karein & Direct Login</span>
                         </button>
                     </form>
 
                     <div class="text-center pt-1">
                         <button type="button" onclick="window.switchHubAuthTab('login')" class="text-xs text-brand-700 font-bold hover:underline">
                             Pehle se account mojood hai? <strong>Yahan Login karein</strong>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. LOGIN PANEL (Email/Gmail & Password) -->
+                <div id="hub-panel-login" class="hidden space-y-3 text-xs">
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
+                        <div class="flex items-center gap-1.5 font-bold text-emerald-800">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+                            <span>Pharmacy Owner Secure Login</span>
+                        </div>
+                        <p class="text-[11px] leading-relaxed text-emerald-900">
+                            Apne registered Gmail aur password se login karein. Central Firebase ke zariye aapki pharmacy live connect ho jayegi.
+                        </p>
+                    </div>
+
+                    <form onsubmit="event.preventDefault(); window.handleAuthLogin();" class="space-y-2.5 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Gmail / Email Address:</label>
+                            <input type="email" id="auth-login-email" required placeholder="e.g. pharmacy@gmail.com" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-[11px] font-bold text-slate-700">Password:</label>
+                                <button type="button" onclick="window.openForgotPasswordModal()" class="text-[10px] text-brand-700 font-bold hover:underline">Password bhool gaye?</button>
+                            </div>
+                            <div class="relative">
+                                <input type="password" id="auth-login-pass" required placeholder="Apna password likhein" class="w-full pl-3 pr-9 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                <button type="button" onclick="window.togglePasswordVisibility('auth-login-pass', 'auth-login-pass-icon')" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 transition" title="Show / Hide Password">
+                                    <i data-lucide="eye" id="auth-login-pass-icon" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" id="btn-auth-login-submit" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                            <i data-lucide="log-in" class="w-4 h-4"></i>
+                            <span>Login Karein & Connect</span>
+                        </button>
+                    </form>
+
+                    <div class="text-center pt-1">
+                        <button type="button" onclick="window.switchHubAuthTab('signup')" class="text-xs text-brand-700 font-bold hover:underline">
+                            Naya account banana chahte hain? <strong>Yahan Sign Up karein</strong>
                         </button>
                     </div>
                 </div>
@@ -2142,8 +2139,8 @@
                         <i data-lucide="key-round" class="w-4 h-4"></i>
                     </span>
                     <div>
-                        <h3 class="font-black text-slate-800 text-sm sm:text-base leading-tight">Password Reset & OTP</h3>
-                        <p class="text-[10px] text-slate-400">WhatsApp ya Gmail par OTP code mangwayein</p>
+                        <h3 class="font-black text-slate-800 text-sm sm:text-base leading-tight">Password Reset (Serial Key)</h3>
+                        <p class="text-[10px] text-slate-400">Registered account se instant verification serial key hasil karein</p>
                     </div>
                 </div>
                 <button type="button" onclick="window.closeForgotPasswordModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
@@ -2151,68 +2148,86 @@
                 </button>
             </div>
 
-            <!-- STEP 1: Request OTP -->
+            <!-- STEP 1: Account Lookup & Serial Key Generation -->
             <div id="fp-step-request" class="space-y-3 text-xs">
                 <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 space-y-1">
-                    <strong class="font-bold block text-amber-900">OTP Hasil Karne Ka Tareeqa:</strong>
+                    <strong class="font-bold block text-amber-900">Serial Key Verification Tareeqa:</strong>
                     <p class="text-[11px] leading-relaxed text-amber-800">
-                        Apna registered <strong>Gmail</strong> ya <strong>WhatsApp number</strong> likhein aur apni pasand ka OTP option select karein.
+                        Apna registered <strong>Gmail / Email</strong> likhein. Agar aapka account system mein pehle se save hoga, toh usi waqt screen par har dafa mukhtalif (random) <strong>Serial Key</strong> generate ho kar show ho jayegi jisko enter kar ke aap foran naya password laga sakenge.
+                    </p>
+                </div>
+
+                <!-- Red Warning Box if account does not exist -->
+                <div id="fp-not-found-msg" class="hidden p-3 bg-rose-50 border-2 border-rose-300 rounded-xl text-rose-950 space-y-1">
+                    <div class="flex items-center gap-1.5 font-bold text-rose-800">
+                        <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-600"></i>
+                        <span>Aapka Account Already Mojood Nahi Hai!</span>
+                    </div>
+                    <p class="text-[11px] text-rose-800 leading-relaxed">
+                        Yeh Gmail hamare system ke records mein nahi mili. Barah-e-karam pehle <strong>Sign Up</strong> karein ya apna sahi Gmail darj karein.
                     </p>
                 </div>
 
                 <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Registered Gmail Address ya WhatsApp Number:</label>
-                    <input type="text" id="fp-contact-input" placeholder="e.g. pharmacy@gmail.com ya 03001234567" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Registered Gmail / Email Address *:</label>
+                    <input type="email" id="fp-contact-input" placeholder="e.g. pharmacy@gmail.com" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    <button type="button" onclick="window.sendWhatsAppOtp()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
-                        <i data-lucide="message-square" class="w-4 h-4"></i>
-                        <span>WhatsApp Pe OTP</span>
-                    </button>
-                    <button type="button" onclick="window.sendEmailOtp()" class="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
-                        <i data-lucide="mail" class="w-4 h-4"></i>
-                        <span>Gmail Pe OTP</span>
+                <div class="pt-1">
+                    <button type="button" id="btn-fp-generate-key" onclick="window.generateAccountSerialKey()" class="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-xl shadow-xs flex items-center justify-center gap-2 active:scale-95 transition cursor-pointer">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                        <span>Account Check Karein & Serial Key Banayein</span>
                     </button>
                 </div>
             </div>
 
-            <!-- STEP 2: Verify OTP and Set New Password -->
+            <!-- STEP 2: Verify Serial Key & Set New Password -->
             <div id="fp-step-verify" class="hidden space-y-3 text-xs">
-                <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
-                    <div class="flex items-center gap-1.5 font-bold text-emerald-800">
-                        <i data-lucide="shield-alert" class="w-4 h-4"></i>
-                        <span>OTP Code Bhej Diya Gaya Hai!</span>
+                <!-- Highlighted Generated Serial Key Box -->
+                <div class="p-3 bg-emerald-50 border-2 border-emerald-300 rounded-2xl text-center space-y-1.5 shadow-xs">
+                    <span class="text-[10px] font-black uppercase text-emerald-800 tracking-wider block">Aapki Verified Security Serial Key:</span>
+                    <div class="py-2 px-3 bg-white rounded-xl border border-emerald-200 shadow-inner flex items-center justify-center gap-2">
+                        <span id="fp-generated-serial-key" class="text-2xl font-black font-mono tracking-widest text-emerald-950 select-all">DP-000000</span>
                     </div>
-                    <p id="fp-verify-notice" class="text-[11px] text-emerald-800">
-                        Aapke contact par 6-digit OTP code bhej diya gaya hai. Code darj kar ke naya password set karein.
+                    <p class="text-[10px] text-emerald-700 font-semibold leading-relaxed">
+                        Yeh Serial Key neechay diye gaye box mein enter karein aur apna naya password set karein.
                     </p>
                 </div>
 
                 <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">6-Digit OTP Code Likhein *:</label>
-                    <input type="text" id="fp-otp-input" maxlength="6" placeholder="e.g. 482910" class="w-full px-3 py-2 border-2 border-brand-500 rounded-xl font-mono text-center font-black text-base text-slate-900 bg-white tracking-widest focus:outline-none">
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Oper Di Gayi Serial Key Yahan Enter Karein *:</label>
+                    <input type="text" id="fp-serial-input" placeholder="e.g. DP-849201" class="w-full px-3 py-2 border-2 border-brand-500 rounded-xl font-mono text-center font-black text-sm text-slate-900 bg-white tracking-widest focus:outline-none uppercase">
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                         <label class="block text-[11px] font-bold text-slate-700 mb-1">Naya Password (Min 6 Chars) *:</label>
-                        <input type="password" id="fp-new-pass" minlength="6" placeholder="Naya password" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <div class="relative">
+                            <input type="password" id="fp-new-pass" minlength="6" placeholder="Naya password" class="w-full pl-2.5 pr-8 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <button type="button" onclick="window.togglePasswordVisibility('fp-new-pass', 'fp-new-pass-icon')" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 transition" title="Show / Hide Password">
+                                <i data-lucide="eye" id="fp-new-pass-icon" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-700 mb-1">Confirm Naya Password *:</label>
-                        <input type="password" id="fp-confirm-pass" minlength="6" placeholder="Confirm password" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <div class="relative">
+                            <input type="password" id="fp-confirm-pass" minlength="6" placeholder="Confirm password" class="w-full pl-2.5 pr-8 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <button type="button" onclick="window.togglePasswordVisibility('fp-confirm-pass', 'fp-confirm-pass-icon')" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 transition" title="Show / Hide Password">
+                                <i data-lucide="eye" id="fp-confirm-pass-icon" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <button type="button" onclick="window.verifyOtpAndResetPassword()" class="w-full py-2.5 bg-brand-700 hover:bg-brand-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                <button type="button" onclick="window.verifySerialKeyAndResetPassword()" class="w-full py-2.5 bg-brand-700 hover:bg-brand-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
                     <i data-lucide="check-circle" class="w-4 h-4"></i>
-                    <span>Naya Password Save Karein</span>
+                    <span>Verify Key & Naya Password Save Karein</span>
                 </button>
 
                 <div class="text-center pt-1">
                     <button type="button" onclick="window.switchFpStep('request')" class="text-[11px] text-slate-500 hover:text-slate-800 font-bold underline">
-                        OTP dobara bhejein ya contact change karein
+                        Email change karein ya nayi Serial Key banayein
                     </button>
                 </div>
             </div>
