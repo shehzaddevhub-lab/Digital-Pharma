@@ -28,6 +28,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // User Account Root Document (for direct auth & sync profile)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
     // User-Owned Private Medicine Stock Inventory
     match /users/{userId}/medicines/{medId} {
       allow read, write: if isOwner(userId) && isValidId(medId);

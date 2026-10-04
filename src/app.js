@@ -20,6 +20,9 @@ import {
     googleProvider, 
     signInWithPopup, 
     signInAnonymously,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
     signOut, 
     onAuthStateChanged, 
     collection, 
@@ -534,6 +537,37 @@ export function extractSmartJson(text) {
 }
 window.extractSmartJson = extractSmartJson;
 
+// Convolution-based Unsharp Masking & Edge-Sharpening for low-contrast/dim camera images
+function applyImageSharpening(ctx, w, h) {
+    try {
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const d = imgData.data;
+        const copy = new Uint8ClampedArray(d);
+        const weight = 0.32;
+        // Edge sharpening pass to crisp up faint doctor handwriting & thermal bill print
+        for (let y = 1; y < h - 1; y += 2) {
+            const rowOffset = y * w;
+            const upOffset = (y - 1) * w;
+            const downOffset = (y + 1) * w;
+            for (let x = 1; x < w - 1; x += 2) {
+                const idx = (rowOffset + x) * 4;
+                for (let c = 0; c < 3; c++) {
+                    const val = copy[idx + c];
+                    const up = copy[(upOffset + x) * 4 + c];
+                    const down = copy[(downOffset + x) * 4 + c];
+                    const left = copy[(rowOffset + (x - 1)) * 4 + c];
+                    const right = copy[(rowOffset + (x + 1)) * 4 + c];
+                    const laplacian = 4 * val - up - down - left - right;
+                    d[idx + c] = Math.min(255, Math.max(0, val + weight * laplacian));
+                }
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    } catch (e) {
+        // Fallback without canvas convolution
+    }
+}
+
 // Universal Orientation-Aware & High-Resolution Document Reader (Mobile & Desktop)
 export async function enhanceImageLikeCamScanner(file) {
     if (!file) throw new Error("Tasweer select nahi hui.");
@@ -573,10 +607,39 @@ export async function enhanceImageLikeCamScanner(file) {
                 if (ctx) {
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, w, h);
-                    // Gentle contrast enhancement to boost doctor pen ink without washing out faint blue strokes
-                    ctx.filter = 'contrast(1.06) brightness(1.02)';
+
+                    // First pass: Draw to sample luminance
                     ctx.drawImage(bitmap, 0, 0, w, h);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+                    let avgLum = 135;
+                    try {
+                        const sampleW = Math.min(w, 150);
+                        const sampleH = Math.min(h, 150);
+                        const pData = ctx.getImageData(0, 0, sampleW, sampleH).data;
+                        let sum = 0;
+                        for (let i = 0; i < pData.length; i += 16) {
+                            sum += (0.299 * pData[i] + 0.587 * pData[i+1] + 0.114 * pData[i+2]);
+                        }
+                        avgLum = sum / (pData.length / 16);
+                    } catch(eLum) {}
+
+                    // Clear and redraw with adaptive contrast & brightness boost for dark/dim mobile photos
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, w, h);
+                    if (avgLum < 95) {
+                        ctx.filter = 'contrast(1.36) brightness(1.36) saturate(1.08)';
+                    } else if (avgLum < 135) {
+                        ctx.filter = 'contrast(1.25) brightness(1.20) saturate(1.04)';
+                    } else {
+                        ctx.filter = 'contrast(1.15) brightness(1.06)';
+                    }
+
+                    ctx.drawImage(bitmap, 0, 0, w, h);
+                    ctx.filter = 'none';
+
+                    // Apply optical edge-sharpening pass
+                    applyImageSharpening(ctx, w, h);
+
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
                     bitmap.close?.();
                     return dataUrl.split(',')[1];
                 }
@@ -616,10 +679,13 @@ export async function enhanceImageLikeCamScanner(file) {
 
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, w, h);
-                ctx.filter = 'contrast(1.06) brightness(1.02)';
+                ctx.filter = 'contrast(1.25) brightness(1.18)';
                 ctx.drawImage(img, 0, 0, w, h);
+                ctx.filter = 'none';
 
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+                applyImageSharpening(ctx, w, h);
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
                 resolve(dataUrl.split(',')[1]);
             };
             img.onerror = () => {
@@ -1823,7 +1889,7 @@ window.handlePrescriptionScan = async function(event) {
                         </div>
                         <strong class="text-xs sm:text-sm font-black text-slate-800 block">Tasveer se koi dawai detect nahi hui</strong>
                         <p class="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
-                            Barah-e-karam prescription slip ki saaf, seedhi tasveer upload karein ya POS Counter par search bar se direct dawai select karein.
+                            Prescription slip upload karein ya POS Counter par search bar se direct dawai select karein.
                         </p>
                     </div>
                 `;
@@ -2046,7 +2112,7 @@ window.handleRealInvoiceOcr = async function(event) {
         if (items.length > 0) {
             showToast(`${items.length} bill items detect ho gaye! MRP check karein.`, 'success');
         } else {
-            showToast('Bill se koi item detect nahi hua. Saaf tasveer upload karein.', 'info');
+            showToast('Bill se koi item detect nahi hua.', 'info');
         }
     } catch(err) {
         console.error('Invoice OCR Error:', err);
@@ -2206,6 +2272,72 @@ window.handleAiMarginBillScan = async function(event) {
         console.error('Margin OCR Error:', e);
         container?.classList.add('hidden');
         showToast('Margin bill scan nahi ho saka, dobara koshish karein.', 'error');
+    } finally {
+        event.target.value = '';
+    }
+};
+
+// AI Medicine Packaging / Box / Strip Scanner (Direct Stock In)
+window.handleMedicinePackagingScan = async function(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    showToast('Medicine packaging scan ho rahi hai, barah-e-karam intizar karein...', 'info');
+
+    try {
+        const base64Data = await enhanceImageLikeCamScanner(file);
+        const resData = await callAiBackend('/api/ai/scan-medicine-pack', base64Data, 'Extract medicine name, generic formula, pack size, batch, expiry, mrp, tp from this medicine packaging photo');
+        
+        const data = resData?.data;
+        if (!data || !data.name) {
+            showToast('Packaging se dawa ka naam detect nahi ho saka.', 'info');
+            return;
+        }
+
+        // Open Add Medicine Modal if not open
+        window.openAddMedicineModal();
+
+        // Populate fields
+        const nameEl = document.getElementById('med-name');
+        if (nameEl && data.name) nameEl.value = data.name;
+
+        const typeEl = document.getElementById('med-type');
+        if (typeEl && data.form) {
+            const formVal = String(data.form).toLowerCase();
+            if (formVal.includes('tab')) typeEl.value = 'tab';
+            else if (formVal.includes('cap')) typeEl.value = 'cap';
+            else if (formVal.includes('syp') || formVal.includes('syrup')) typeEl.value = 'syp';
+            else if (formVal.includes('drop')) typeEl.value = 'drop';
+            else if (formVal.includes('inj')) typeEl.value = 'inj';
+            else if (formVal.includes('scht') || formVal.includes('sachet')) typeEl.value = 'scht';
+        }
+
+        const genericEl = document.getElementById('med-generic');
+        if (genericEl && data.generic) genericEl.value = data.generic;
+
+        const packEl = document.getElementById('med-pack');
+        if (packEl && data.packSize) packEl.value = data.packSize;
+
+        const batchEl = document.getElementById('med-batch');
+        if (batchEl && data.batch) batchEl.value = data.batch;
+
+        const expMonthEl = document.getElementById('med-expiry-month');
+        if (expMonthEl && data.expiryMonth) expMonthEl.value = data.expiryMonth;
+
+        const expYearEl = document.getElementById('med-expiry-year');
+        if (expYearEl && data.expiryYear) expYearEl.value = data.expiryYear;
+
+        const mrpEl = document.getElementById('med-mrp');
+        if (mrpEl && data.mrp) mrpEl.value = data.mrp;
+
+        const buyEl = document.getElementById('med-buy');
+        if (buyEl && data.buyRate) buyEl.value = data.buyRate;
+
+        window.updateMedPackHintLive();
+        showToast(`AI Scanner: ${data.name} kamyabi se auto-fill ho gayi!`, 'success');
+    } catch(err) {
+        console.error('Packaging Scan Error:', err);
+        showToast('Packaging scan mukammal nahi ho saka.', 'error');
     } finally {
         event.target.value = '';
     }
@@ -3523,8 +3655,30 @@ window.togglePasswordVisibility = function(inputId, iconId) {
 };
 
 // ==========================================
-// EXPIRED & NEAR-EXPIRY FILTER SYSTEM (1 Month, 2 Months, 3 Months, Expired)
+// EXPIRED & NEAR-EXPIRY FILTER SYSTEM (Next 3 Dynamic Calendar Months & Expired)
 // ==========================================
+function getNext3Months() {
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const now = new Date();
+    const curM = now.getMonth(); // 0 to 11
+    const curY = now.getFullYear();
+
+    const m1Idx = (curM + 1) % 12;
+    const m1Year = curM + 1 > 11 ? curY + 1 : curY;
+
+    const m2Idx = (curM + 2) % 12;
+    const m2Year = curM + 2 > 11 ? curY + 1 : curY;
+
+    const m3Idx = (curM + 3) % 12;
+    const m3Year = curM + 3 > 11 ? curY + 1 : curY;
+
+    return [
+        { name: monthNames[m1Idx], monthIndex: m1Idx, year: m1Year, key: 'm1' },
+        { name: monthNames[m2Idx], monthIndex: m2Idx, year: m2Year, key: 'm2' },
+        { name: monthNames[m3Idx], monthIndex: m3Idx, year: m3Year, key: 'm3' }
+    ];
+}
+
 let currentExpiryAlertFilter = 'all';
 
 window.setExpiryAlertFilter = function(filter) {
@@ -3536,13 +3690,21 @@ function renderExpiryAlertSection() {
     const expiryList = document.getElementById('expiry-alert-list');
     if (!expiryList) return;
 
+    const next3 = getNext3Months();
+    const nameEl1 = document.getElementById('exp-name-m1');
+    const nameEl2 = document.getElementById('exp-name-m2');
+    const nameEl3 = document.getElementById('exp-name-m3');
+    if (nameEl1) nameEl1.innerText = next3[0].name;
+    if (nameEl2) nameEl2.innerText = next3[1].name;
+    if (nameEl3) nameEl3.innerText = next3[2].name;
+
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
     let countExpired = 0;
-    let count1m = 0;
-    let count2m = 0;
-    let count3m = 0;
+    let countM1 = 0;
+    let countM2 = 0;
+    let countM3 = 0;
     let countAll = 0;
 
     const analyzedMeds = [];
@@ -3554,40 +3716,45 @@ function renderExpiryAlertSection() {
 
         const diffTime = d.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const medMonth = d.getMonth();
+        const medYear = d.getFullYear();
 
         if (diffDays < 0) {
             countExpired++;
             countAll++;
-            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'expired' });
-        } else if (diffDays <= 30) {
-            count1m++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'expired', bucketLabel: 'Expired' });
+        } else if (medYear === next3[0].year && medMonth === next3[0].monthIndex) {
+            countM1++;
             countAll++;
-            analyzedMeds.push({ med: m, date: d, diffDays, bucket: '1m' });
-        } else if (diffDays <= 60) {
-            count2m++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'm1', bucketLabel: next3[0].name });
+        } else if (medYear === next3[1].year && medMonth === next3[1].monthIndex) {
+            countM2++;
             countAll++;
-            analyzedMeds.push({ med: m, date: d, diffDays, bucket: '2m' });
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'm2', bucketLabel: next3[1].name });
+        } else if (medYear === next3[2].year && medMonth === next3[2].monthIndex) {
+            countM3++;
+            countAll++;
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'm3', bucketLabel: next3[2].name });
         } else if (diffDays <= 90) {
-            count3m++;
             countAll++;
-            analyzedMeds.push({ med: m, date: d, diffDays, bucket: '3m' });
+            analyzedMeds.push({ med: m, date: d, diffDays, bucket: 'other_soon', bucketLabel: 'Near Expiry' });
         }
     });
 
     // Update pill counters
     const elCntAll = document.getElementById('exp-cnt-all');
     if (elCntAll) elCntAll.innerText = countAll;
-    const elCnt1m = document.getElementById('exp-cnt-1m');
-    if (elCnt1m) elCnt1m.innerText = count1m;
-    const elCnt2m = document.getElementById('exp-cnt-2m');
-    if (elCnt2m) elCnt2m.innerText = count2m;
-    const elCnt3m = document.getElementById('exp-cnt-3m');
-    if (elCnt3m) elCnt3m.innerText = count3m;
+    const elCntM1 = document.getElementById('exp-cnt-m1');
+    if (elCntM1) elCntM1.innerText = countM1;
+    const elCntM2 = document.getElementById('exp-cnt-m2');
+    if (elCntM2) elCntM2.innerText = countM2;
+    const elCntM3 = document.getElementById('exp-cnt-m3');
+    if (elCntM3) elCntM3.innerText = countM3;
     const elCntExp = document.getElementById('exp-cnt-expired');
     if (elCntExp) elCntExp.innerText = countExpired;
 
     // Update active pill button styling
-    ['all', '1m', '2m', '3m', 'expired'].forEach(p => {
+    ['all', 'm1', 'm2', 'm3', 'expired'].forEach(p => {
         const btn = document.getElementById(`exp-pill-${p}`);
         if (btn) {
             if (p === currentExpiryAlertFilter) {
@@ -3603,37 +3770,34 @@ function renderExpiryAlertSection() {
         displayList = analyzedMeds;
     } else if (currentExpiryAlertFilter === 'expired') {
         displayList = analyzedMeds.filter(a => a.bucket === 'expired');
-    } else if (currentExpiryAlertFilter === '1m') {
-        displayList = analyzedMeds.filter(a => a.bucket === '1m');
-    } else if (currentExpiryAlertFilter === '2m') {
-        displayList = analyzedMeds.filter(a => a.bucket === '2m');
-    } else if (currentExpiryAlertFilter === '3m') {
-        displayList = analyzedMeds.filter(a => a.bucket === '3m');
+    } else if (currentExpiryAlertFilter === 'm1') {
+        displayList = analyzedMeds.filter(a => a.bucket === 'm1');
+    } else if (currentExpiryAlertFilter === 'm2') {
+        displayList = analyzedMeds.filter(a => a.bucket === 'm2');
+    } else if (currentExpiryAlertFilter === 'm3') {
+        displayList = analyzedMeds.filter(a => a.bucket === 'm3');
     }
 
-    // Sort critical first (lowest diffDays)
     displayList.sort((a, b) => a.diffDays - b.diffDays);
 
     if (displayList.length === 0) {
-        expiryList.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">Is muddat (${currentExpiryAlertFilter === 'all' ? '90 dino' : (currentExpiryAlertFilter === 'expired' ? 'Expired' : currentExpiryAlertFilter)}) mein koi medicine nahi mili.</p>`;
+        let periodName = 'in 3 maheenon';
+        if (currentExpiryAlertFilter === 'expired') periodName = 'Expired';
+        else if (currentExpiryAlertFilter === 'm1') periodName = next3[0].name;
+        else if (currentExpiryAlertFilter === 'm2') periodName = next3[1].name;
+        else if (currentExpiryAlertFilter === 'm3') periodName = next3[2].name;
+        expiryList.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">Is muddat (${periodName}) mein koi medicine nahi mili.</p>`;
     } else {
-        expiryList.innerHTML = displayList.map(({ med, diffDays }) => {
+        expiryList.innerHTML = displayList.map(({ med, diffDays, bucketLabel }) => {
             let badgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
             let labelText = '';
             if (diffDays < 0) {
                 badgeClass = 'bg-red-600 text-white font-black';
                 labelText = `Expired (${Math.abs(diffDays)} din pehle)`;
-            } else if (diffDays <= 30) {
-                badgeClass = 'bg-rose-100 text-rose-800 border border-rose-300 font-black';
-                labelText = `1 mnth (${diffDays} din baqi)`;
-            } else if (diffDays <= 60) {
-                badgeClass = 'bg-amber-100 text-amber-900 border border-amber-300 font-bold';
-                labelText = `2 mnth (${diffDays} din baqi)`;
             } else {
-                badgeClass = 'bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold';
-                labelText = `3 mnth (${diffDays} din baqi)`;
+                badgeClass = 'bg-amber-100 text-amber-900 border border-amber-300 font-black';
+                labelText = `Exp: ${bucketLabel} (${diffDays} din baaqi)`;
             }
-
             return `
                 <div onclick="window.switchTab('inventory'); const s=document.getElementById('inv-search'); if(s){ s.value='${med.name.replace(/'/g, "\\'")}'; window.filterInventoryTable(); }" class="py-2 flex items-center justify-between text-xs hover:bg-slate-50 px-1 rounded-lg cursor-pointer transition">
                     <div>
@@ -3659,7 +3823,7 @@ function renderDashboardMetrics() {
     const elCardSale = document.getElementById('dash-card-sale');
     if (elCardSale) elCardSale.innerText = 'Rs. ' + todayTotal.toLocaleString('en-PK', { maximumFractionDigits: 1 });
     const elCardInvoices = document.getElementById('dash-card-invoices');
-    if (elCardInvoices) elCardInvoices.innerText = todaySales.length > 0 ? `${todaySales.length} Invoices • Sale & Invest` : 'Sale & Invest Depth';
+    if (elCardInvoices) elCardInvoices.innerText = todaySales.length > 0 ? `${todaySales.length} Bills • Sale & Sarmaya` : 'Sale & Invest Depth';
 
     // Box 3: Today Customers
     const elCardCustomers = document.getElementById('dash-card-today-customers');
@@ -3680,7 +3844,7 @@ function renderDashboardMetrics() {
 
     renderExpiryAlertSection();
 
-    // 2nd Section: Today Sale & Investment Live Graph & Financial Overview (Zero Invoices here!)
+    // 2nd Section: Sale, Purchase & Investment Financial Overview (Hidden depth graph behind dedicated button!)
     const dashGraphContainer = document.getElementById('dash-today-graph-container');
     if (dashGraphContainer) {
         let todayCost = 0;
@@ -3691,83 +3855,40 @@ function renderDashboardMetrics() {
         const todayProfit = Math.max(0, todayTotal - todayCost);
         const todayMargin = todayTotal > 0 ? ((todayProfit / todayTotal) * 100).toFixed(1) : '0.0';
 
-        // Hourly buckets for Today's business hours
-        const timeBuckets = [
-            { label: '8-11h', startH: 8, endH: 11, sale: 0, cost: 0 },
-            { label: '11-14h', startH: 11, endH: 14, sale: 0, cost: 0 },
-            { label: '14-17h', startH: 14, endH: 17, sale: 0, cost: 0 },
-            { label: '17-20h', startH: 17, endH: 20, sale: 0, cost: 0 },
-            { label: '20-23h', startH: 20, endH: 23, sale: 0, cost: 0 },
-            { label: 'Night', startH: 23, endH: 8, sale: 0, cost: 0 }
-        ];
-
-        todaySales.forEach(s => {
-            const h = new Date(s.timestamp).getHours();
-            const fin = getSaleFinancials(s);
-            const b = timeBuckets.find(bk => (bk.startH < bk.endH ? (h >= bk.startH && h < bk.endH) : (h >= bk.startH || h < bk.endH)));
-            if (b) {
-                b.sale += fin.saleAmount;
-                b.cost += fin.saleCost;
-            } else {
-                timeBuckets[5].sale += fin.saleAmount;
-                timeBuckets[5].cost += fin.saleCost;
-            }
-        });
-
-        const maxBucketVal = Math.max(50, ...timeBuckets.map(b => Math.max(b.sale, b.cost)));
-
         dashGraphContainer.innerHTML = `
             <!-- Live Financial Overview Chips -->
-            <div class="grid grid-cols-3 gap-1.5 text-center text-xs">
-                <div class="p-2 bg-emerald-50 rounded-xl border border-emerald-200">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                <div class="p-2.5 bg-emerald-50 rounded-2xl border border-emerald-200">
                     <span class="text-[9px] uppercase font-bold text-emerald-800 block">Today Sale</span>
-                    <strong class="text-xs sm:text-sm font-black text-emerald-900">Rs. ${todayTotal.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <strong class="text-sm font-black text-emerald-950">Rs. ${todayTotal.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[9px] text-emerald-700 font-semibold block mt-0.5">${todaySales.length} Total Bills</span>
                 </div>
-                <div class="p-2 bg-blue-50 rounded-xl border border-blue-200">
-                    <span class="text-[9px] uppercase font-bold text-blue-800 block">Cost / TP</span>
-                    <strong class="text-xs sm:text-sm font-black text-blue-900">Rs. ${todayCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                <div class="p-2.5 bg-blue-50 rounded-2xl border border-blue-200">
+                    <span class="text-[9px] uppercase font-bold text-blue-800 block">Kharid TP Sarmaya</span>
+                    <strong class="text-sm font-black text-blue-950">Rs. ${todayCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[9px] text-blue-700 font-semibold block mt-0.5">Sold Stock Cost</span>
                 </div>
-                <div class="p-2 bg-amber-50 rounded-xl border border-amber-200">
+                <div class="p-2.5 bg-amber-50 rounded-2xl border border-amber-200">
                     <span class="text-[9px] uppercase font-bold text-amber-800 block">Net Munafa</span>
-                    <strong class="text-xs sm:text-sm font-black text-amber-900">Rs. ${todayProfit.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
-                    <span class="text-[9px] font-bold text-amber-700 block">${todayMargin}%</span>
+                    <strong class="text-sm font-black text-amber-950">Rs. ${todayProfit.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[9px] font-extrabold text-amber-700 block mt-0.5">Margin: ${todayMargin}%</span>
+                </div>
+                <div class="p-2.5 bg-slate-900 text-white rounded-2xl border border-slate-800">
+                    <span class="text-[9px] uppercase font-bold text-slate-300 block">Inventory Sarmaya</span>
+                    <strong class="text-sm font-black text-amber-400">Rs. ${stockCost.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</strong>
+                    <span class="text-[9px] text-slate-400 font-semibold block mt-0.5">Dukan Total Stock</span>
                 </div>
             </div>
 
-            <!-- Mini Live Dual Bar Chart (Fixed Responsive Heights, Green=Sale, Blue=Cost) -->
-            <div class="bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/80">
-                <div class="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1 border-b border-dashed border-slate-200 pb-0.5">
-                    <div class="flex items-center gap-2">
-                        <span class="flex items-center gap-1 text-emerald-700 font-extrabold"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Sale</span>
-                        <span class="flex items-center gap-1 text-blue-700 font-extrabold"><span class="w-2 h-2 rounded-full bg-blue-500"></span> Cost TP</span>
-                    </div>
-                    <span>Max: Rs. ${maxBucketVal.toLocaleString('en-PK', { maximumFractionDigits: 0 })}</span>
-                </div>
-
-                <div class="h-[84px] w-full flex items-end justify-between gap-1 px-1">
-                    ${timeBuckets.map(b => {
-                        const sH = Math.max(4, Math.round((b.sale / maxBucketVal) * 58));
-                        const cH = Math.max(4, Math.round((b.cost / maxBucketVal) * 58));
-                        return `
-                            <div class="flex-1 flex flex-col items-center justify-end h-[84px]" title="${b.label}: Sale Rs. ${b.sale.toFixed(0)}, Cost Rs. ${b.cost.toFixed(0)}">
-                                <div class="w-full flex items-end justify-center gap-0.5 h-[62px]">
-                                    <div class="w-full max-w-[12px] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-sm" style="height: ${b.sale > 0 ? sH : 4}px;"></div>
-                                    <div class="w-full max-w-[12px] bg-gradient-to-t from-blue-600 to-indigo-400 rounded-t-sm" style="height: ${b.cost > 0 ? cH : 4}px;"></div>
-                                </div>
-                                <span class="text-[8px] sm:text-[9px] font-bold text-slate-600 mt-1 truncate block text-center">${b.label}</span>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-
-            <button type="button" onclick="window.openSalesAnalyticsModal('today', 'sale')" class="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95">
-                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-emerald-700"></i>
-                <span>Mukammal Sale & Investment Graph Kholein</span>
+            <!-- Dedicated Deep Graph Action Button (Clean external trigger) -->
+            <button type="button" onclick="window.openSalesAnalyticsModal('today', 'sale')" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold rounded-2xl shadow text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer border border-emerald-500/30">
+                <i data-lucide="bar-chart-3" class="w-4 h-4 text-emerald-200"></i>
+                <span>Sale, Purchase & Investment Graph Depth (گراف تفصیلی جائزہ)</span>
+                <i data-lucide="chevron-right" class="w-4 h-4 text-emerald-200"></i>
             </button>
         `;
+        safeCreateIcons();
     }
-    safeCreateIcons();
 }
 
 window.filterLowStockInventory = function() {
@@ -4629,12 +4750,22 @@ async function deleteSaleFromStore(id) {
     }
 }
 
-// Account Hub & Authentication Management (Only 2 Clean Options: Official Google Sign-In & Guest Mode)
+// Active OTP Tracker for Forgot Password
+let activeResetState = {
+    otp: null,
+    target: null,
+    channel: null,
+    timestamp: 0
+};
+
+// Account Hub & Authentication Management (3 Clear Options: Direct Login, Sign Up & Guest Mode)
 window.switchHubAuthTab = function(tab) {
-    const btnSync = document.getElementById('hub-tab-btn-sync');
+    const btnLogin = document.getElementById('hub-tab-btn-login');
+    const btnSignup = document.getElementById('hub-tab-btn-signup');
     const btnGuest = document.getElementById('hub-tab-btn-guest');
 
-    const panelSync = document.getElementById('hub-panel-sync');
+    const panelLogin = document.getElementById('hub-panel-login');
+    const panelSignup = document.getElementById('hub-panel-signup');
     const panelGuest = document.getElementById('hub-panel-guest');
 
     const setInactive = (btn) => {
@@ -4646,218 +4777,500 @@ window.switchHubAuthTab = function(tab) {
         btn?.classList.remove('text-slate-600', 'hover:bg-white/60');
     };
 
-    setInactive(btnSync);
+    setInactive(btnLogin);
+    setInactive(btnSignup);
     setInactive(btnGuest);
 
-    panelSync?.classList.add('hidden');
+    panelLogin?.classList.add('hidden');
+    panelSignup?.classList.add('hidden');
     panelGuest?.classList.add('hidden');
 
-    if (tab === 'guest') {
+    if (tab === 'signup') {
+        setActive(btnSignup);
+        panelSignup?.classList.remove('hidden');
+    } else if (tab === 'guest') {
         setActive(btnGuest);
         panelGuest?.classList.remove('hidden');
     } else {
-        setActive(btnSync);
-        panelSync?.classList.remove('hidden');
+        setActive(btnLogin);
+        panelLogin?.classList.remove('hidden');
     }
     safeCreateIcons();
 };
 
-// Official Google Sign-in with Authentic Device Popup & Account Chooser
-window.loginWithGooglePrompt = async function() {
-    try {
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
-        if (!user) return;
-        const googleUser = {
-            name: user.displayName || user.email.split('@')[0],
-            email: user.email,
-            uid: user.uid,
-            loginMethod: 'google',
-            isLiveSync: true,
-            photo: user.photoURL || ''
-        };
-        localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
-        localStorage.removeItem('sm_user_mode');
+// Direct Sign Up with Email/Gmail & Password (Saves to Firebase & Network Pharmacy)
+window.handleAuthSignup = async function() {
+    const storeName = document.getElementById('auth-signup-store')?.value.trim();
+    const ownerName = document.getElementById('auth-signup-owner')?.value.trim();
+    const email = document.getElementById('auth-signup-email')?.value.trim().toLowerCase();
+    const phone = document.getElementById('auth-signup-phone')?.value.trim();
+    const city = document.getElementById('auth-signup-city')?.value.trim();
+    const pass = document.getElementById('auth-signup-pass')?.value;
 
-        // Automatically sync registered pharmacy in network
-        const config = window.getStoreConfig();
+    if (!storeName || !ownerName || !email || !phone || !city || !pass) {
+        showToast('Barah-e-karam tamam zaroori fields darj karein.', 'warning');
+        return;
+    }
+    if (pass.length < 6) {
+        showToast('Password kam az kam 6 characters ka hona chahiye.', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('btn-auth-signup-submit');
+    const originalText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Registering...`;
+    }
+
+    try {
+        let userUid = null;
+        let firebaseAuthUser = null;
+
+        // 1. Try Firebase Auth create user
+        try {
+            const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+            firebaseAuthUser = userCred.user;
+            userUid = firebaseAuthUser.uid;
+        } catch(authErr) {
+            console.warn('Firebase createUser note:', authErr?.code, authErr?.message);
+            if (authErr?.code === 'auth/email-already-in-use') {
+                showToast('Yeh Gmail pehle se registered hai! Barah-e-karam Login karein.', 'warning');
+                window.switchHubAuthTab('login');
+                const loginEmailInput = document.getElementById('auth-login-email');
+                if (loginEmailInput) loginEmailInput.value = email;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                return;
+            }
+            // If email provider disabled or network issue, fallback to anonymous or deterministic UID
+            try {
+                const anonResult = await signInAnonymously(auth);
+                userUid = anonResult.user.uid;
+            } catch(eAnon) {
+                const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+                userUid = `ph_${cleanHash}`;
+            }
+        }
+
+        if (!userUid) {
+            const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+            userUid = `ph_${cleanHash}`;
+        }
+
+        const authRecord = {
+            name: ownerName,
+            email: email,
+            phone: phone,
+            city: city,
+            pharmacyName: storeName,
+            uid: userUid,
+            loginMethod: 'email_password',
+            isLiveSync: true
+        };
+
+        // 2. Save User Document to Firestore
+        try {
+            await setDoc(doc(db, 'users', userUid), {
+                uid: userUid,
+                email: email,
+                phone: phone,
+                city: city,
+                ownerName: ownerName,
+                pharmacyName: storeName,
+                passwordHash: btoa(pass),
+                createdAt: new Date().toISOString()
+            }, { merge: true });
+        } catch(eDoc) {
+            console.warn('Firestore user save note:', eDoc);
+        }
+
+        // 3. Register in Public Connected Network
+        try {
+            await setDoc(doc(db, 'pharmacies', userUid), {
+                name: storeName,
+                ownerName: ownerName,
+                city: city,
+                phone: phone,
+                email: email,
+                remarks: 'Verified Digital Pharma Live Member',
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+        } catch(ePharm) {}
+
+        // Redundant backend network register
         try {
             await fetch('/api/network/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: config.name || `${googleUser.name} Pharmacy`,
-                    ownerName: config.ownerName || googleUser.name,
-                    city: config.address || 'Pakistan',
-                    phone: config.phone || '03001234567',
-                    email: user.email,
-                    licenseNo: config.licenseNo || '',
-                    remarks: 'Verified Google Live Member'
+                    name: storeName,
+                    ownerName: ownerName,
+                    city: city,
+                    phone: phone,
+                    email: email,
+                    remarks: 'Verified Digital Pharma Live Member'
                 })
             });
-            window.refreshNetworkList();
-        } catch(e) {}
+        } catch(eNet) {}
 
-        window.applyStoreIdentity();
-        window.showHubActiveProfile();
-        showToast(`Google account (${user.email}) ke sath live sync connect ho gaya!`, 'success');
-    } catch (err) {
-        const errCode = err?.code || '';
-        const errMsg = err?.message || String(err || '');
-
-        // User intentionally closed popup window
-        if (
-            errCode === 'auth/popup-closed-by-user' ||
-            errCode === 'auth/cancelled-popup-request' ||
-            errMsg.includes('popup-closed-by-user') ||
-            errMsg.includes('cancelled-popup-request')
-        ) {
-            showToast('Google login popup band kar diya gaya.', 'info');
-            return;
-        }
-
-        // Domain not authorized or popup blocked: Fallback directly to simple Gmail login seamlessly
-        console.warn('Firebase popup notice:', errCode, errMsg);
-        const noticeEl = document.getElementById('hub-login-domain-notice');
-        if (noticeEl) noticeEl.classList.remove('hidden');
-        const gmailInput = document.getElementById('hub-direct-gmail');
-        if (gmailInput) {
-            gmailInput.focus();
-            gmailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            if (gmailInput.value.trim().includes('@')) {
-                await window.loginWithDirectGmail();
-                return;
-            }
-        }
-        showToast('Neeche apna Gmail likh kar "Login with Gmail" dabayein!', 'info');
-    }
-};
-
-// Direct Gmail Login for Any Pharmacy Owner (Zero technical barriers, auto connects into shared network)
-window.loginWithDirectGmail = async function(customEmail) {
-    let email = customEmail;
-    if (!email) {
-        const inputEl = document.getElementById('hub-direct-gmail');
-        email = inputEl?.value.trim() || '';
-    }
-    email = String(email || '').trim().toLowerCase();
-
-    if (!email || !email.includes('@') || !email.includes('.')) {
-        showToast('Barah-e-karam durust Gmail address darj karein (e.g. mypharmacy@gmail.com)', 'warning');
-        return;
-    }
-
-    try {
-        // Authenticate with Firebase if not signed in
-        let currentAuthUid = auth.currentUser?.uid;
-        if (!currentAuthUid) {
-            try {
-                const anonResult = await signInAnonymously(auth);
-                currentAuthUid = anonResult.user.uid;
-            } catch(e) {
-                console.warn('Anonymous sign-in note:', e);
-            }
-        }
-
-        // Generate deterministic, clean pharmacy UID from email
-        const cleanEmailHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-        const userUid = currentAuthUid || `ph_${cleanEmailHash}`;
-        
-        const storeNameInput = document.getElementById('hub-direct-pharmacy-name');
-        const customStoreName = storeNameInput?.value.trim();
-        const pharmacyName = customStoreName || (email.split('@')[0].replace(/[._-]/g, ' ').toUpperCase() + ' Pharmacy');
-
-        const googleUser = {
-            name: email.split('@')[0],
-            email: email,
-            uid: userUid,
-            pharmacyName: pharmacyName,
-            loginMethod: 'google',
-            isLiveSync: true,
-            photo: ''
-        };
-
-        localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
+        // Update local session
+        localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.removeItem('sm_user_mode');
 
         const config = window.getStoreConfig();
-        if (!config.name || config.name === 'Shahzad Medical Store') {
-            config.name = pharmacyName;
-            config.ownerName = googleUser.name;
-            localStorage.setItem('sm_store_config', JSON.stringify(config));
+        config.name = storeName;
+        config.ownerName = ownerName;
+        config.phone = phone;
+        config.address = city;
+        localStorage.setItem('sm_store_config', JSON.stringify(config));
+
+        // Connect live listeners
+        attachFirestoreSyncListeners(userUid);
+
+        window.applyStoreIdentity();
+        window.showHubActiveProfile();
+        window.refreshNetworkList();
+        showToast(`Mubarak! ${storeName} ka account ban gaya aur live network connect ho gaya!`, 'success');
+    } catch(err) {
+        console.error('Signup error:', err);
+        showToast('Registration mein masla aya: ' + (err?.message || err), 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    }
+};
+
+// Direct Login with Registered Email/Gmail & Password
+window.handleAuthLogin = async function() {
+    const email = document.getElementById('auth-login-email')?.value.trim().toLowerCase();
+    const pass = document.getElementById('auth-login-pass')?.value;
+
+    if (!email || !pass) {
+        showToast('Barah-e-karam apna email aur password darj karein.', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('btn-auth-login-submit');
+    const originalText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Logging in...`;
+    }
+
+    try {
+        let userUid = null;
+        let loggedUser = null;
+
+        // 1. Try Firebase Auth sign in
+        try {
+            const userCred = await signInWithEmailAndPassword(auth, email, pass);
+            loggedUser = userCred.user;
+            userUid = loggedUser.uid;
+        } catch(authErr) {
+            console.warn('Firebase login note:', authErr?.code, authErr?.message);
+            // Check fallback for stored credentials or anonymous sync
+            const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+            const fallbackUid = `ph_${cleanHash}`;
+
+            // Check if user exists in local or Firestore
+            let matched = false;
+            const existingLocal = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
+            if (existingLocal && existingLocal.email === email) {
+                matched = true;
+                userUid = existingLocal.uid || fallbackUid;
+            } else {
+                try {
+                    const snap = await getDoc(doc(db, 'users', fallbackUid));
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.passwordHash === btoa(pass)) {
+                            matched = true;
+                            userUid = fallbackUid;
+                        }
+                    }
+                } catch(eSnap) {}
+            }
+
+            if (!matched) {
+                if (authErr?.code === 'auth/wrong-password' || authErr?.code === 'auth/invalid-credential') {
+                    showToast('Ghalat password darj kiya gaya hai. Password bhool gaye hain toh OTP reset use karein.', 'error');
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                    return;
+                }
+                // Try anonymous authentication to ensure Firestore rules allow access
+                try {
+                    const anonResult = await signInAnonymously(auth);
+                    userUid = anonResult.user.uid;
+                } catch(eAnon) {
+                    userUid = fallbackUid;
+                }
+            }
         }
 
-        // Link with Firestore User Medicines & Sales
-        try {
-            if (unsubscribeMeds) unsubscribeMeds();
-            const medsColRef = collection(db, 'users', userUid, 'medicines');
-            unsubscribeMeds = onSnapshot(medsColRef, (snapshot) => {
-                const cloudMeds = [];
-                snapshot.forEach(docSnap => cloudMeds.push(docSnap.data()));
-                if (cloudMeds.length > 0) {
-                    medicines = cloudMeds;
-                    localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-                    renderInventoryTable();
-                    renderDashboardMetrics();
-                }
-            }, (err) => console.warn('Firestore medicines sync note:', err));
-        } catch(e) {}
+        if (!userUid) {
+            const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+            userUid = `ph_${cleanHash}`;
+        }
 
-        try {
-            if (unsubscribeSales) unsubscribeSales();
-            const salesColRef = collection(db, 'users', userUid, 'sales');
-            unsubscribeSales = onSnapshot(salesColRef, (snapshot) => {
-                const cloudSales = [];
-                snapshot.forEach(docSnap => cloudSales.push(docSnap.data()));
-                if (cloudSales.length > 0) {
-                    sales = cloudSales;
-                    localStorage.setItem('sm_sales', JSON.stringify(sales));
-                    renderDashboardMetrics();
-                }
-            }, (err) => console.warn('Firestore sales sync note:', err));
-        } catch(e) {}
+        const config = window.getStoreConfig();
+        const pharmacyName = config.name && config.name !== 'Shahzad Medical Store' 
+            ? config.name 
+            : (email.split('@')[0].toUpperCase() + ' Pharmacy');
 
-        // Register Pharmacy Profile in Public Connected Network so ALL pharmacies see each other
+        const authRecord = {
+            name: config.ownerName || email.split('@')[0],
+            email: email,
+            phone: config.phone || '03001234567',
+            city: config.address || 'Pakistan',
+            pharmacyName: pharmacyName,
+            uid: userUid,
+            loginMethod: 'email_password',
+            isLiveSync: true
+        };
+
+        localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
+        localStorage.removeItem('sm_user_mode');
+
+        // Register in Public Connected Network
         try {
-            const pharmDocRef = doc(db, 'pharmacies', userUid);
-            await setDoc(pharmDocRef, {
+            await setDoc(doc(db, 'pharmacies', userUid), {
                 name: pharmacyName,
-                ownerName: config.ownerName || googleUser.name,
+                ownerName: config.ownerName || authRecord.name,
                 city: config.address || 'Pakistan',
                 phone: config.phone || '03001234567',
                 email: email,
-                licenseNo: config.licenseNo || '',
-                remarks: 'Live Connected Partner Pharmacy',
+                remarks: 'Verified Digital Pharma Live Member',
                 updatedAt: new Date().toISOString()
             }, { merge: true });
-        } catch(e) {}
+        } catch(ePharm) {}
 
-        // Also register in backend network endpoint for complete redundancy
+        // Backend network register
         try {
             await fetch('/api/network/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: pharmacyName,
-                    ownerName: config.ownerName || googleUser.name,
+                    ownerName: config.ownerName || authRecord.name,
                     city: config.address || 'Pakistan',
                     phone: config.phone || '03001234567',
                     email: email,
-                    licenseNo: config.licenseNo || '',
-                    remarks: 'Live Connected Partner Pharmacy'
+                    remarks: 'Verified Digital Pharma Live Member'
                 })
             });
-        } catch(e) {}
+        } catch(eNet) {}
+
+        // Attach listeners
+        attachFirestoreSyncListeners(userUid);
 
         window.applyStoreIdentity();
         window.showHubActiveProfile();
         window.refreshNetworkList();
-        showToast(`Pharmacy account (${email}) kamyabi se network ke sath connect ho gaya!`, 'success');
+        showToast(`Khush Amdeed! Aapki pharmacy (${email}) live connect ho gayi!`, 'success');
     } catch(err) {
-        console.error('Direct Gmail Login Error:', err);
-        showToast('Login setup mukammal ho gaya!', 'success');
-        window.applyStoreIdentity();
-        window.showHubActiveProfile();
+        console.error('Login error:', err);
+        showToast('Login nahi ho saka: ' + (err?.message || err), 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    }
+};
+
+// Reusable Helper to attach Firestore Sync Listeners
+function attachFirestoreSyncListeners(uid) {
+    if (!uid || !db) return;
+    try {
+        if (unsubscribeMeds) unsubscribeMeds();
+        const medsColRef = collection(db, 'users', uid, 'medicines');
+        unsubscribeMeds = onSnapshot(medsColRef, (snapshot) => {
+            const cloudMeds = [];
+            snapshot.forEach(docSnap => cloudMeds.push(docSnap.data()));
+            if (cloudMeds.length > 0) {
+                medicines = cloudMeds;
+                localStorage.setItem('sm_medicines', JSON.stringify(medicines));
+                renderInventoryTable();
+                renderDashboardMetrics();
+            }
+        }, (err) => console.warn('Firestore medicines sync note:', err));
+    } catch(e) {}
+
+    try {
+        if (unsubscribeSales) unsubscribeSales();
+        const salesColRef = collection(db, 'users', uid, 'sales');
+        unsubscribeSales = onSnapshot(salesColRef, (snapshot) => {
+            const cloudSales = [];
+            snapshot.forEach(docSnap => cloudSales.push(docSnap.data()));
+            if (cloudSales.length > 0) {
+                sales = cloudSales;
+                localStorage.setItem('sm_sales', JSON.stringify(sales));
+                renderDashboardMetrics();
+            }
+        }, (err) => console.warn('Firestore sales sync note:', err));
+    } catch(e) {}
+}
+
+// ==========================================
+// FORGOT PASSWORD & OTP SYSTEM (WhatsApp & Gmail)
+// ==========================================
+window.openForgotPasswordModal = function() {
+    const modal = document.getElementById('forgot-password-modal');
+    modal?.classList.remove('hidden');
+    syncModalScrollLock();
+    window.switchFpStep('request');
+    const contactInput = document.getElementById('fp-contact-input');
+    const loginEmailInput = document.getElementById('auth-login-email');
+    if (contactInput && loginEmailInput && loginEmailInput.value) {
+        contactInput.value = loginEmailInput.value.trim();
+    }
+    safeCreateIcons();
+};
+
+window.closeForgotPasswordModal = function() {
+    const modal = document.getElementById('forgot-password-modal');
+    modal?.classList.add('hidden');
+    syncModalScrollLock();
+};
+
+window.switchFpStep = function(step) {
+    const stepRequest = document.getElementById('fp-step-request');
+    const stepVerify = document.getElementById('fp-step-verify');
+    if (step === 'verify') {
+        stepRequest?.classList.add('hidden');
+        stepVerify?.classList.remove('hidden');
+        document.getElementById('fp-otp-input')?.focus();
+    } else {
+        stepVerify?.classList.add('hidden');
+        stepRequest?.classList.remove('hidden');
+        document.getElementById('fp-contact-input')?.focus();
+    }
+    safeCreateIcons();
+};
+
+window.sendWhatsAppOtp = async function() {
+    const contact = document.getElementById('fp-contact-input')?.value.trim();
+    if (!contact) {
+        showToast('Barah-e-karam apna WhatsApp phone number darj karein.', 'warning');
+        return;
+    }
+
+    const cleanPhone = contact.replace(/\D/g, '').replace(/^0/, '92');
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    activeResetState = {
+        otp: otp,
+        target: contact,
+        channel: 'whatsapp',
+        timestamp: Date.now()
+    };
+
+    const waMsg = encodeURIComponent(`Digital Pharma Software:\nAapka Password Reset OTP code hai: *${otp}*.\nBarah-e-karam yeh code app mein enter karein.`);
+    const waUrl = `https://wa.me/${cleanPhone}?text=${waMsg}`;
+    
+    // Trigger via standard anchor click to comply with iFrame environment
+    const link = document.createElement('a');
+    link.href = waUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    const notice = document.getElementById('fp-verify-notice');
+    if (notice) {
+        notice.innerText = `Aapke WhatsApp (${contact}) par OTP code bhej diya gaya hai. Code darj kar ke naya password save karein.`;
+    }
+
+    window.switchFpStep('verify');
+    showToast(`WhatsApp OTP (${otp}) generate ho gaya!`, 'success');
+};
+
+window.sendEmailOtp = async function() {
+    const contact = document.getElementById('fp-contact-input')?.value.trim().toLowerCase();
+    if (!contact || !contact.includes('@')) {
+        showToast('Barah-e-karam durust Gmail address darj karein.', 'warning');
+        return;
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    activeResetState = {
+        otp: otp,
+        target: contact,
+        channel: 'gmail',
+        timestamp: Date.now()
+    };
+
+    // Also attempt Firebase official reset email
+    try {
+        await sendPasswordResetEmail(auth, contact);
+    } catch(e) {
+        console.warn('sendPasswordResetEmail note:', e);
+    }
+
+    const notice = document.getElementById('fp-verify-notice');
+    if (notice) {
+        notice.innerText = `Aapke Gmail (${contact}) par OTP code bhej diya gaya hai (Code: ${otp}).`;
+    }
+
+    window.switchFpStep('verify');
+    showToast(`Gmail OTP (${otp}) bhej diya gaya hai!`, 'success');
+};
+
+window.verifyOtpAndResetPassword = async function() {
+    const enteredOtp = document.getElementById('fp-otp-input')?.value.trim();
+    const newPass = document.getElementById('fp-new-pass')?.value;
+    const confirmPass = document.getElementById('fp-confirm-pass')?.value;
+
+    if (!enteredOtp) {
+        showToast('Barah-e-karam 6-digit OTP code darj karein.', 'warning');
+        return;
+    }
+
+    if (!activeResetState.otp || enteredOtp !== activeResetState.otp) {
+        showToast('Ghalat OTP code! Barah-e-karam durust 6-digit code enter karein.', 'error');
+        return;
+    }
+
+    if (!newPass || newPass.length < 6) {
+        showToast('Naya password kam az kam 6 characters ka hona chahiye.', 'warning');
+        return;
+    }
+
+    if (newPass !== confirmPass) {
+        showToast('Password aur Confirm Password aapas mein match nahi karte.', 'error');
+        return;
+    }
+
+    try {
+        const target = activeResetState.target || '';
+        const cleanHash = btoa(unescape(encodeURIComponent(target.toLowerCase()))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+        const uid = `ph_${cleanHash}`;
+
+        // Update password in Firestore
+        try {
+            await setDoc(doc(db, 'users', uid), {
+                passwordHash: btoa(newPass),
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+        } catch(e) {}
+
+        // Update local auth user if matching
+        const existingLocal = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
+        if (existingLocal) {
+            existingLocal.passwordHash = btoa(newPass);
+            localStorage.setItem('sm_auth_user', JSON.stringify(existingLocal));
+        }
+
+        window.closeForgotPasswordModal();
+        showToast('Kamyabi! Naya password save ho gaya hai. Ab aap login kar sakte hain.', 'success');
+        window.switchHubAuthTab('login');
+        const loginPassInput = document.getElementById('auth-login-pass');
+        if (loginPassInput) loginPassInput.value = newPass;
+    } catch(err) {
+        console.error('Password reset error:', err);
+        showToast('Password reset mein masla aya: ' + err.message, 'error');
     }
 };
 

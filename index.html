@@ -293,6 +293,9 @@
             <button onclick="window.switchTab('inventory')" id="tab-inventory" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100">
                 <i data-lucide="pill" class="w-4 h-4"></i> Stock Inventory
             </button>
+            <button onclick="window.openCustomerInvoicesModal('all')" id="tab-customers" class="tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition text-slate-600 hover:bg-slate-100" title="Customer Invoices & Bills Khata">
+                <i data-lucide="users" class="w-4 h-4"></i> Customers & Invoices
+            </button>
 
             <!-- Calculator Dropdown Container (Desktop) -->
             <div class="relative flex-1" id="desktop-calc-dropdown-container">
@@ -429,12 +432,12 @@
                         <button onclick="window.switchTab('inventory')" class="text-[11px] text-brand-600 font-bold hover:underline">View Stock</button>
                     </div>
 
-                    <!-- Expiry Period Filter Pills -->
+                    <!-- Dynamic 3-Month Expiry Period Filter Pills -->
                     <div class="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl text-[10px] font-bold">
                         <button type="button" id="exp-pill-all" onclick="window.setExpiryAlertFilter('all')" class="flex-1 py-1 px-1.5 rounded-lg transition bg-rose-600 text-white shadow-2xs">All (<span id="exp-cnt-all">0</span>)</button>
-                        <button type="button" id="exp-pill-1m" onclick="window.setExpiryAlertFilter('1m')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">1 mnth (<span id="exp-cnt-1m">0</span>)</button>
-                        <button type="button" id="exp-pill-2m" onclick="window.setExpiryAlertFilter('2m')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">2 mnth (<span id="exp-cnt-2m">0</span>)</button>
-                        <button type="button" id="exp-pill-3m" onclick="window.setExpiryAlertFilter('3m')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">3 mnth (<span id="exp-cnt-3m">0</span>)</button>
+                        <button type="button" id="exp-pill-m1" onclick="window.setExpiryAlertFilter('m1')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60"><span id="exp-name-m1">Next Mnth</span> (<span id="exp-cnt-m1">0</span>)</button>
+                        <button type="button" id="exp-pill-m2" onclick="window.setExpiryAlertFilter('m2')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60"><span id="exp-name-m2">Mnth 2</span> (<span id="exp-cnt-m2">0</span>)</button>
+                        <button type="button" id="exp-pill-m3" onclick="window.setExpiryAlertFilter('m3')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60"><span id="exp-name-m3">Mnth 3</span> (<span id="exp-cnt-m3">0</span>)</button>
                         <button type="button" id="exp-pill-expired" onclick="window.setExpiryAlertFilter('expired')" class="flex-1 py-1 px-1.5 rounded-lg transition text-slate-600 hover:bg-white/60">Expired (<span id="exp-cnt-expired">0</span>)</button>
                     </div>
 
@@ -443,26 +446,22 @@
                     </div>
                 </div>
 
-                <!-- 2nd Section: Today Sale & Investment Performance Graph (No Invoices List Here!) -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs space-y-2.5 flex flex-col">
+                <!-- 2nd Section: Sale, Purchase & Investment Overview (Depth Button to Graph) -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs space-y-2.5 flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b pb-2">
                         <div class="flex items-center gap-2">
                             <div class="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
                                 <i data-lucide="trending-up" class="w-4 h-4"></i>
                             </div>
                             <div>
-                                <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Today Sale & Investment Graph</h3>
-                                <p class="text-[10px] text-slate-400">Sale, Kharid TP Sarmaya & Munafa Hisaab</p>
+                                <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Sale, Purchase & Investment Overview</h3>
+                                <p class="text-[10px] text-slate-400">Real-time sale, kharid TP sarmaya aur munafa</p>
                             </div>
                         </div>
-                        <button type="button" onclick="window.openSalesAnalyticsModal('today', 'sale')" class="text-[11px] text-emerald-600 font-bold hover:underline flex items-center gap-1">
-                            <span>Detail Graph</span>
-                            <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
-                        </button>
                     </div>
-                    <!-- Live Dual Bar Graph & Financial Overview -->
-                    <div id="dash-today-graph-container" class="space-y-2 flex-1 flex flex-col justify-between min-h-[150px]">
-                        <p class="text-xs text-slate-400 py-4 text-center">Today hisaab graph load ho raha hai...</p>
+                    <!-- Financial Overview & Dedicated Deep Graph Action Button -->
+                    <div id="dash-today-graph-container" class="space-y-3 flex-1 flex flex-col justify-between">
+                        <p class="text-xs text-slate-400 py-4 text-center">Sale hisaab load ho raha hai...</p>
                     </div>
                 </div>
             </div>
@@ -1037,6 +1036,10 @@
             <i data-lucide="pill" class="w-5 h-5"></i>
             <span class="text-[10px]">Stock</span>
         </button>
+        <button onclick="window.openCustomerInvoicesModal('all')" id="mob-tab-invoices" class="flex flex-col items-center p-1.5 text-slate-500 font-semibold">
+            <i data-lucide="users" class="w-5 h-5"></i>
+            <span class="text-[10px]">Invoices</span>
+        </button>
         
         <!-- Calculator Tab with Direct Dropdown Menu Trigger (Mobile) -->
         <div class="relative">
@@ -1348,9 +1351,16 @@
         <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-3 max-h-[92vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b pb-2">
                 <h3 id="medicine-modal-title" class="font-bold text-slate-800 text-xs sm:text-sm">Nayi Medicine Shamil Karein</h3>
-                <button onclick="window.closeMedicineModal()" class="text-slate-400 hover:text-slate-600 p-1">
-                    <i data-lucide="x" class="w-4 h-4"></i>
-                </button>
+                <div class="flex items-center gap-2">
+                    <label class="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition active:scale-95 shadow-xs" title="Camera se medicine box / strip / pack scan karein">
+                        <i data-lucide="camera" class="w-3.5 h-3.5 text-emerald-700"></i>
+                        <span>AI Scan Dabba</span>
+                        <input type="file" class="hidden" accept="image/*" onchange="window.handleMedicinePackagingScan(event)">
+                    </label>
+                    <button onclick="window.closeMedicineModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
 
             <form id="medicine-form" onsubmit="window.saveMedicineRecord(event)" class="space-y-2.5 text-xs">
@@ -1722,23 +1732,6 @@
                     <span class="p-2 bg-amber-50 text-amber-700 rounded-xl font-bold text-xs">📒 Udhaar</span>
                 </div>
             </div>
-
-            <!-- Link to Dedicated Customer Invoices Analysis Section -->
-            <div class="p-3 bg-blue-50/90 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <div class="flex items-center gap-2.5">
-                    <div class="p-2 bg-blue-600 text-white rounded-xl shrink-0">
-                        <i data-lucide="receipt" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <strong class="text-blue-950 font-black block sm:text-sm">Customer Invoices & Bills Section</strong>
-                        <span class="text-[11px] text-blue-700">Tamam customer bills ki tafseelat aur deep analysis Customers section mein dekhein</span>
-                    </div>
-                </div>
-                <button type="button" onclick="window.closeSalesAnalyticsModal(); window.openCustomerInvoicesModal(currentAnalyticsPeriod)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-xs active:scale-95 transition flex items-center justify-center gap-1.5 shrink-0">
-                    <span>Customer Invoices Kholein</span>
-                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                </button>
-            </div>
         </div>
     </div>
 
@@ -1949,79 +1942,120 @@
                 </button>
             </div>
 
-            <!-- VIEW 1: 2 MAIN OPTIONS (Live Sync with Gmail Google vs Guest Local User Mode) -->
+            <!-- VIEW 1: AUTHENTICATION OPTIONS (Direct Email & Password Login / Signup vs Guest Local User Mode) -->
             <div id="hub-choice-section" class="space-y-3">
                 <div class="flex p-1 bg-slate-100 rounded-xl gap-1 text-xs font-bold">
-                    <button type="button" id="hub-tab-btn-sync" onclick="window.switchHubAuthTab('sync')" class="flex-1 py-1.5 rounded-lg transition bg-brand-600 text-white shadow-xs flex items-center justify-center gap-1.5">
-                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24">
-                            <path fill="#fff" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.28-2.1 3.66-5.2 3.66-9.12z"/>
-                            <path fill="#fff" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.26 21.36 7.33 24 12 24z"/>
-                            <path fill="#fff" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.57H1.25C.45 8.16 0 9.98 0 12s.45 3.84 1.25 5.43l4.03-3.14z"/>
-                            <path fill="#fff" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.57l4.03 3.14c.95-2.83 3.6-4.96 6.72-4.96z"/>
-                        </svg>
-                        <span>Live Sync (Google)</span>
+                    <button type="button" id="hub-tab-btn-login" onclick="window.switchHubAuthTab('login')" class="flex-1 py-1.5 rounded-lg transition bg-brand-600 text-white shadow-xs flex items-center justify-center gap-1.5">
+                        <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                        <span>Login</span>
+                    </button>
+                    <button type="button" id="hub-tab-btn-signup" onclick="window.switchHubAuthTab('signup')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5">
+                        <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+                        <span>Sign Up</span>
                     </button>
                     <button type="button" id="hub-tab-btn-guest" onclick="window.switchHubAuthTab('guest')" class="flex-1 py-1.5 rounded-lg transition text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5">
                         <i data-lucide="user" class="w-3.5 h-3.5"></i>
-                        <span>Guest Mode</span>
+                        <span>Guest</span>
                     </button>
                 </div>
 
-                <!-- 1. LIVE SYNC WITH GMAIL / GOOGLE ACCOUNT (Zero Fake Login, Connect Any Gmail to Central Network) -->
-                <div id="hub-panel-sync" class="space-y-3 text-xs">
+                <!-- 1. LOGIN PANEL (Email/Gmail & Password) -->
+                <div id="hub-panel-login" class="space-y-3 text-xs">
                     <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
                         <div class="flex items-center gap-1.5 font-bold text-emerald-800">
-                            <i data-lucide="network" class="w-4 h-4 text-emerald-600"></i>
-                            <span>Central Pharmacy Network Sync</span>
+                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+                            <span>Pharmacy Owner Secure Login</span>
                         </div>
                         <p class="text-[11px] leading-relaxed text-emerald-900">
-                            Aap apne kisi bhi personal ya business <strong>Gmail</strong> se foran login kar sakte hain. Central database sabhi pharmacies ko aapas mein live connect rakhta hai taake stock aur rates verify ho sakein.
+                            Apne registered Gmail aur password se login karein. Central Firebase ke zariye aapki pharmacy live connect ho jayegi.
                         </p>
                     </div>
 
-                    <!-- Notice banner if Google popup encounters domain restrictions -->
-                    <div id="hub-login-domain-notice" class="hidden p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-[11px] space-y-1">
-                        <div class="flex items-center gap-1.5 font-bold text-amber-800">
-                            <i data-lucide="info" class="w-3.5 h-3.5"></i>
-                            <span>Direct Gmail Login Ready:</span>
-                        </div>
-                        <p>Google popup is device / domain par block hai. Neeche apna Gmail likh kar 1-click mein foran connect karein!</p>
-                    </div>
-
-                    <!-- Continue with Google Button -->
-                    <button type="button" onclick="window.loginWithGooglePrompt()" class="w-full py-3 px-3 bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-brand-500 text-slate-800 font-black rounded-xl shadow-xs flex items-center justify-center gap-2.5 text-xs sm:text-sm active:scale-95 transition cursor-pointer">
-                        <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.28-2.1 3.66-5.2 3.66-9.12z"/>
-                            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.26 21.36 7.33 24 12 24z"/>
-                            <path fill="#FBBC05" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.57H1.25C.45 8.16 0 9.98 0 12s.45 3.84 1.25 5.43l4.03-3.14z"/>
-                            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.57l4.03 3.14c.95-2.83 3.6-4.96 6.72-4.96z"/>
-                        </svg>
-                        <span>Continue with Google Account</span>
-                    </button>
-
-                    <div class="relative flex py-1 items-center">
-                        <div class="flex-grow border-t border-slate-200"></div>
-                        <span class="flex-shrink mx-2 text-[10px] text-slate-400 font-bold uppercase">Ya 1-Click Direct Gmail Se Login Karein</span>
-                        <div class="flex-grow border-t border-slate-200"></div>
-                    </div>
-
-                    <div class="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <form onsubmit="event.preventDefault(); window.handleAuthLogin();" class="space-y-2.5 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
                         <div>
-                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Apna Gmail Address:</label>
-                            <input type="email" id="hub-direct-gmail" placeholder="e.g. yourname@gmail.com" onkeydown="if(event.key==='Enter'){ event.preventDefault(); window.loginWithDirectGmail(); }" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Gmail / Email Address:</label>
+                            <input type="email" id="auth-login-email" required placeholder="e.g. pharmacy@gmail.com" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                         </div>
                         <div>
-                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Pharmacy / Store Name <span class="text-slate-400 font-normal">(Optional)</span>:</label>
-                            <input type="text" id="hub-direct-pharmacy-name" placeholder="e.g. Al-Razi Medicos" onkeydown="if(event.key==='Enter'){ event.preventDefault(); window.loginWithDirectGmail(); }" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-[11px] font-bold text-slate-700">Password:</label>
+                                <button type="button" onclick="window.openForgotPasswordModal()" class="text-[10px] text-brand-700 font-bold hover:underline">Password bhool gaye?</button>
+                            </div>
+                            <input type="password" id="auth-login-pass" required placeholder="Apna password likhein" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                         </div>
-                        <button type="button" onclick="window.loginWithDirectGmail()" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
-                            <i data-lucide="mail" class="w-4 h-4"></i>
-                            <span>Login with Gmail & Connect Network</span>
+                        <button type="submit" id="btn-auth-login-submit" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                            <i data-lucide="log-in" class="w-4 h-4"></i>
+                            <span>Login Karein & Connect</span>
+                        </button>
+                    </form>
+
+                    <div class="text-center pt-1">
+                        <button type="button" onclick="window.switchHubAuthTab('signup')" class="text-xs text-brand-700 font-bold hover:underline">
+                            Naya account banana chahte hain? <strong>Yahan Sign Up karein</strong>
                         </button>
                     </div>
                 </div>
 
-                <!-- 2. USE AS GUEST LOCAL USER MODE TAB -->
+                <!-- 2. SIGN UP PANEL (Email/Gmail, Password, Pharmacy Info) -->
+                <div id="hub-panel-signup" class="hidden space-y-3 text-xs">
+                    <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-950 space-y-1">
+                        <div class="flex items-center gap-1.5 font-bold text-blue-800">
+                            <i data-lucide="user-plus" class="w-4 h-4 text-blue-600"></i>
+                            <span>Nayi Pharmacy Registration</span>
+                        </div>
+                        <p class="text-[11px] leading-relaxed text-blue-900">
+                            Apni pharmacy register karein. Tamam data Firebase mein mehfooz rahega aur network directory mein add hoga.
+                        </p>
+                    </div>
+
+                    <form onsubmit="event.preventDefault(); window.handleAuthSignup();" class="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-700 mb-1">Pharmacy / Medical Store Name *:</label>
+                                <input type="text" id="auth-signup-store" required placeholder="e.g. Al-Razi Medicos" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-700 mb-1">Owner / Pharmacist Name *:</label>
+                                <input type="text" id="auth-signup-owner" required placeholder="e.g. Dr. Shahzad Khakh" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-700 mb-1">Gmail / Email *:</label>
+                                <input type="email" id="auth-signup-email" required placeholder="e.g. store@gmail.com" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp / Phone Number *:</label>
+                                <input type="tel" id="auth-signup-phone" required placeholder="e.g. 03001234567" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-700 mb-1">City / Location *:</label>
+                                <input type="text" id="auth-signup-city" required placeholder="e.g. Lahore / Multan" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-700 mb-1">Password (Min 6 Characters) *:</label>
+                                <input type="password" id="auth-signup-pass" minlength="6" required placeholder="••••••••" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            </div>
+                        </div>
+
+                        <button type="submit" id="btn-auth-signup-submit" class="w-full py-2.5 mt-1 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                            <i data-lucide="user-plus" class="w-4 h-4"></i>
+                            <span>Sign Up & Register Pharmacy</span>
+                        </button>
+                    </form>
+
+                    <div class="text-center pt-1">
+                        <button type="button" onclick="window.switchHubAuthTab('login')" class="text-xs text-brand-700 font-bold hover:underline">
+                            Pehle se account mojood hai? <strong>Yahan Login karein</strong>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. USE AS GUEST LOCAL USER MODE TAB -->
                 <div id="hub-panel-guest" class="hidden space-y-2.5 text-xs">
                     <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
                         <div class="flex items-center gap-1.5 font-bold">
@@ -2093,6 +2127,92 @@
                     <!-- Account Delete & Clear All Data Button -->
                     <button type="button" onclick="window.handleDeleteAccountAndData()" class="w-full py-2 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95" title="Permanently delete account and all records">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-600"></i> Delete Account & Clear All Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FORGOT PASSWORD & OTP VERIFICATION MODAL -->
+    <div id="forgot-password-modal" onclick="if(event.target===this) window.closeForgotPasswordModal()" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-3.5 border border-slate-200 max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <div class="flex items-center gap-2">
+                    <span class="p-1.5 bg-amber-100 text-amber-900 rounded-xl">
+                        <i data-lucide="key-round" class="w-4 h-4"></i>
+                    </span>
+                    <div>
+                        <h3 class="font-black text-slate-800 text-sm sm:text-base leading-tight">Password Reset & OTP</h3>
+                        <p class="text-[10px] text-slate-400">WhatsApp ya Gmail par OTP code mangwayein</p>
+                    </div>
+                </div>
+                <button type="button" onclick="window.closeForgotPasswordModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- STEP 1: Request OTP -->
+            <div id="fp-step-request" class="space-y-3 text-xs">
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 space-y-1">
+                    <strong class="font-bold block text-amber-900">OTP Hasil Karne Ka Tareeqa:</strong>
+                    <p class="text-[11px] leading-relaxed text-amber-800">
+                        Apna registered <strong>Gmail</strong> ya <strong>WhatsApp number</strong> likhein aur apni pasand ka OTP option select karein.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Registered Gmail Address ya WhatsApp Number:</label>
+                    <input type="text" id="fp-contact-input" placeholder="e.g. pharmacy@gmail.com ya 03001234567" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button type="button" onclick="window.sendWhatsAppOtp()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                        <i data-lucide="message-square" class="w-4 h-4"></i>
+                        <span>WhatsApp Pe OTP</span>
+                    </button>
+                    <button type="button" onclick="window.sendEmailOtp()" class="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                        <i data-lucide="mail" class="w-4 h-4"></i>
+                        <span>Gmail Pe OTP</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 2: Verify OTP and Set New Password -->
+            <div id="fp-step-verify" class="hidden space-y-3 text-xs">
+                <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
+                    <div class="flex items-center gap-1.5 font-bold text-emerald-800">
+                        <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                        <span>OTP Code Bhej Diya Gaya Hai!</span>
+                    </div>
+                    <p id="fp-verify-notice" class="text-[11px] text-emerald-800">
+                        Aapke contact par 6-digit OTP code bhej diya gaya hai. Code darj kar ke naya password set karein.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">6-Digit OTP Code Likhein *:</label>
+                    <input type="text" id="fp-otp-input" maxlength="6" placeholder="e.g. 482910" class="w-full px-3 py-2 border-2 border-brand-500 rounded-xl font-mono text-center font-black text-base text-slate-900 bg-white tracking-widest focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Naya Password (Min 6 Chars) *:</label>
+                        <input type="password" id="fp-new-pass" minlength="6" placeholder="Naya password" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Confirm Naya Password *:</label>
+                        <input type="password" id="fp-confirm-pass" minlength="6" placeholder="Confirm password" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                </div>
+
+                <button type="button" onclick="window.verifyOtpAndResetPassword()" class="w-full py-2.5 bg-brand-700 hover:bg-brand-800 text-white font-black rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
+                    <i data-lucide="check-circle" class="w-4 h-4"></i>
+                    <span>Naya Password Save Karein</span>
+                </button>
+
+                <div class="text-center pt-1">
+                    <button type="button" onclick="window.switchFpStep('request')" class="text-[11px] text-slate-500 hover:text-slate-800 font-bold underline">
+                        OTP dobara bhejein ya contact change karein
                     </button>
                 </div>
             </div>

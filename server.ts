@@ -215,8 +215,8 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // gemini-3.8-flash provides state-of-the-art vision reasoning for complex medical handwriting; gemini-3.1-flash-lite as rapid fallback
-  const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  // State-of-the-art vision models for forensic medical handwriting and low-light invoice OCR
+  const models = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
 
   for (const modelName of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -224,13 +224,17 @@ async function generateWithVisionFallback(
         const config: any = {
           responseMimeType: 'application/json'
         };
-        // On first attempt pass schema, on second attempt omit schema to avoid schema truncation on messy handwriting
-        if (responseSchema && attempt === 0) {
+        // Always enforce strict JSON output schema to ensure only valid medicine results
+        if (responseSchema) {
           config.responseSchema = responseSchema;
         }
         if (systemInstruction) {
           config.systemInstruction = systemInstruction;
         }
+
+        const effectivePrompt = attempt === 0 
+          ? prompt 
+          : `${prompt}\n\n[RETRY PASS - ENHANCE DETECTION]: Inspect faint handwriting, ballpoint pen ink, thermal print dots, and low-contrast table lines carefully. Transcribe all genuine items.`;
 
         const response: any = await ai.models.generateContent({
           model: modelName,
@@ -242,19 +246,22 @@ async function generateWithVisionFallback(
               }
             },
             {
-              text: prompt
+              text: effectivePrompt
             }
           ],
           config
         });
 
         if (response && response.text) {
-          return response.text;
+          const parsed = extractJsonFromText(response.text);
+          if (parsed) {
+            return response.text;
+          }
         }
       } catch (err: any) {
         console.warn(`Vision model ${modelName} (attempt ${attempt + 1}) note:`, err?.message || err);
         if (attempt === 0) {
-          await new Promise(r => setTimeout(r, 350));
+          await new Promise(r => setTimeout(r, 300));
         }
       }
     }
@@ -421,8 +428,14 @@ app.post('/api/ai/scan-margin', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const prompt = `You are a specialist pharmacy wholesale trade margin and bonus scheme auditor.
-Scan this distributor invoice or scheme slip (even if photographed under mobile phone conditions) to extract items, buy rates, quantities, and free bonus packs (e.g. 10+1, 10+2, 5+1).`;
+    const marginSystemInstruction = `You are a specialist pharmacy wholesale trade margin and bonus scheme auditor.
+Scan this distributor invoice or scheme slip (even if photographed under mobile phone conditions) to extract items, buy rates, quantities, and free bonus packs (e.g. 10+1, 10+2, 5+1).
+STRICT ZERO-HALLUCINATION RULE:
+Do NOT invent fake items like "Scheme Medicine Item". Extract ONLY real items visibly printed on the bill. If no items can be detected, return an empty array [].`;
+
+    const prompt = `Inspect this wholesale bill or scheme slip.
+Extract genuine items, buy rates (TP), invoiced quantities, and free bonus packs.
+DO NOT hallucinate fake medicines. If no rows found, return [].`;
 
     const marginSchema = {
       type: Type.ARRAY,
@@ -438,44 +451,112 @@ Scan this distributor invoice or scheme slip (even if photographed under mobile 
       }
     };
 
-    const text = await generateWithVisionFallback(prompt, imageBase64, marginSchema);
+    const text = await generateWithVisionFallback(prompt, imageBase64, marginSchema, marginSystemInstruction);
     const parsed = text ? extractJsonFromText(text) : null;
     let items: any[] = [];
     if (Array.isArray(parsed)) items = parsed;
     else if (Array.isArray(parsed?.items)) items = parsed.items;
     else if (Array.isArray(parsed?.medicines)) items = parsed.medicines;
 
-    if (items.length > 0) {
-      res.json({ success: true, data: items });
-      return;
-    }
+    // Filter out any refusal messages or fake items
+    const cleanItems = items.filter(i => i && i.name && !REFUSAL_REGEX.test(String(i.name)) && !/scheme medicine/i.test(String(i.name))).map((item, idx) => ({
+      name: String(item.name).trim(),
+      buyRate: Number(item.buyRate || item.rate) || 0,
+      qty: Number(item.qty || item.quantity) || 1,
+      freeQty: Number(item.freeQty || item.free) || 0,
+      mrp: ''
+    }));
 
     res.json({
       success: true,
-      data: [
-        {
-          name: 'Scheme Medicine Item',
-          buyRate: 425,
-          qty: 10,
-          freeQty: 1,
-          mrp: ''
-        }
-      ]
+      data: cleanItems
     });
   } catch (err: any) {
     console.error('Margin OCR server error:', err);
     res.json({
       success: true,
-      data: [
-        {
-          name: 'Scheme Medicine Item',
-          buyRate: 400,
-          qty: 10,
-          freeQty: 1,
-          mrp: ''
-        }
-      ]
+      data: []
     });
+  }
+});
+
+// -------------------------------------------------------------
+// AI Medicine Packaging / Strip / Box Scanner (Direct Stock In)
+// -------------------------------------------------------------
+app.post('/api/ai/scan-medicine-pack', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { imageBase64 } = req.body;
+    if (!imageBase64) {
+      res.status(400).json({ success: false, error: 'Image data darkar hai.' });
+      return;
+    }
+
+    const packSystemInstruction = `You are an expert Clinical Pharmacist and forensic pharmaceutical packaging reader.
+Examine this mobile photograph of a medicine box, blister pack, strip, ampoule, vial, syrup bottle, or dropper.
+Read the actual printed text on the packaging carefully even with glare, mobile phone angle, or low lighting.
+STRICT ZERO-HALLUCINATION RULE:
+Extract ONLY what is physically printed on this packaging. DO NOT guess or substitute with other medicines.
+Identify:
+1. Brand Name and Strength (e.g. "Panadol Extra", "Augmentin 625mg", "Flygyl 400mg", "Arinac Forte")
+2. Generic Salt / Formula (e.g. "Paracetamol + Caffeine", "Co-Amoxiclav", "Ibuprofen + Pseudoephedrine")
+3. Form / Type (e.g. "Tablet", "Capsule", "Syrup", "Injection", "Drops", "Sachet", "Ointment")
+4. Pack Size (e.g. "20", "10", "1x10", "60ml")
+5. Batch Number if printed (e.g. "B104", "L982")
+6. Expiry Date (extract month MM e.g. "12" and year YY e.g. "28" or "2028")
+7. Retail MRP price (Rs.) if printed
+8. Trade TP Price (Rs.) if printed`;
+
+    const prompt = `Read this medicine packaging / strip / box image with high precision.
+Extract the exact medicine brand name, formula, pack size, batch number, expiry date, and printed retail MRP.
+Never output refusal notes; return valid JSON adhering to schema.`;
+
+    const packSchema = {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING, description: 'Brand name with strength e.g. Augmentin 625mg' },
+        generic: { type: Type.STRING, description: 'Generic formula / active ingredients' },
+        form: { type: Type.STRING, description: 'Form e.g. tab, cap, syp, drop, inj, scht' },
+        packSize: { type: Type.STRING, description: 'Pack size e.g. 20 or 10x10' },
+        batch: { type: Type.STRING, description: 'Batch number' },
+        expiryMonth: { type: Type.STRING, description: 'Expiry month 01 to 12' },
+        expiryYear: { type: Type.STRING, description: 'Expiry year 2026 to 2035 or 26 to 35' },
+        mrp: { type: Type.NUMBER, description: 'Printed retail MRP price' },
+        buyRate: { type: Type.NUMBER, description: 'Printed trade TP price if visible' }
+      },
+      required: ['name']
+    };
+
+    const text = await generateWithVisionFallback(prompt, imageBase64, packSchema, packSystemInstruction);
+    const parsed = text ? extractJsonFromText(text) : null;
+
+    const targetObj = Array.isArray(parsed) ? parsed[0] : (parsed?.medicine || parsed?.item || parsed?.data || parsed || {});
+    const extractedName = String(targetObj.name || targetObj.brand || targetObj.brandName || targetObj.medicineName || targetObj.title || '').trim();
+
+    if (extractedName && !REFUSAL_REGEX.test(extractedName)) {
+      res.json({
+        success: true,
+        data: {
+          name: extractedName,
+          generic: String(targetObj.generic || targetObj.formula || '').trim(),
+          form: String(targetObj.form || 'tab').toLowerCase(),
+          packSize: String(targetObj.packSize || targetObj.pack || '20').trim(),
+          batch: String(targetObj.batch || targetObj.batchNo || '').trim(),
+          expiryMonth: String(targetObj.expiryMonth || targetObj.expMonth || '').padStart(2, '0').slice(-2),
+          expiryYear: String(targetObj.expiryYear || targetObj.expYear || '').slice(-2),
+          mrp: Number(targetObj.mrp || targetObj.retailPrice || targetObj.price) || 0,
+          buyRate: Number(targetObj.buyRate || targetObj.tp || targetObj.tradePrice) || 0
+        }
+      });
+      return;
+    }
+
+    res.json({
+      success: false,
+      error: 'Medicine packaging se dawa ka naam detect nahi ho saka.'
+    });
+  } catch (err: any) {
+    console.error('Packaging OCR error:', err);
+    res.status(500).json({ success: false, error: 'Packaging OCR fail ho gaya' });
   }
 });
 
