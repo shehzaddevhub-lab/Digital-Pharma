@@ -38,20 +38,35 @@ let unsubscribeMeds = null;
 let unsubscribeSales = null;
 let unsubscribePharmacies = null;
 
-// Initialize Live Listeners & Auth
+// Initialize Live Listeners & Auth (Strict Registration Verification)
 function initFirebase() {
     onAuthStateChanged(auth, async (user) => {
-        authUser = user;
-        if (user) {
-            const googleUser = {
-                name: user.displayName || user.email.split('@')[0],
+        if (user && !user.isAnonymous) {
+            // Verify if user is explicitly registered in local registry or has active sm_auth_user session
+            const existingAuthStr = localStorage.getItem('sm_auth_user');
+            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            const isRegistered = Boolean(existingAuthStr || regUsers.some(u => u.uid === user.uid || (u.email && u.email.toLowerCase() === user.email?.toLowerCase())));
+
+            if (!isRegistered) {
+                // Unregistered account: do not automatically log in or create sessions
+                authUser = null;
+                return;
+            }
+
+            authUser = user;
+            const savedUser = existingAuthStr ? JSON.parse(existingAuthStr) : null;
+            const activeUser = {
+                name: savedUser?.name || user.displayName || user.email.split('@')[0],
                 email: user.email,
                 uid: user.uid,
-                loginMethod: 'google',
+                pharmacyName: savedUser?.pharmacyName || '',
+                phone: savedUser?.phone || '',
+                city: savedUser?.city || '',
+                loginMethod: savedUser?.loginMethod || 'email_password',
                 isLiveSync: true,
-                photo: user.photoURL || ''
+                photo: user.photoURL || savedUser?.photo || ''
             };
-            localStorage.setItem('sm_auth_user', JSON.stringify(googleUser));
+            localStorage.setItem('sm_auth_user', JSON.stringify(activeUser));
             localStorage.removeItem('sm_user_mode');
 
             // 1. Sync User-Owned Medicines
@@ -65,15 +80,6 @@ function initFirebase() {
                     localStorage.setItem('sm_medicines', JSON.stringify(medicines));
                     renderInventoryTable();
                     renderDashboardMetrics();
-                } else if (medicines.length > 0) {
-                    // Upload existing local medicines to cloud on first sync
-                    for (const m of medicines) {
-                        try {
-                            await setDoc(doc(db, 'users', user.uid, 'medicines', m.id), m);
-                        } catch(err) {
-                            handleFirestoreError(err, 'write', `users/${user.uid}/medicines/${m.id}`);
-                        }
-                    }
                 }
             }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/medicines`));
 
@@ -87,25 +93,16 @@ function initFirebase() {
                     sales = cloudSales;
                     localStorage.setItem('sm_sales', JSON.stringify(sales));
                     renderDashboardMetrics();
-                } else if (sales.length > 0) {
-                    // Upload existing local sales to cloud
-                    for (const s of sales) {
-                        try {
-                            await setDoc(doc(db, 'users', user.uid, 'sales', s.id), s);
-                        } catch(err) {
-                            handleFirestoreError(err, 'write', `users/${user.uid}/sales/${s.id}`);
-                        }
-                    }
                 }
             }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/sales`));
 
-            // 3. Auto Register or Link Pharmacy in Connected Network
+            // 3. Register or Link Pharmacy in Connected Network for registered user
             const config = window.getStoreConfig();
             try {
                 const pharmDocRef = doc(db, 'pharmacies', user.uid);
                 await setDoc(pharmDocRef, {
-                    name: config.name || `${googleUser.name} Pharmacy`,
-                    ownerName: config.ownerName || googleUser.name,
+                    name: config.name || `${activeUser.name} Pharmacy`,
+                    ownerName: config.ownerName || activeUser.name,
                     city: config.address || 'Pakistan',
                     phone: config.phone || '03001234567',
                     email: user.email,
@@ -115,6 +112,7 @@ function initFirebase() {
                 }, { merge: true });
             } catch(e) {}
         } else {
+            authUser = null;
             if (unsubscribeMeds) unsubscribeMeds();
             if (unsubscribeSales) unsubscribeSales();
         }
@@ -603,7 +601,114 @@ export function extractSmartJson(text) {
 }
 window.extractSmartJson = extractSmartJson;
 
-// Universal High-Resolution Document & Handwriting Reader (Mobile & Desktop)
+// AI Clinical Pharmacy Knowledge Base for Instant Medicine Indications & Short Uses
+const MEDICINE_USE_HINTS = [
+    // Pain, Fever & Inflammation
+    { keys: ['panadol', 'paracetamol', 'calpol', 'disprol', 'febrol'], use: 'Bukhar aur Har Qism ke Dard kelye' },
+    { keys: ['brufen', 'ibuprofen', 'profen'], use: 'Dard, Sozish aur Bukhar kelye' },
+    { keys: ['dispirin', 'aspirin', 'loprin', 'ascard'], use: 'Khoon Patla karne aur Dard kelye' },
+    { keys: ['caflam', 'diclofenac', 'voltral', 'voren', 'dicloran'], use: 'Shadeed Dard aur Jodo ke Dard kelye' },
+    { keys: ['ponstan', 'mefenamic'], use: 'Dard, Daant Dard aur Khawateen ke Dard kelye' },
+    { keys: ['tramal', 'tramadol'], use: 'Shadeed Dard (Painkiller) kelye' },
+    { keys: ['toradol', 'ketorolac'], use: 'Operation / Shadeed Zakham ke Dard kelye' },
+    { keys: ['feldene', 'piroxicam'], use: 'Jodo aur Patho ke Dard kelye' },
+    { keys: ['ansaid', 'flurbiprofen'], use: 'Galay ki Kharash aur Dard kelye' },
+    { keys: ['synflex', 'naproxen'], use: 'Jodo, Haddi aur Patho ke Dard kelye' },
+
+    // Stomach, Acidity, Gas & Digestion
+    { keys: ['risek', 'omeprazole', 'omega'], use: 'Meda, Tezabiat aur Jalan kelye' },
+    { keys: ['nexum', 'esomeprazole', 'esita'], use: 'Meda, Acid Reflux aur Gas kelye' },
+    { keys: ['zopent', 'pantoprazole', 'pantra'], use: 'Meday ke Zakham aur Tezabiat kelye' },
+    { keys: ['pariet', 'rabeprazole'], use: 'Seene ki Jalan aur Meday kelye' },
+    { keys: ['gaviscon', 'mucaine', 'antacid', 'famotidine'], use: 'Seene ki Jalan aur Badhazmi kelye' },
+    { keys: ['flagyl', 'metronidazole'], use: 'Pait Kharabi, Motion aur Anto ke Infection kelye' },
+    { keys: ['entamizole', 'diloxanide'], use: 'Pait ke Maror aur Amoebic Dast kelye' },
+    { keys: ['imodium', 'loperamide'], use: 'Shadeed Motion (Dast) rokne kelye' },
+    { keys: ['gravinate', 'dimenhydrinate'], use: 'Ulti aur Safar ke Chakkar kelye' },
+    { keys: ['maxolon', 'metoclopramide'], use: 'Matli aur Ulti rokne kelye' },
+    { keys: ['motilium', 'domperidone', 'motilat'], use: 'Badhazmi, Pait Phoolne aur Matli kelye' },
+    { keys: ['spasler', 'no-spa', 'drotaverine', 'buscopan', 'hyoscine'], use: 'Pait ke Maror aur Dard kelye' },
+    { keys: ['duphalac', 'lactulose', 'ezilax'], use: 'Qabz (Constipation) door karne kelye' },
+    { keys: ['ors', 'hydralyte'], use: 'Namkiyat aur Paani ki kami kelye' },
+
+    // Antibiotics & Anti-infectives
+    { keys: ['augmentin', 'co-amoxiclav', 'curam', 'calamox'], use: 'Antibiotic - Galay, Kaan aur Chest Infection kelye' },
+    { keys: ['amoxil', 'amoxicillin'], use: 'Antibiotic - Galay aur Zakham ke Infection kelye' },
+    { keys: ['cefixime', 'cefspan', 'caricef', 'maxima'], use: 'Antibiotic - Bukhar, Galla aur Sinus kelye' },
+    { keys: ['azomax', 'azithromycin', 'zithro', 'macrozit'], use: 'Antibiotic - Galla, Khansi aur Saans Infection kelye' },
+    { keys: ['ciproxin', 'ciprofloxacin', 'mercip'], use: 'Antibiotic - Pait aur Peshaab (UTI) Infection kelye' },
+    { keys: ['leflox', 'levofloxacin', 'cravit'], use: 'Antibiotic - Phayphray aur Saans ki Nali kelye' },
+    { keys: ['klaricid', 'clarithromycin', 'claritek'], use: 'Antibiotic - Saans aur Galay ke Infection kelye' },
+    { keys: ['vibramycin', 'doxycycline'], use: 'Antibiotic - Chhaati aur Skin Infection kelye' },
+    { keys: ['rocephin', 'ceftriaxone', 'epicephin'], use: 'Antibiotic Inj - Shadeed Bacterial Infection kelye' },
+
+    // Cold, Cough, Allergy & Respiratory
+    { keys: ['arinac', 'pseudoephedrine', 'sinutab', 'actifed'], use: 'Nazla, Zukam aur Naak Bandi kelye' },
+    { keys: ['rigix', 'cetirizine', 'zyrtec'], use: 'Allergy, Chheenkein aur Khujli kelye' },
+    { keys: ['softin', 'loratadine'], use: 'Allergy aur Nazla Zukam kelye' },
+    { keys: ['telfast', 'fexofenadine', 'fexit'], use: 'Mausami Allergy aur Chheenkein kelye' },
+    { keys: ['xyzal', 'levocetirizine', 't-day'], use: 'Shadeed Allergy aur Naak Behne kelye' },
+    { keys: ['myteka', 'montelukast', 'montiget'], use: 'Dama (Asthma) aur Saans ki Allergy kelye' },
+    { keys: ['ventolin', 'salbutamol'], use: 'Saans Phoolne aur Asthma kelye' },
+    { keys: ['sancos', 'corex', 'pulmonol', 'dextromethorphan'], use: 'Khushk Khansi (Dry Cough) kelye' },
+    { keys: ['prospan', 'hederacol', 'ivy leaf'], use: 'Balghami Khansi kelye' },
+    { keys: ['somophyllin', 'acefylline'], use: 'Saans ki Nali kholne aur Dama kelye' },
+
+    // Blood Pressure, Heart & Cholesterol
+    { keys: ['norvasc', 'amlodipine', 'amcard'], use: 'High Blood Pressure Control kelye' },
+    { keys: ['concor', 'bisoprolol', 'bipress'], use: 'Blood Pressure aur Dil ki Hifazat kelye' },
+    { keys: ['eziday', 'losartan'], use: 'Blood Pressure aur Gurdon ki Hifazat kelye' },
+    { keys: ['tenormin', 'atenolol'], use: 'High Blood Pressure aur Dil ki Dhadkan kelye' },
+    { keys: ['diovan', 'valsartan'], use: 'Blood Pressure Control kelye' },
+    { keys: ['capoten', 'captopril'], use: 'Blood Pressure Emergency Control kelye' },
+    { keys: ['lipiget', 'atorvastatin', 'lipitor'], use: 'Cholesterol kam karne kelye' },
+    { keys: ['rovista', 'rosuvastatin', 'x-plat'], use: 'Cholesterol aur Dil ki Hifazat kelye' },
+    { keys: ['lowplat', 'clopidogrel', 'plavix'], use: 'Dil ke Daure se Bachao aur Khoon Patla kelye' },
+
+    // Diabetes / Sugar
+    { keys: ['glucophage', 'metformin', 'neodipar'], use: 'Sugar (Type-2 Diabetes) Control kelye' },
+    { keys: ['getryl', 'glimepiride', 'amaryl'], use: 'Sugar ki Miqdaar Normal rakhne kelye' },
+    { keys: ['januvia', 'sitagliptin', 'zita'], use: 'Sugar Control kelye' },
+    { keys: ['jardiance', 'empagliflozin'], use: 'Sugar aur Dil / Gurdon ki Hifazat kelye' },
+    { keys: ['mixtard', 'insulin', 'humulin'], use: 'Sugar Control Injection kelye' },
+
+    // Vitamins, Blood & Minerals
+    { keys: ['cac-1000', 'calcium', 'osnate-d'], use: 'Haddion ki Mazbooti aur Calcium kelye' },
+    { keys: ['indrop-d', 'sunny-d', 'vitamin d'], use: 'Vitamin D ki Kami aur Jodo kelye' },
+    { keys: ['surbex-z', 'neurobion', 'b-complex'], use: 'Tawaanai, Aasabi Kamzori aur Patho kelye' },
+    { keys: ['folvite', 'folic acid'], use: 'Khoon ki Kami aur Pregnancy Hifazat kelye' },
+    { keys: ['fefol-vit', 'iberet-folic', 'iron'], use: 'Khoon (Hemoglobin) barhane kelye' },
+    { keys: ['methycobal', 'mecobalamin'], use: 'Haath Paon Sun hone aur Aasabi Dard kelye' },
+
+    // Skin & Eyes
+    { keys: ['polyfax', 'polymyxin'], use: 'Zakham aur Skin / Aankh Infection kelye' },
+    { keys: ['betnovate', 'dermovate', 'betamethasone'], use: 'Jild ki Sozish aur Khujli kelye' },
+    { keys: ['fucidin', 'hydrocortisone'], use: 'Zakhmo ke Bacterial Infection kelye' },
+    { keys: ['canesten', 'clotrimazole'], use: 'Fungal Infection aur Daad kelye' },
+    { keys: ['vigamox', 'moxifloxacin'], use: 'Aankho ke Lal hone aur Infection kelye' }
+];
+
+export function getMedicineShortUse(name, generic, existingPurpose) {
+    if (existingPurpose && typeof existingPurpose === 'string' && existingPurpose.trim().length > 2 && !/^(ilaj|dawai|medicine|n\/a)$/i.test(existingPurpose.trim())) {
+        return existingPurpose.trim();
+    }
+    const combined = `${name || ''} ${generic || ''}`.toLowerCase();
+    for (const item of MEDICINE_USE_HINTS) {
+        if (item.keys.some(k => combined.includes(k))) {
+            return item.use;
+        }
+    }
+    // Context-sensitive fallback
+    if (combined.includes('syp') || combined.includes('syrup')) return 'Peene ka Sharbath';
+    if (combined.includes('inj') || combined.includes('injection')) return 'Teeqa / Injection';
+    if (combined.includes('drop')) return 'Qatray (Drops)';
+    if (combined.includes('cream') || combined.includes('ointment')) return 'Jild par lagane kelye';
+    if (combined.includes('inhaler')) return 'Saans kelye Inhaler';
+    return 'Tibb / Ilaj kelye';
+}
+window.getMedicineShortUse = getMedicineShortUse;
+
+// Universal High-Resolution Document & Handwriting Reader with CamScanner-Grade Enhancement
 export async function enhanceImageLikeCamScanner(file) {
     if (!file) throw new Error("Tasweer select nahi hui.");
 
@@ -617,38 +722,61 @@ export async function enhanceImageLikeCamScanner(file) {
         reader.readAsDataURL(file);
     });
 
+    // Helper: Resizes canvas and applies document scanner contrast/brightness enhancement
+    function renderEnhancedCanvas(source, originalW, originalH) {
+        // 1600px is the optimal balance: sharp enough to read tiny dot-matrix / cursive writing,
+        // yet compresses into a ~400KB payload that uploads in milliseconds on mobile networks
+        const maxDim = 1600;
+        let w = originalW;
+        let h = originalH;
+        if (w > maxDim || h > maxDim) {
+            if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+            } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+            }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // 1. Fill solid white background so transparent or dark margins don't corrupt OCR
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+
+        // 2. CamScanner-grade contrast & brightness enhancement:
+        // Boost contrast by 25% and brightness by 5% so faint handwriting & thermal receipts stand out
+        if ('filter' in ctx) {
+            ctx.filter = 'contrast(1.25) brightness(1.05)';
+        }
+
+        ctx.drawImage(source, 0, 0, w, h);
+
+        if ('filter' in ctx) {
+            ctx.filter = 'none';
+        }
+
+        // 3. Export as clean JPEG at 0.86 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+        return dataUrl.split(',')[1];
+    }
+
     try {
         // Modern createImageBitmap natively handles EXIF orientation from mobile phone cameras
         if (typeof window.createImageBitmap === 'function') {
             try {
                 const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
-                const maxDim = 1800;
-                let w = bitmap.width;
-                let h = bitmap.height;
-                if (w > maxDim || h > maxDim) {
-                    if (w > h) {
-                        h = Math.round((h * maxDim) / w);
-                        w = maxDim;
-                    } else {
-                        w = Math.round((w * maxDim) / h);
-                        h = maxDim;
-                    }
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    ctx.imageSmoothingEnabled = true;
-                    ctx.imageSmoothingQuality = 'high';
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, w, h);
-                    ctx.drawImage(bitmap, 0, 0, w, h);
-
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-                    bitmap.close?.();
-                    return dataUrl.split(',')[1];
-                }
+                const base64 = renderEnhancedCanvas(bitmap, bitmap.width, bitmap.height);
+                bitmap.close?.();
+                if (base64) return base64;
             } catch(eBitmap) {
                 console.warn("createImageBitmap fallback to HTMLImageElement:", eBitmap);
             }
@@ -660,37 +788,14 @@ export async function enhanceImageLikeCamScanner(file) {
             const objUrl = URL.createObjectURL(file);
             img.onload = () => {
                 URL.revokeObjectURL(objUrl);
-                const maxDim = 1800;
-                let w = img.naturalWidth || img.width || 1200;
-                let h = img.naturalHeight || img.height || 1600;
-
-                if (w > maxDim || h > maxDim) {
-                    if (w > h) {
-                        h = Math.round((h * maxDim) / w);
-                        w = maxDim;
-                    } else {
-                        w = Math.round((w * maxDim) / h);
-                        h = maxDim;
-                    }
-                }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
+                const w = img.naturalWidth || img.width || 1200;
+                const h = img.naturalHeight || img.height || 1600;
+                const base64 = renderEnhancedCanvas(img, w, h);
+                if (base64) {
+                    resolve(base64);
+                } else {
                     readFileAsBase64().then(resolve);
-                    return;
                 }
-
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, w, h);
-                ctx.drawImage(img, 0, 0, w, h);
-
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-                resolve(dataUrl.split(',')[1]);
             };
             img.onerror = () => {
                 URL.revokeObjectURL(objUrl);
@@ -733,6 +838,206 @@ window.reloadAppLive = async function() {
         const cleanUrl = window.location.origin + window.location.pathname;
         window.location.href = cleanUrl + '?_r=' + Date.now();
     }, 150);
+};
+
+// ==========================================
+// MEDICINE SHORT USE & CLINICAL INDICATION (AI HINT)
+// ==========================================
+window.getMedicineShortUse = function(name, generic) {
+    const combined = `${name || ''} ${generic || ''}`.toLowerCase();
+
+    // 1. Direct High-Accuracy Brand & Salt Mappings
+    if (/panadol|paracetamol|calpol|febrol|disprol/i.test(combined)) {
+        return 'Bukhar, Sar Dard aur Jism Dard (Fever & Pain Relief)';
+    }
+    if (/augmentin|amoxil|curam|klamoks|amoxicillin/i.test(combined)) {
+        return 'Bacterial Infection, Gale aur Kaan ki Kharabi (Antibiotic)';
+    }
+    if (/risek|omeprazole|omega|losec/i.test(combined)) {
+        return 'Maiday ki Jalan, Tezabiyat aur Gas (Acidity & Acid Reflux / PPI)';
+    }
+    if (/nexum|esomeprazole|ezaday|eso\b/i.test(combined)) {
+        return 'Maiday ka Ulcer aur Shadeed Tezabiyat (GERD & Ulcer Relief)';
+    }
+    if (/brufen|ibuprofen|profen/i.test(combined)) {
+        return 'Dard, Sozish aur Joron ka Dard (Pain & Anti-inflammatory NSAID)';
+    }
+    if (/ponstan|mefenamic/i.test(combined)) {
+        return 'Dard-e-Dandan, Kheenchaao aur Haiz/Mahwari Dard (Dental & Period Pain)';
+    }
+    if (/disprin|aspirin|ascard|loprin/i.test(combined)) {
+        return 'Khoon Patla Karne aur Dil ki Hifazat kelye (Blood Thinner & Heart)';
+    }
+    if (/flagyl|metronidazole/i.test(combined)) {
+        return 'Pait Kharab, Dast, Maror aur Ant ki Sozish (Diarrhea & Stomach Infection)';
+    }
+    if (/entamizole/i.test(combined)) {
+        return 'Pait ke Maror, Pechish aur Infection (Dysentery & Amoebiasis)';
+    }
+    if (/arinac|sinus|panadol cf|actifed/i.test(combined)) {
+        return 'Nazla, Zukam, Cheenkain aur Band Naak (Flu, Cold & Congestion)';
+    }
+    if (/rigix|zyrtec|softin|cetirizine|loratadine/i.test(combined)) {
+        return 'Allergy, Khujli, Cheenkain aur Jild ki Kharash (Antiallergy)';
+    }
+    if (/kestine|ebastine/i.test(combined)) {
+        return 'Mausami Allergy aur Naak Behna (Allergic Rhinitis)';
+    }
+    if (/klaricid|clarithromycin/i.test(combined)) {
+        return 'Sinay ki Jakran, Gale aur Sans ka Infection (Respiratory Infection)';
+    }
+    if (/ciproxin|novidat|ciprofloxacin/i.test(combined)) {
+        return 'Peshab ki Nali (UTI) aur Pait ka Infection (Antibiotic)';
+    }
+    if (/leflox|cravit|levofloxacin/i.test(combined)) {
+        return 'Sans ki Nali aur Phephron ka Infection (Chest Antibiotic)';
+    }
+    if (/azomax|zithro|azithromycin/i.test(combined)) {
+        return 'Galay ki Kharash, Tonsils aur Sans ka Infection (Antibiotic)';
+    }
+    if (/cefspan|caricef|cefixime/i.test(combined)) {
+        return 'Miyadi Bukhar (Typhoid) aur Galay ka Infection (Antibiotic)';
+    }
+    if (/ceftriaxone|rocephin|epiceph/i.test(combined)) {
+        return 'Shadeed Bacterial Infection aur Bukhar (Injectable Antibiotic)';
+    }
+    if (/velosef|cephradine/i.test(combined)) {
+        return 'Zakhmon, Phorron aur Jild ka Infection (Skin & Wound Antibiotic)';
+    }
+    if (/ventolin|salbo|salbutamol|asthalin/i.test(combined)) {
+        return 'Dama, Sans ki Tangi aur Khansi (Asthma & Bronchospasm)';
+    }
+    if (/montiget|myteka|montelukast/i.test(combined)) {
+        return 'Dama, Sans ki Kharabi aur Mausami Allergy (Asthma & Allergy)';
+    }
+    if (/hydryllin|pulmonol|acefyl|broncholate/i.test(combined)) {
+        return 'Balghami aur Khushk Khansi (Cough Relief)';
+    }
+    if (/sancos|cophylac|corex|torex/i.test(combined)) {
+        return 'Khushk Khansi aur Gale ki Kharash (Dry Cough Relief)';
+    }
+    if (/gravinate|dimenhydrinate|vomilux|motilium|domperidone/i.test(combined)) {
+        return 'Ulti, Matli aur Pait ka Bhari pan (Nausea, Vomiting & Digestion)';
+    }
+    if (/gaviscon|digene|mucaine|simeco/i.test(combined)) {
+        return 'Seene ki Jalan aur Tezabiyat (Heartburn & Antacid)';
+    }
+    if (/glucophage|neodipar|metformin/i.test(combined)) {
+        return 'Khoon mein Sugar (Diabetes Type-2) Control karne kelye';
+    }
+    if (/amaryl|getryl|glimepiride/i.test(combined)) {
+        return 'Sugar Control karne kelye (Oral Antidiabetic)';
+    }
+    if (/januvia|sitagliptin|galvus|vildagliptin/i.test(combined)) {
+        return 'Sugar kam karne ki dawai (DPP-4 Inhibitor)';
+    }
+    if (/mixtard|lantus|humalog|insulin/i.test(combined)) {
+        return 'Diabetes / Sugar ka Teeka (Insulin)';
+    }
+    if (/concor|bisoprolol|tenormin|atenolol/i.test(combined)) {
+        return 'High Blood Pressure aur Dil ki Tez Dharkan (Beta Blocker)';
+    }
+    if (/capoten|captopril|zestril|lisinopril/i.test(combined)) {
+        return 'High Blood Pressure aur Gurdon ki Hifazat (ACE Inhibitor)';
+    }
+    if (/sofvasc|norvasc|amlodipine/i.test(combined)) {
+        return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
+    }
+    if (/exforge|co-diovan|valsartan/i.test(combined)) {
+        return 'Ziddi High Blood Pressure control karne kelye (Hypertension)';
+    }
+    if (/lipitor|x-plat|atorvastatin|rosuvastatin/i.test(combined)) {
+        return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
+    }
+    if (/surbex z|sangobion|theragran/i.test(combined)) {
+        return 'Jismi Kamzori, Khoon ki Kami aur Taqat (Multivitamin & Zinc)';
+    }
+    if (/cac 1000|calcee|osteocare|osnate/i.test(combined)) {
+        return 'Haddiyon ki Kamzori aur Calcium (Bone Health & Vitamin D)';
+    }
+    if (/neurobion|mecobal|methycobal/i.test(combined)) {
+        return 'Patthon ka Dard, Asabi Kamzori aur Sunn pan (Nerves & B-Complex)';
+    }
+    if (/evion|vitamin e/i.test(combined)) {
+        return 'Jild, Balon aur Cells ki Taqat (Vitamin E Antioxidant)';
+    }
+    if (/fefol|iberet|folic acid/i.test(combined)) {
+        return 'Hamal mein Khoon ki Kami aur Iron (Iron Supplement)';
+    }
+    if (/spasler|no-spa|buscopan/i.test(combined)) {
+        return 'Pait ka Maror, Dard aur Kheenchaao (Abdominal Cramps & Spasm)';
+    }
+    if (/tanzo|tramal|tramadol/i.test(combined)) {
+        return 'Shadeed Dard (Post-Surgery / Severe Pain Relief)';
+    }
+    if (/synflex|naproxen/i.test(combined)) {
+        return 'Pathon aur Joron ka Shadeed Dard (Joint Pain & Arthritis)';
+    }
+    if (/voltral|dicloran|diclofenac/i.test(combined)) {
+        return 'Jism Dard, Mochi aur Sozish (Pain & Inflammation NSAID)';
+    }
+    if (/polyfax|betnovate|fucidin|quench/i.test(combined)) {
+        return 'Zakhmon, Kharash aur Jild ki Sozish (Skin Infection & Ointment)';
+    }
+    if (/dermovate|hydrocortisone/i.test(combined)) {
+        return 'Jild ki Shadeed Kharash aur Eczema (Steroid Skin Ointment)';
+    }
+    if (/daktarin|canesten|clotrimazole/i.test(combined)) {
+        return 'Fungal Infection, Daad aur Khujli (Antifungal)';
+    }
+    if (/nilstat|nystatin/i.test(combined)) {
+        return 'Moonh ke Chhalay aur Fungal Infection (Oral Thrush)';
+    }
+    if (/somogel|bonjela/i.test(combined)) {
+        return 'Moonh ke Chhalon aur Masorhon ka Dard (Mouth Ulcers)';
+    }
+    if (/tears naturale|refresh/i.test(combined)) {
+        return 'Aankhon ki Khushki aur Jalan (Dry Eyes)';
+    }
+    if (/betnesol|dexamethasone/i.test(combined)) {
+        return 'Shadeed Allergy aur Sozish (Corticosteroid)';
+    }
+    if (/lopamide|imodium|loperamide/i.test(combined)) {
+        return 'Dast aur Bar Bar Pakhana rokne kelye (Antidiarrheal)';
+    }
+    if (/duphalac|lilac|lactulose/i.test(combined)) {
+        return 'Qabz (Constipation) door karne kelye (Laxative)';
+    }
+    if (/ezivac|skilax/i.test(combined)) {
+        return 'Daimi Qabz ki Dawa (Laxative Drops/Tabs)';
+    }
+
+    // 2. Pharmacology Suffix Heuristics (Matches almost every medicinal compound)
+    if (/prazole/i.test(combined)) return 'Maiday ki Tezabiyat, Jalan aur Ulcer (PPI Acid Reducer)';
+    if (/tidine/i.test(combined)) return 'Maiday ki Gas aur Tezabiyat (H2 Blocker)';
+    if (/cillin/i.test(combined)) return 'Bacterial Infection aur Galay/Kaan ki Kharabi (Antibiotic)';
+    if (/oxacin/i.test(combined)) return 'Bacterial Infection, Peshab aur Phephron ka Ilaj (Antibiotic)';
+    if (/mycin|micin/i.test(combined)) return 'Bacterial Infection aur Galay ki Kharash (Macrolide Antibiotic)';
+    if (/cycline/i.test(combined)) return 'Bacterial Infection aur Acne/Dano ka Ilaj (Antibiotic)';
+    if (/cefa|cefi|ceph/i.test(combined)) return 'Bacterial Infection aur Bukhar (Cephalosporin Antibiotic)';
+    if (/statin/i.test(combined)) return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
+    if (/sartan/i.test(combined)) return 'High Blood Pressure aur Dil ki Hifazat (ARB Antihypertensive)';
+    if (/olol/i.test(combined)) return 'High Blood Pressure aur Dil ki Dharkan (Beta Blocker)';
+    if (/dipine/i.test(combined)) return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
+    if (/pril/i.test(combined)) return 'Blood Pressure aur Dil ki Hifazat (ACE Inhibitor)';
+    if (/formin/i.test(combined)) return 'Sugar (Diabetes Type-2) Control karne kelye';
+    if (/gliptin/i.test(combined)) return 'Sugar Control karne kelye (DPP-4 Inhibitor)';
+    if (/glitazone/i.test(combined)) return 'Sugar Control karne kelye (Thiazolidinedione)';
+    if (/fenac|profen/i.test(combined)) return 'Dard, Sozish aur Joron ka Dard (NSAID Pain Relief)';
+    if (/coxib/i.test(combined)) return 'Joron ka Dard aur Sozish (COX-2 Inhibitor)';
+    if (/tirizine|tadine|astine/i.test(combined)) return 'Allergy, Khujli aur Cheenkain (Antihistamine)';
+    if (/lukast/i.test(combined)) return 'Dama aur Mausami Allergy (Leukotriene Blocker)';
+    if (/butamol|terol/i.test(combined)) return 'Sans ki Tangi aur Dama (Bronchodilator)';
+    if (/conazole|fungin/i.test(combined)) return 'Fungal Infection, Daad aur Khujli (Antifungal)';
+    if (/sone|lone|onide/i.test(combined)) return 'Shadeed Allergy aur Sozish rokne kelye (Steroid)';
+    if (/pram|xetine|line/i.test(combined)) return 'Zehni Dabao aur Depression (Antidepressant)';
+    if (/zepam|zolam/i.test(combined)) return 'Bechaini aur Neend ki Kami (Sedative/Anxiolytic)';
+    if (/semide|thiazide/i.test(combined)) return 'Peshab-awar aur BP / Sozish kam karne kelye (Diuretic)';
+
+    if (generic && generic.trim().length > 2) {
+        return `${generic.trim()} (Clinical Formula)`;
+    }
+    return 'Dawai ka istemal doctor ki hidayat ke mutabiq';
 };
 
 // Normalizes any prescription output format so mobile OCR never crashes
@@ -781,20 +1086,24 @@ function normalizePrescriptionData(parsed) {
             const nameStr = String(m.name || m.medicine || m.brand || '');
             return !isModelRefusalText(nameStr);
         })
-        .map(m => ({
-            name: String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim(),
-            formula: String(m.formula || m.generic || m.salt || '').trim(),
-            form: String(m.form || m.type || 'Goli (Tablet)').trim(),
-            timing: isModelRefusalText(String(m.timing || '')) 
-                ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
-                : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
-            usage: isModelRefusalText(String(m.usage || '')) 
-                ? 'Taza paani ke sath lein' 
-                : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
-            purpose: isModelRefusalText(String(m.purpose || '')) 
-                ? 'Ilaj' 
-                : String(m.purpose || m.indication || m.use || 'Ilaj').trim()
-        }));
+        .map(m => {
+            const name = String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim();
+            const formula = String(m.formula || m.generic || m.salt || '').trim();
+            const shortUseHint = String(m.shortUse || m.purpose || m.indication || '').trim() || window.getMedicineShortUse(name, formula);
+            return {
+                name,
+                formula,
+                form: String(m.form || m.type || 'Goli (Tablet)').trim(),
+                timing: isModelRefusalText(String(m.timing || '')) 
+                    ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
+                    : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+                usage: isModelRefusalText(String(m.usage || '')) 
+                    ? 'Taza paani ke sath lein' 
+                    : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
+                purpose: shortUseHint,
+                shortUse: shortUseHint
+            };
+        });
 
     return {
         doctor: rawDoctor,
@@ -886,43 +1195,75 @@ async function callGeminiVisionDirect(prompt, base64Data) {
 
 // Unified AI Caller: Seamlessly supports full-stack Node backends, GitHub Pages, Firebase Hosting, Vercel, and installed mobile PWA
 async function callAiBackend(endpoint, base64Data, clientPrompt) {
-    // 1. Try local Express backend if server endpoint is available on current origin
-    if (typeof window !== 'undefined' && window.location.origin) {
+    if (!base64Data) {
+        throw new Error('Image data mojood nahi hai.');
+    }
+
+    const payload = JSON.stringify({ imageBase64: base64Data });
+    const targetUrls = [];
+
+    // 1. Direct relative endpoint (works seamlessly across all domains, subpaths, and reverse proxies)
+    targetUrls.push(endpoint);
+
+    // 2. Absolute URL with origin (for PWA standalone window contexts)
+    if (typeof window !== 'undefined' && window.location?.origin) {
+        const absUrl = `${window.location.origin}${endpoint}`;
+        if (!targetUrls.includes(absUrl)) {
+            targetUrls.push(absUrl);
+        }
+    }
+
+    let lastError = null;
+
+    for (const url of targetUrls) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000);
-            const res = await fetch(`${window.location.origin}${endpoint}`, {
+            // Generous 60-second timeout for full multimodal AI document inference
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({ imageBase64: base64Data }),
+                body: payload,
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
+
             if (res.ok) {
                 const data = await res.json();
-                if (data && (data.success || data.data)) return data;
+                if (data && (data.success !== false)) {
+                    return data;
+                }
+                if (data && data.error) {
+                    lastError = data.error;
+                }
+            } else {
+                const errJson = await res.json().catch(() => null);
+                lastError = errJson?.error || `Server response status: ${res.status}`;
             }
         } catch (e) {
-            console.warn(`Local endpoint (${endpoint}) fallback to direct Vision:`, e?.message || e);
+            console.warn(`Local endpoint (${url}) note:`, e?.message || e);
+            lastError = e?.name === 'AbortError'
+                ? 'Server response ka waqt mukammal ho gaya (timeout). Barah-e-karam dobara koshish karein.'
+                : (e?.message || 'Server se rabta nahi ho saka.');
         }
     }
 
-    // 2. Direct client-side Vision fallback (Guarantees scanning works on ANY static host, GitHub Pages, Vercel, & Installed PWA)
+    // 3. Direct client-side Vision fallback (Guarantees scanning works even on purely static hosting if API key is provided)
     if (clientPrompt) {
         try {
             const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);
             const parsed = extractSmartJson(rawText);
             if (parsed) return { success: true, data: parsed };
         } catch (e) {
-            console.warn('Direct vision note:', e?.message || e);
-            throw e;
+            console.warn('Direct vision fallback note:', e?.message || e);
         }
     }
 
-    return null;
+    throw new Error(lastError || 'AI Scanner server se connect nahi ho saka. Barah-e-karam internet connection check karein.');
 }
 
 // Store Config
@@ -1184,6 +1525,16 @@ window.switchTab = function(tabName) {
     }
     if (tabName === 'network') window.refreshNetworkList();
 
+    // Footer control: strictly hide developer footer on simple calculator page
+    const appFooter = document.getElementById('app-main-footer');
+    if (appFooter) {
+        if (tabName === 'margin') {
+            appFooter.classList.add('hidden');
+        } else {
+            appFooter.classList.remove('hidden');
+        }
+    }
+
     // Rate Check in topbar only visible on 'dashboard' and 'network' tabs; hidden on POS, Inventory, Calculator
     const showRateCheck = (tabName === 'dashboard' || tabName === 'network');
     const deskRate = document.getElementById('header-rate-check-desktop');
@@ -1441,23 +1792,27 @@ window.switchCalculatorTab = function(type) {
     secSimple?.classList.add('hidden');
     secBonus?.classList.add('hidden');
 
+    const appFooter = document.getElementById('app-main-footer');
     if (type === 'simple') {
         marginBanner?.classList.add('hidden');
         secSimple?.classList.remove('hidden');
         setActive(btnSimple);
         window.updateSimpleCalcDisplay();
         window.scrollTo({ top: 0, behavior: 'instant' });
+        if (appFooter) appFooter.classList.add('hidden');
     } else if (type === 'bonus') {
         marginBanner?.classList.remove('hidden');
         secBonus?.classList.remove('hidden');
         setActive(btnBonus);
         window.runMarginCalc();
+        if (appFooter) appFooter.classList.remove('hidden');
     } else {
         // default: 'rate'
         marginBanner?.classList.add('hidden');
         secRate?.classList.remove('hidden');
         setActive(btnRate);
         window.runLooseCalc();
+        if (appFooter) appFooter.classList.remove('hidden');
     }
     safeCreateIcons();
 };
@@ -1790,25 +2145,29 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist and forensic prescription OCR reader.
+const PRESCRIPTION_PROMPT = `You are a distinguished Clinical Pharmacist and forensic medical handwriting OCR specialist.
 Your mission is to read doctor handwriting, clinic pads, hospital slips, and prescription slips.
-Use your pharmaceutical domain expertise to decipher doctor handwriting, brands, active generic salts, strengths (e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg), and dosage forms (Tab, Cap, Syp, Inj, Drop, Sachet).
-Decipher every prescribed medicine line visibly written under Rx.
-Translate dosage schedule abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-Never output refusal notes; return valid JSON conforming to the schema:
+CRITICAL MANDATES:
+1. NEVER REFUSE TO READ: Do not generate refusal phrases like "tasveer roshni mein dubara banao", "unable to read", or "retake photo". Transcribe every visible medicine line.
+2. ZERO-HALLUCINATION ENFORCEMENT: NEVER invent or hallucinate illnesses, fevers ("bukhar"), infections, or fake medicines. ONLY transcribe what is visibly represented under Rx. If no clinical diagnosis is written, leave treatmentSummary as empty string "".
+3. Decipher doctor handwriting, brand names, active salts, strengths (e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg), and dosage forms (Tab, Cap, Syp, Inj, Drop, Sachet).
+4. Translate dosage schedule abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
+5. Provide a helpful concise "shortUse" hint for each medicine in Roman Urdu + English explaining what it is for ("ye dawai kis marz / maqsad kelye hai").
+6. Return strictly valid JSON conforming to the schema:
 {
   "doctor": "Doctor or Clinic name from slip",
   "patient": "Patient name and details if visible",
-  "treatmentSummary": "Short treatment reason in Roman Urdu if written",
+  "treatmentSummary": "",
   "advice": "Precautions in Roman Urdu if written",
   "medicines": [
     {
       "name": "Exact brand name and strength written on slip",
-      "formula": "Generic salt if visible or standard formulation",
-      "form": "Goli (Tablet), Capsule, Sharbath (Syrup), Injection, Drops, Sachet, etc.",
+      "formula": "Generic salt if visible",
+      "form": "Goli (Tablet), Capsule, Sharbath (Syrup), Injection, Drops, Sachet",
       "timing": "Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)",
       "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
-      "purpose": "Indication in Roman Urdu"
+      "purpose": "",
+      "shortUse": "Dawai kis marz kelye hai in Roman Urdu + English"
     }
   ]
 }`;
@@ -1900,42 +2259,52 @@ window.handlePrescriptionScan = async function(event) {
                     </div>
                 `;
             } else {
-                medList.innerHTML = (parsed.medicines || []).map((m, idx) => `
-                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
-                    <div class="flex justify-between items-start gap-2">
-                        <div class="flex items-start gap-2">
-                            <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
-                            <div>
-                                <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
-                                <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
+                medList.innerHTML = (parsed.medicines || []).map((m, idx) => {
+                    const shortUse = m.shortUse || m.purpose || window.getMedicineShortUse(m.name, m.formula);
+                    return `
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
+                        <div class="flex justify-between items-start gap-2">
+                            <div class="flex items-start gap-2">
+                                <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
+                                <div>
+                                    <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
+                                    <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
+                                    <!-- AI Hint / Medicine Short Use -->
+                                    <div class="mt-1">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                                            <i data-lucide="sparkles" class="w-3 h-3 text-amber-600 shrink-0"></i>
+                                            <span><strong>AI Hint:</strong> ${shortUse}</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-end gap-1 shrink-0">
+                                <span class="text-[10px] bg-brand-50 border border-brand-200 text-brand-700 px-2 py-0.5 rounded-lg font-bold">${m.purpose || 'Ilaj'}</span>
+                                <button type="button" onclick="window.addPrescribedItemToPos('${encodeURIComponent(m.name)}')" class="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 active:scale-95 shadow-xs transition">
+                                    <i data-lucide="plus" class="w-3 h-3"></i> Add to Counter
+                                </button>
                             </div>
                         </div>
-                        <div class="flex flex-col items-end gap-1 shrink-0">
-                            <span class="text-[10px] bg-brand-50 border border-brand-200 text-brand-700 px-2 py-0.5 rounded-lg font-bold">${m.purpose || 'Ilaj'}</span>
-                            <button type="button" onclick="window.addPrescribedItemToPos('${encodeURIComponent(m.name)}')" class="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 active:scale-95 shadow-xs transition">
-                                <i data-lucide="plus" class="w-3 h-3"></i> Add to POS
-                            </button>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                            <div class="p-2 bg-emerald-50 border border-emerald-200/70 rounded-lg text-emerald-950 font-semibold flex items-center gap-1.5">
+                                <span class="text-base">⏰</span>
+                                <div>
+                                    <span class="text-[9px] uppercase font-bold text-emerald-700 block">Khooraq / Timing:</span>
+                                    <span>${m.timing || 'Subah sham khane ke baad'}</span>
+                                </div>
+                            </div>
+                            <div class="p-2 bg-blue-50 border border-blue-200/70 rounded-lg text-blue-950 font-semibold flex items-center gap-1.5">
+                                <span class="text-base">📋</span>
+                                <div>
+                                    <span class="text-[9px] uppercase font-bold text-blue-700 block">Tareeqa-e-Istemal (Usage):</span>
+                                    <span>${m.usage || 'Taza paani ke sath lein'}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                        <div class="p-2 bg-emerald-50 border border-emerald-200/70 rounded-lg text-emerald-950 font-semibold flex items-center gap-1.5">
-                            <span class="text-base">⏰</span>
-                            <div>
-                                <span class="text-[9px] uppercase font-bold text-emerald-700 block">Khooraq / Timing:</span>
-                                <span>${m.timing || 'Subah sham khane ke baad'}</span>
-                            </div>
-                        </div>
-                        <div class="p-2 bg-blue-50 border border-blue-200/70 rounded-lg text-blue-950 font-semibold flex items-center gap-1.5">
-                            <span class="text-base">📋</span>
-                            <div>
-                                <span class="text-[9px] uppercase font-bold text-blue-700 block">Tareeqa-e-Istemal (Usage):</span>
-                                <span>${m.usage || 'Taza paani ke sath lein'}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+                `;
+                }).join('');
             }
         }
 
@@ -2036,7 +2405,7 @@ window.addAllPrescriptionToPos = function() {
     if (addedCount > 0) {
         renderCartTable();
         window.calculateCartTotals();
-        showToast(`${addedCount} adviyaat POS Bill mein shamil kar di gayin!`, 'success');
+        showToast(`${addedCount} adviyaat Counter Bill mein shamil kar di gayin!`, 'success');
     } else {
         showToast('Adviyaat inventory mein dhoondne kelye search bar check karein.', 'info');
     }
@@ -2476,13 +2845,19 @@ window.searchMedicineForPos = function() {
     } else {
         results.innerHTML = matches.map(m => {
             const packInfo = parsePackSize(m.packSize);
+            const shortUse = window.getMedicineShortUse(m.name, m.generic);
             return `
-                <div tabindex="0" onclick="window.selectMedicineForPos('${m.id}')" class="pos-result-row p-2.5 hover:bg-brand-50 outline-none cursor-pointer flex justify-between items-center text-xs transition">
-                    <div>
+                <div tabindex="0" onclick="window.selectMedicineForPos('${m.id}')" class="pos-result-row p-2.5 hover:bg-brand-50 outline-none cursor-pointer flex justify-between items-center text-xs transition border-b border-slate-100 last:border-0">
+                    <div class="space-y-0.5">
                         <strong class="text-slate-800 text-xs">${m.name}</strong>
-                        <span class="text-[10px] text-slate-400 block">Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
+                        <span class="text-[10px] text-slate-400 block">${m.generic ? m.generic + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
+                        <div class="mt-0.5">
+                            <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                                <span class="text-amber-600">💡 AI Hint:</span> ${shortUse}
+                            </span>
+                        </div>
                     </div>
-                    <span class="font-black text-emerald-700 text-xs">Rs. ${Number(m.mrp).toFixed(2)}</span>
+                    <span class="font-black text-emerald-700 text-xs shrink-0 ml-2">Rs. ${Number(m.mrp).toFixed(2)}</span>
                 </div>
             `;
         }).join('');
@@ -2503,6 +2878,14 @@ window.selectMedicineForPos = function(id) {
     document.getElementById('pos-search-results')?.classList.add('hidden');
     document.getElementById('pos-search').value = '';
     
+    // Display Short Use AI Hint on Selected Item Banner
+    const useHint = window.getMedicineShortUse(med.name, med.generic);
+    const useBadge = document.getElementById('pos-selected-use-hint');
+    if (useBadge) {
+        useBadge.innerHTML = `💡 <span class="text-amber-700 font-black">AI Hint:</span> ${useHint}`;
+        useBadge.classList.remove('hidden');
+    }
+
     const unitSelect = document.getElementById('pos-unit-type');
     if (unitSelect) unitSelect.value = 'pack';
     const qtyInput = document.getElementById('pos-qty');
@@ -2510,6 +2893,8 @@ window.selectMedicineForPos = function(id) {
 
     window.updatePosLivePriceHint();
 };
+
+window.selectMedForPos = window.selectMedicineForPos;
 
 window.updatePosLivePriceHint = function() {
     const badge = document.getElementById('pos-calc-rate-badge');
@@ -2918,6 +3303,11 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                                 </span>
                             </div>
                             <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
+                            <div class="mt-1">
+                                <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                    <span class="text-amber-600">💡 AI Hint:</span> ${window.getMedicineShortUse(m.name, m.generic)}
+                                </span>
+                            </div>
                         </div>
                         <div class="text-right shrink-0">
                             <span class="text-[10px] text-slate-400 font-bold uppercase block">Retail MRP</span>
@@ -3169,6 +3559,7 @@ function renderInventoryTable() {
                             <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span class="text-[10px] text-slate-500">${m.generic || 'Formula'}</span>
                                 <span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-mono font-medium">📍 ${m.location ? m.location : 'None'}</span>
+                                <span class="px-1.5 py-0.2 rounded text-[9px] font-bold text-amber-900 bg-amber-50 border border-amber-200">💡 ${window.getMedicineShortUse(m.name, m.generic)}</span>
                             </div>
                         </td>
                         <td class="p-3 text-slate-600 font-semibold">${m.distributor || 'General'}</td>
@@ -3220,6 +3611,11 @@ function renderInventoryTable() {
                                     <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">${typeLabel}</span>
                                 </div>
                                 <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
+                                <div class="mt-1">
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-md">
+                                        💡 <strong class="text-amber-700">AI Hint:</strong> ${window.getMedicineShortUse(m.name, m.generic)}
+                                    </span>
+                                </div>
                             </div>
                             <span class="shrink-0 px-2.5 py-1 rounded-full font-black text-xs ${isCriticallyLow ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
                                 ${m.stock} Packs
@@ -5801,17 +6197,22 @@ window.submitGuestMode = function() {
     showToast('Guest Mode (Local Device Storage) activate ho gaya', 'info');
 };
 
-// Delete Account & Clear All Data Permanently
+// Delete Account & Clear All Data Permanently (Strictly Scoped to Current Profile)
 window.handleDeleteAccountAndData = function() {
     customConfirm(
         'Account & Data Delete Karein?',
         'Kya aap apna Digital Pharma account, stock inventory aur tamam sales records permanently delete karna chahte hain? Yeh amal wapis nahi ho sakta.',
         async () => {
             try {
+                // 1. Immediately unsubscribe live Firestore listeners to prevent cross-account triggers
+                if (unsubscribeMeds) { unsubscribeMeds(); unsubscribeMeds = null; }
+                if (unsubscribeSales) { unsubscribeSales(); unsubscribeSales = null; }
+                if (unsubscribePharmacies) { unsubscribePharmacies(); unsubscribePharmacies = null; }
+
                 const currentUser = window.getCurrentUser();
                 const currentUid = auth.currentUser?.uid || currentUser?.uid;
 
-                // 1. Delete Firestore user collections
+                // 2. Delete Firestore user collections and profile document strictly for this user UID
                 if (currentUid && db) {
                     try {
                         const medsCol = collection(db, 'users', currentUid, 'medicines');
@@ -5826,6 +6227,12 @@ window.handleDeleteAccountAndData = function() {
                             try { await deleteDoc(d.ref); } catch(e) {}
                         }
 
+                        // Delete this user's profile document
+                        try {
+                            await deleteDoc(doc(db, 'users', currentUid));
+                        } catch(e) {}
+
+                        // Delete this user's pharmacy network card strictly for this user
                         try {
                             await deleteDoc(doc(db, 'pharmacies', currentUid));
                         } catch(e) {}
@@ -5834,7 +6241,7 @@ window.handleDeleteAccountAndData = function() {
                     }
                 }
 
-                // 2. Unregister from central network
+                // 3. Unregister this user from central network
                 try {
                     await fetch('/api/network/unregister', {
                         method: 'POST',
@@ -5847,7 +6254,14 @@ window.handleDeleteAccountAndData = function() {
                     });
                 } catch(e) {}
 
-                // 3. Delete Firebase Auth user if authenticated
+                // 4. Remove this user from local registered users registry
+                try {
+                    const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+                    const filtered = regUsers.filter(u => u.uid !== currentUid && (!currentUser?.email || u.email?.toLowerCase() !== currentUser?.email?.toLowerCase()));
+                    localStorage.setItem('sm_registered_users', JSON.stringify(filtered));
+                } catch(e) {}
+
+                // 5. Delete Firebase Auth user if authenticated
                 if (auth.currentUser) {
                     try {
                         await auth.currentUser.delete();
@@ -5856,7 +6270,7 @@ window.handleDeleteAccountAndData = function() {
                     }
                 }
 
-                // 4. Clear all localStorage
+                // 6. Clear current session localStorage keys
                 localStorage.removeItem('sm_auth_user');
                 localStorage.removeItem('sm_user_mode');
                 localStorage.removeItem('sm_medicines');
@@ -5866,7 +6280,7 @@ window.handleDeleteAccountAndData = function() {
                 localStorage.removeItem('sm_network_stores');
                 localStorage.removeItem('sm_custom_med_types');
 
-                // 5. Reset in-memory state
+                // 7. Reset in-memory state
                 medicines = [];
                 sales = [];
                 cart = [];

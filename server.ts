@@ -112,6 +112,204 @@ function sanitizeBase64(raw: string): { clean: string, mime: string } {
 }
 
 // Normalizes any prescription output format so mobile OCR never fails
+// Intelligent Medicine Short Use & Clinical Indication Dictionary / Heuristics (Roman Urdu + English)
+function getMedicineShortUse(name: string, generic?: string): string {
+  const combined = `${name || ''} ${generic || ''}`.toLowerCase();
+
+  // 1. Direct High-Accuracy Brand & Salt Mappings
+  if (/panadol|paracetamol|calpol|febrol|disprol/i.test(combined)) {
+    return 'Bukhar, Sar Dard aur Jism Dard (Fever & Pain Relief)';
+  }
+  if (/augmentin|amoxil|curam|klamoks|amoxicillin/i.test(combined)) {
+    return 'Bacterial Infection, Gale aur Kaan ki Kharabi (Antibiotic)';
+  }
+  if (/risek|omeprazole|omega|losec/i.test(combined)) {
+    return 'Maiday ki Jalan, Tezabiyat aur Gas (Acidity & Acid Reflux / PPI)';
+  }
+  if (/nexum|esomeprazole|ezaday|eso\b/i.test(combined)) {
+    return 'Maiday ka Ulcer aur Shadeed Tezabiyat (GERD & Ulcer Relief)';
+  }
+  if (/brufen|ibuprofen|profen/i.test(combined)) {
+    return 'Dard, Sozish aur Joron ka Dard (Pain & Anti-inflammatory NSAID)';
+  }
+  if (/ponstan|mefenamic/i.test(combined)) {
+    return 'Dard-e-Dandan, Kheenchaao aur Haiz/Mahwari Dard (Dental & Period Pain)';
+  }
+  if (/disprin|aspirin|ascard|loprin/i.test(combined)) {
+    return 'Khoon Patla Karne aur Dil ki Hifazat kelye (Blood Thinner & Heart)';
+  }
+  if (/flagyl|metronidazole/i.test(combined)) {
+    return 'Pait Kharab, Dast, Maror aur Ant ki Sozish (Diarrhea & Stomach Infection)';
+  }
+  if (/entamizole/i.test(combined)) {
+    return 'Pait ke Maror, Pechish aur Infection (Dysentery & Amoebiasis)';
+  }
+  if (/arinac|sinus|panadol cf|actifed/i.test(combined)) {
+    return 'Nazla, Zukam, Cheenkain aur Band Naak (Flu, Cold & Congestion)';
+  }
+  if (/rigix|zyrtec|softin|cetirizine|loratadine/i.test(combined)) {
+    return 'Allergy, Khujli, Cheenkain aur Jild ki Kharash (Antiallergy)';
+  }
+  if (/kestine|ebastine/i.test(combined)) {
+    return 'Mausami Allergy aur Naak Behna (Allergic Rhinitis)';
+  }
+  if (/klaricid|clarithromycin/i.test(combined)) {
+    return 'Sinay ki Jakran, Gale aur Sans ka Infection (Respiratory Infection)';
+  }
+  if (/ciproxin|novidat|ciprofloxacin/i.test(combined)) {
+    return 'Peshab ki Nali (UTI) aur Pait ka Infection (Antibiotic)';
+  }
+  if (/leflox|cravit|levofloxacin/i.test(combined)) {
+    return 'Sans ki Nali aur Phephron ka Infection (Chest Antibiotic)';
+  }
+  if (/azomax|zithro|azithromycin/i.test(combined)) {
+    return 'Galay ki Kharash, Tonsils aur Sans ka Infection (Antibiotic)';
+  }
+  if (/cefspan|caricef|cefixime/i.test(combined)) {
+    return 'Miyadi Bukhar (Typhoid) aur Galay ka Infection (Antibiotic)';
+  }
+  if (/ceftriaxone|rocephin|epiceph/i.test(combined)) {
+    return 'Shadeed Bacterial Infection aur Bukhar (Injectable Antibiotic)';
+  }
+  if (/velosef|cephradine/i.test(combined)) {
+    return 'Zakhmon, Phorron aur Jild ka Infection (Skin & Wound Antibiotic)';
+  }
+  if (/ventolin|salbo|salbutamol|asthalin/i.test(combined)) {
+    return 'Dama, Sans ki Tangi aur Khansi (Asthma & Bronchospasm)';
+  }
+  if (/montiget|myteka|montelukast/i.test(combined)) {
+    return 'Dama, Sans ki Kharabi aur Mausami Allergy (Asthma & Allergy)';
+  }
+  if (/hydryllin|pulmonol|acefyl|broncholate/i.test(combined)) {
+    return 'Balghami aur Khushk Khansi (Cough Relief)';
+  }
+  if (/sancos|cophylac|corex|torex/i.test(combined)) {
+    return 'Khushk Khansi aur Gale ki Kharash (Dry Cough Relief)';
+  }
+  if (/gravinate|dimenhydrinate|vomilux|motilium|domperidone/i.test(combined)) {
+    return 'Ulti, Matli aur Pait ka Bhari pan (Nausea, Vomiting & Digestion)';
+  }
+  if (/gaviscon|digene|mucaine|simeco/i.test(combined)) {
+    return 'Seene ki Jalan aur Tezabiyat (Heartburn & Antacid)';
+  }
+  if (/glucophage|neodipar|metformin/i.test(combined)) {
+    return 'Khoon mein Sugar (Diabetes Type-2) Control karne kelye';
+  }
+  if (/amaryl|getryl|glimepiride/i.test(combined)) {
+    return 'Sugar Control karne kelye (Oral Antidiabetic)';
+  }
+  if (/januvia|sitagliptin|galvus|vildagliptin/i.test(combined)) {
+    return 'Sugar kam karne ki dawai (DPP-4 Inhibitor)';
+  }
+  if (/mixtard|lantus|humalog|insulin/i.test(combined)) {
+    return 'Diabetes / Sugar ka Teeka (Insulin)';
+  }
+  if (/concor|bisoprolol|tenormin|atenolol/i.test(combined)) {
+    return 'High Blood Pressure aur Dil ki Tez Dharkan (Beta Blocker)';
+  }
+  if (/capoten|captopril|zestril|lisinopril/i.test(combined)) {
+    return 'High Blood Pressure aur Gurdon ki Hifazat (ACE Inhibitor)';
+  }
+  if (/sofvasc|norvasc|amlodipine/i.test(combined)) {
+    return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
+  }
+  if (/exforge|co-diovan|valsartan/i.test(combined)) {
+    return 'Ziddi High Blood Pressure control karne kelye (Hypertension)';
+  }
+  if (/lipitor|x-plat|atorvastatin|rosuvastatin/i.test(combined)) {
+    return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
+  }
+  if (/surbex z|sangobion|theragran/i.test(combined)) {
+    return 'Jismi Kamzori, Khoon ki Kami aur Taqat (Multivitamin & Zinc)';
+  }
+  if (/cac 1000|calcee|osteocare|osnate/i.test(combined)) {
+    return 'Haddiyon ki Kamzori aur Calcium (Bone Health & Vitamin D)';
+  }
+  if (/neurobion|mecobal|methycobal/i.test(combined)) {
+    return 'Patthon ka Dard, Asabi Kamzori aur Sunn pan (Nerves & B-Complex)';
+  }
+  if (/evion|vitamin e/i.test(combined)) {
+    return 'Jild, Balon aur Cells ki Taqat (Vitamin E Antioxidant)';
+  }
+  if (/fefol|iberet|folic acid/i.test(combined)) {
+    return 'Hamal mein Khoon ki Kami aur Iron (Iron Supplement)';
+  }
+  if (/spasler|no-spa|buscopan/i.test(combined)) {
+    return 'Pait ka Maror, Dard aur Kheenchaao (Abdominal Cramps & Spasm)';
+  }
+  if (/tanzo|tramal|tramadol/i.test(combined)) {
+    return 'Shadeed Dard (Post-Surgery / Severe Pain Relief)';
+  }
+  if (/synflex|naproxen/i.test(combined)) {
+    return 'Pathon aur Joron ka Shadeed Dard (Joint Pain & Arthritis)';
+  }
+  if (/voltral|dicloran|diclofenac/i.test(combined)) {
+    return 'Jism Dard, Mochi aur Sozish (Pain & Inflammation NSAID)';
+  }
+  if (/polyfax|betnovate|fucidin|quench/i.test(combined)) {
+    return 'Zakhmon, Kharash aur Jild ki Sozish (Skin Infection & Ointment)';
+  }
+  if (/dermovate|hydrocortisone/i.test(combined)) {
+    return 'Jild ki Shadeed Kharash aur Eczema (Steroid Skin Ointment)';
+  }
+  if (/daktarin|canesten|clotrimazole/i.test(combined)) {
+    return 'Fungal Infection, Daad aur Khujli (Antifungal)';
+  }
+  if (/nilstat|nystatin/i.test(combined)) {
+    return 'Moonh ke Chhalay aur Fungal Infection (Oral Thrush)';
+  }
+  if (/somogel|bonjela/i.test(combined)) {
+    return 'Moonh ke Chhalon aur Masorhon ka Dard (Mouth Ulcers)';
+  }
+  if (/tears naturale|refresh/i.test(combined)) {
+    return 'Aankhon ki Khushki aur Jalan (Dry Eyes)';
+  }
+  if (/betnesol|dexamethasone/i.test(combined)) {
+    return 'Shadeed Allergy aur Sozish (Corticosteroid)';
+  }
+  if (/lopamide|imodium|loperamide/i.test(combined)) {
+    return 'Dast aur Bar Bar Pakhana rokne kelye (Antidiarrheal)';
+  }
+  if (/duphalac|lilac|lactulose/i.test(combined)) {
+    return 'Qabz (Constipation) door karne kelye (Laxative)';
+  }
+  if (/ezivac|skilax/i.test(combined)) {
+    return 'Daimi Qabz ki Dawa (Laxative Drops/Tabs)';
+  }
+
+  // 2. Pharmacology Suffix Heuristics (Matches almost every medicinal compound)
+  if (/prazole/i.test(combined)) return 'Maiday ki Tezabiyat, Jalan aur Ulcer (PPI Acid Reducer)';
+  if (/tidine/i.test(combined)) return 'Maiday ki Gas aur Tezabiyat (H2 Blocker)';
+  if (/cillin/i.test(combined)) return 'Bacterial Infection aur Galay/Kaan ki Kharabi (Antibiotic)';
+  if (/oxacin/i.test(combined)) return 'Bacterial Infection, Peshab aur Phephron ka Ilaj (Antibiotic)';
+  if (/mycin|micin/i.test(combined)) return 'Bacterial Infection aur Galay ki Kharash (Macrolide Antibiotic)';
+  if (/cycline/i.test(combined)) return 'Bacterial Infection aur Acne/Dano ka Ilaj (Antibiotic)';
+  if (/cefa|cefi|ceph/i.test(combined)) return 'Bacterial Infection aur Bukhar (Cephalosporin Antibiotic)';
+  if (/statin/i.test(combined)) return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
+  if (/sartan/i.test(combined)) return 'High Blood Pressure aur Dil ki Hifazat (ARB Antihypertensive)';
+  if (/olol/i.test(combined)) return 'High Blood Pressure aur Dil ki Dharkan (Beta Blocker)';
+  if (/dipine/i.test(combined)) return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
+  if (/pril/i.test(combined)) return 'Blood Pressure aur Dil ki Hifazat (ACE Inhibitor)';
+  if (/formin/i.test(combined)) return 'Sugar (Diabetes Type-2) Control karne kelye';
+  if (/gliptin/i.test(combined)) return 'Sugar Control karne kelye (DPP-4 Inhibitor)';
+  if (/glitazone/i.test(combined)) return 'Sugar Control karne kelye (Thiazolidinedione)';
+  if (/fenac|profen/i.test(combined)) return 'Dard, Sozish aur Joron ka Dard (NSAID Pain Relief)';
+  if (/coxib/i.test(combined)) return 'Joron ka Dard aur Sozish (COX-2 Inhibitor)';
+  if (/tirizine|tadine|astine/i.test(combined)) return 'Allergy, Khujli aur Cheenkain (Antihistamine)';
+  if (/lukast/i.test(combined)) return 'Dama aur Mausami Allergy (Leukotriene Blocker)';
+  if (/butamol|terol/i.test(combined)) return 'Sans ki Tangi aur Dama (Bronchodilator)';
+  if (/conazole|fungin/i.test(combined)) return 'Fungal Infection, Daad aur Khujli (Antifungal)';
+  if (/sone|lone|onide/i.test(combined)) return 'Shadeed Allergy aur Sozish rokne kelye (Steroid)';
+  if (/pram|xetine|line/i.test(combined)) return 'Zehni Dabao aur Depression (Antidepressant)';
+  if (/zepam|zolam/i.test(combined)) return 'Bechaini aur Neend ki Kami (Sedative/Anxiolytic)';
+  if (/semide|thiazide/i.test(combined)) return 'Peshab-awar aur BP / Sozish kam karne kelye (Diuretic)';
+
+  if (generic && generic.trim().length > 2) {
+    return `${generic.trim()} (Clinical Formula)`;
+  }
+  return 'Dawai ka istemal doctor ki hidayat ke mutabiq';
+}
+
 function normalizePrescriptionData(parsed: any) {
   if (!parsed) return null;
   let meds: any[] = [];
@@ -137,20 +335,24 @@ function normalizePrescriptionData(parsed: any) {
       const nameStr = String(m.name || m.medicine || m.brand || '');
       return !isModelRefusal(nameStr);
     })
-    .map((m: any) => ({
-      name: String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim(),
-      formula: String(m.formula || m.generic || m.salt || '').trim(),
-      form: String(m.form || m.type || 'Goli (Tablet)').trim(),
-      timing: isModelRefusal(String(m.timing || '')) 
-        ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
-        : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
-      usage: isModelRefusal(String(m.usage || '')) 
-        ? 'Taza paani ke sath lein' 
-        : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
-      purpose: isModelRefusal(String(m.purpose || '')) 
-        ? 'Ilaj' 
-        : String(m.purpose || m.indication || m.use || 'Ilaj').trim()
-    }));
+    .map((m: any) => {
+      const name = String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim();
+      const formula = String(m.formula || m.generic || m.salt || '').trim();
+      const shortUseHint = String(m.shortUse || m.purpose || m.indication || '').trim() || getMedicineShortUse(name, formula);
+      return {
+        name,
+        formula,
+        form: String(m.form || m.type || 'Goli (Tablet)').trim(),
+        timing: isModelRefusal(String(m.timing || '')) 
+          ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
+          : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+        usage: isModelRefusal(String(m.usage || '')) 
+          ? 'Taza paani ke sath lein' 
+          : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
+        purpose: shortUseHint,
+        shortUse: shortUseHint
+      };
+    });
 
   let rawAdvice = String(parsed.advice || parsed.precautions || parsed.instructions || '');
   if (!rawAdvice || isModelRefusal(rawAdvice)) {
@@ -234,8 +436,8 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // High-availability multimodal vision models: primary ultra-fast lite, secondary flash
-  const models = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+  // High-performance multimodal vision models: primary powerhouse gemini-3.8-flash, fast fallback gemini-3.1-flash-lite
+  const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
 
   for (const modelName of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -298,16 +500,20 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
       return;
     }
 
-    const prescriptionSystemInstruction = `You are an expert Pakistani Clinical Pharmacist reading doctor handwriting and clinic prescription slips.
-Your mission is to read every prescribed medicine visibly written by the doctor on this paper.
-Doctor handwriting may be cursive, rapid, or faint. Use your pharmaceutical domain expertise (common Pakistani brand names, strengths e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg, and dosage forms e.g. Tab, Cap, Syp, Inj, Drop, Sachet) to actively decipher and transcribe every medicine, strength, and schedule.
-DO NOT hallucinate random illnesses like fever (bukhar) if not written.
-Translate dosage frequencies (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-Return valid JSON adhering to the schema.`;
+    const prescriptionSystemInstruction = `You are a distinguished Pakistani Clinical Pharmacist and forensic medical handwriting OCR specialist.
+Your mission is to accurately transcribe doctor handwriting, clinic pads, hospital OPD slips, and prescription slips.
+CRITICAL MANDATES:
+1. NEVER REFUSE TO PROCESS THE IMAGE: You must NEVER generate refusal phrases like "tasveer roshni mein dubara banao", "image not clear", "dhundli hai", "unable to read", or "retake the photo". Always transcribe all visible markings and medicine lines.
+2. ZERO-HALLUCINATION ENFORCEMENT: NEVER invent or hallucinate illnesses, fevers ("bukhar"), infections, or fake medicines. ONLY transcribe what is visibly represented on this prescription under Rx or doctor notes. If no illness is written, leave treatmentSummary as "".
+3. PHARMACEUTICAL DECIPHERING: Use your comprehensive Pakistani pharmaceutical knowledge (common brand names, strengths e.g. 10mg, 20mg, 40mg, 250mg, 500mg, 625mg, 1g, and dosage forms e.g. Tab, Cap, Syp, Inj, Drop, Sachet, Inhaler, Ointment) to resolve cursive or rapid doctor handwriting.
+4. DOSAGE INSTRUCTIONS: Translate dosage directions (OD, BD, TDS, QID, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
+5. If doctor or patient name is not stated on the slip, output "Doctor / Clinic Slip" and "General Patient".
+6. Return strictly valid JSON adhering to the provided schema. If no medicines can be identified on the paper, return medicines as an empty array [].
+7. MEDICINE SHORT USE (AI HINT): For each transcribed medicine, provide a helpful and accurate "shortUse" hint in Roman Urdu + English explaining what this medicine is for ("ye dawai kis marz / maqsad kelye hai"), based on its clinical indication / pharmacology (e.g. "Dard aur Bukhar kelye (Pain & Fever)", "Maiday ki tezabiyat aur jalan (Acidity & GERD)", "Bacterial infection (Antibiotic)").`;
 
-    const prompt = `Carefully examine this prescription slip from top to bottom.
-Read all prescribed medicines, potencies, dosage forms, and directions written under Rx.
-Transcribe each genuine medicine line into the JSON schema list.`;
+    const prompt = `Perform thorough clinical OCR on this prescription slip.
+Carefully transcribe all prescribed medicines, strengths, dosage forms, and directions written under Rx.
+Return strict structured JSON conforming to the schema.`;
 
     const prescriptionSchema = {
       type: Type.OBJECT,
@@ -325,9 +531,10 @@ Transcribe each genuine medicine line into the JSON schema list.`;
               name: { type: Type.STRING, description: 'Exact brand name and strength e.g. Augmentin 625mg' },
               formula: { type: Type.STRING, description: 'Generic salt if known or visible' },
               form: { type: Type.STRING, description: 'Form e.g. Goli (Tablet), Capsule, Sharbath (Syrup), Injection, Drops, Sachet' },
-              timing: { type: Type.STRING, description: 'Dosage schedule in Roman Urdu e.g. Subah sham khane ke baad (1+0+1)' },
+              timing: { type: Type.STRING, description: 'Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)' },
               usage: { type: Type.STRING, description: 'Usage instructions in Roman Urdu e.g. Taza paani ke sath lein' },
-              purpose: { type: Type.STRING, description: 'Specific medical reason only if clearly written. Return empty string if not written.' }
+              purpose: { type: Type.STRING, description: 'Specific medical reason only if clearly written. Return empty string if not written.' },
+              shortUse: { type: Type.STRING, description: 'Concise medical short use AI hint in Roman Urdu + English explaining what this medicine is for e.g. "Dard aur Bukhar kelye (Pain & Fever)" or "Maiday ki tezabiyat (Acidity/GERD)"' }
             },
             required: ['name']
           }
@@ -352,9 +559,9 @@ Transcribe each genuine medicine line into the JSON schema list.`;
     res.json({
       success: true,
       data: {
-        doctor: normalized?.doctor || 'Clinic / Doctor Slip',
+        doctor: normalized?.doctor || 'Doctor / Clinic Slip',
         patient: normalized?.patient || 'General Patient',
-        treatmentSummary: normalized?.treatmentSummary || 'Nuskha se adviyaat parhi ja rahi hain.',
+        treatmentSummary: normalized?.treatmentSummary || '',
         advice: normalized?.advice || 'Dawai hidayat ke mutabiq waqt par lein.',
         medicines: []
       }
@@ -364,9 +571,9 @@ Transcribe each genuine medicine line into the JSON schema list.`;
     res.json({
       success: true,
       data: {
-        doctor: 'Doctor Slip',
+        doctor: 'Doctor / Clinic Slip',
         patient: 'General Patient',
-        treatmentSummary: 'Nuskha parha ja raha hai.',
+        treatmentSummary: '',
         advice: 'Dawai hidayat ke mutabiq waqt par lein.',
         medicines: []
       }
@@ -385,11 +592,14 @@ app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const invoiceSystemInstruction = `You are an expert pharmaceutical wholesale bill and distributor invoice OCR reader.
-Your mission is to read every medicine item row on this wholesale bill, invoice, delivery challan, or receipt slip.
-Invoices may be printed with dot-matrix printers, cash registers, thermal paper, or hand-written challans.
-Read table columns: product description / medicine brand name, batch, expiry, pack size, quantity (qty), and buy rate (TP).
-Transcribe all real invoiced line items into the items list. Never output refusal messages; return valid JSON conforming to schema.`;
+    const invoiceSystemInstruction = `You are a senior pharmaceutical wholesale invoice and distributor billing OCR auditor.
+Your mission is to read every medicine item row on this wholesale bill, delivery challan, credit memo, or cash receipt.
+CRITICAL MANDATES:
+1. NEVER REFUSE TO PROCESS THE BILL: Invoices may be printed on dot-matrix printers, thermal paper, POS cash register slips, or hand-written challans. Read every visible row.
+2. ZERO-HALLUCINATION ENFORCEMENT: Do NOT invent fake medicines or substitute products. Extract ONLY real items printed on the bill.
+3. TABLE COLUMNS: Extract exact brand name with strength, generic formula if visible, batch number, expiry date (standardized to YYYY-MM), pack size, quantity of packs invoiced (qty as number), and wholesale trade price / buy rate (buyRate as number).
+4. HEADER DETAILS: Extract distributor / company name from the bill header if visible. If not visible, return "".
+5. Return strictly valid JSON adhering to the schema. If no line items exist, return items as an empty array [].`;
 
     const prompt = `Carefully examine this wholesale medicine invoice or bill image.
 Read all medicine line items, quantities, trade prices (TP / buy rates), batch numbers, and distributor name.
