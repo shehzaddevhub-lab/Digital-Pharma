@@ -112,202 +112,97 @@ function sanitizeBase64(raw: string): { clean: string, mime: string } {
 }
 
 // Normalizes any prescription output format so mobile OCR never fails
-// Intelligent Medicine Short Use & Clinical Indication Dictionary / Heuristics (Roman Urdu + English)
+// Concise Medicine Short Use (Strictly 3-4 words in Roman Urdu, Zero Headings/Pill Prefixes)
 function getMedicineShortUse(name: string, generic?: string): string {
   const combined = `${name || ''} ${generic || ''}`.toLowerCase();
 
-  // 1. Direct High-Accuracy Brand & Salt Mappings
-  if (/panadol|paracetamol|calpol|febrol|disprol/i.test(combined)) {
-    return 'Bukhar, Sar Dard aur Jism Dard (Fever & Pain Relief)';
-  }
-  if (/augmentin|amoxil|curam|klamoks|amoxicillin/i.test(combined)) {
-    return 'Bacterial Infection, Gale aur Kaan ki Kharabi (Antibiotic)';
-  }
-  if (/risek|omeprazole|omega|losec/i.test(combined)) {
-    return 'Maiday ki Jalan, Tezabiyat aur Gas (Acidity & Acid Reflux / PPI)';
-  }
-  if (/nexum|esomeprazole|ezaday|eso\b/i.test(combined)) {
-    return 'Maiday ka Ulcer aur Shadeed Tezabiyat (GERD & Ulcer Relief)';
-  }
-  if (/brufen|ibuprofen|profen/i.test(combined)) {
-    return 'Dard, Sozish aur Joron ka Dard (Pain & Anti-inflammatory NSAID)';
-  }
-  if (/ponstan|mefenamic/i.test(combined)) {
-    return 'Dard-e-Dandan, Kheenchaao aur Haiz/Mahwari Dard (Dental & Period Pain)';
-  }
-  if (/disprin|aspirin|ascard|loprin/i.test(combined)) {
-    return 'Khoon Patla Karne aur Dil ki Hifazat kelye (Blood Thinner & Heart)';
-  }
-  if (/flagyl|metronidazole/i.test(combined)) {
-    return 'Pait Kharab, Dast, Maror aur Ant ki Sozish (Diarrhea & Stomach Infection)';
-  }
-  if (/entamizole/i.test(combined)) {
-    return 'Pait ke Maror, Pechish aur Infection (Dysentery & Amoebiasis)';
-  }
-  if (/arinac|sinus|panadol cf|actifed/i.test(combined)) {
-    return 'Nazla, Zukam, Cheenkain aur Band Naak (Flu, Cold & Congestion)';
-  }
-  if (/rigix|zyrtec|softin|cetirizine|loratadine/i.test(combined)) {
-    return 'Allergy, Khujli, Cheenkain aur Jild ki Kharash (Antiallergy)';
-  }
-  if (/kestine|ebastine/i.test(combined)) {
-    return 'Mausami Allergy aur Naak Behna (Allergic Rhinitis)';
-  }
-  if (/klaricid|clarithromycin/i.test(combined)) {
-    return 'Sinay ki Jakran, Gale aur Sans ka Infection (Respiratory Infection)';
-  }
-  if (/ciproxin|novidat|ciprofloxacin/i.test(combined)) {
-    return 'Peshab ki Nali (UTI) aur Pait ka Infection (Antibiotic)';
-  }
-  if (/leflox|cravit|levofloxacin/i.test(combined)) {
-    return 'Sans ki Nali aur Phephron ka Infection (Chest Antibiotic)';
-  }
-  if (/azomax|zithro|azithromycin/i.test(combined)) {
-    return 'Galay ki Kharash, Tonsils aur Sans ka Infection (Antibiotic)';
-  }
-  if (/cefspan|caricef|cefixime/i.test(combined)) {
-    return 'Miyadi Bukhar (Typhoid) aur Galay ka Infection (Antibiotic)';
-  }
-  if (/ceftriaxone|rocephin|epiceph/i.test(combined)) {
-    return 'Shadeed Bacterial Infection aur Bukhar (Injectable Antibiotic)';
-  }
-  if (/velosef|cephradine/i.test(combined)) {
-    return 'Zakhmon, Phorron aur Jild ka Infection (Skin & Wound Antibiotic)';
-  }
-  if (/ventolin|salbo|salbutamol|asthalin/i.test(combined)) {
-    return 'Dama, Sans ki Tangi aur Khansi (Asthma & Bronchospasm)';
-  }
-  if (/montiget|myteka|montelukast/i.test(combined)) {
-    return 'Dama, Sans ki Kharabi aur Mausami Allergy (Asthma & Allergy)';
-  }
-  if (/hydryllin|pulmonol|acefyl|broncholate/i.test(combined)) {
-    return 'Balghami aur Khushk Khansi (Cough Relief)';
-  }
-  if (/sancos|cophylac|corex|torex/i.test(combined)) {
-    return 'Khushk Khansi aur Gale ki Kharash (Dry Cough Relief)';
-  }
-  if (/gravinate|dimenhydrinate|vomilux|motilium|domperidone/i.test(combined)) {
-    return 'Ulti, Matli aur Pait ka Bhari pan (Nausea, Vomiting & Digestion)';
-  }
-  if (/gaviscon|digene|mucaine|simeco/i.test(combined)) {
-    return 'Seene ki Jalan aur Tezabiyat (Heartburn & Antacid)';
-  }
-  if (/glucophage|neodipar|metformin/i.test(combined)) {
-    return 'Khoon mein Sugar (Diabetes Type-2) Control karne kelye';
-  }
-  if (/amaryl|getryl|glimepiride/i.test(combined)) {
-    return 'Sugar Control karne kelye (Oral Antidiabetic)';
-  }
-  if (/januvia|sitagliptin|galvus|vildagliptin/i.test(combined)) {
-    return 'Sugar kam karne ki dawai (DPP-4 Inhibitor)';
-  }
-  if (/mixtard|lantus|humalog|insulin/i.test(combined)) {
-    return 'Diabetes / Sugar ka Teeka (Insulin)';
-  }
-  if (/concor|bisoprolol|tenormin|atenolol/i.test(combined)) {
-    return 'High Blood Pressure aur Dil ki Tez Dharkan (Beta Blocker)';
-  }
-  if (/capoten|captopril|zestril|lisinopril/i.test(combined)) {
-    return 'High Blood Pressure aur Gurdon ki Hifazat (ACE Inhibitor)';
-  }
-  if (/sofvasc|norvasc|amlodipine/i.test(combined)) {
-    return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
-  }
-  if (/exforge|co-diovan|valsartan/i.test(combined)) {
-    return 'Ziddi High Blood Pressure control karne kelye (Hypertension)';
-  }
-  if (/lipitor|x-plat|atorvastatin|rosuvastatin/i.test(combined)) {
-    return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
-  }
-  if (/surbex z|sangobion|theragran/i.test(combined)) {
-    return 'Jismi Kamzori, Khoon ki Kami aur Taqat (Multivitamin & Zinc)';
-  }
-  if (/cac 1000|calcee|osteocare|osnate/i.test(combined)) {
-    return 'Haddiyon ki Kamzori aur Calcium (Bone Health & Vitamin D)';
-  }
-  if (/neurobion|mecobal|methycobal/i.test(combined)) {
-    return 'Patthon ka Dard, Asabi Kamzori aur Sunn pan (Nerves & B-Complex)';
-  }
-  if (/evion|vitamin e/i.test(combined)) {
-    return 'Jild, Balon aur Cells ki Taqat (Vitamin E Antioxidant)';
-  }
-  if (/fefol|iberet|folic acid/i.test(combined)) {
-    return 'Hamal mein Khoon ki Kami aur Iron (Iron Supplement)';
-  }
-  if (/spasler|no-spa|buscopan/i.test(combined)) {
-    return 'Pait ka Maror, Dard aur Kheenchaao (Abdominal Cramps & Spasm)';
-  }
-  if (/tanzo|tramal|tramadol/i.test(combined)) {
-    return 'Shadeed Dard (Post-Surgery / Severe Pain Relief)';
-  }
-  if (/synflex|naproxen/i.test(combined)) {
-    return 'Pathon aur Joron ka Shadeed Dard (Joint Pain & Arthritis)';
-  }
-  if (/voltral|dicloran|diclofenac/i.test(combined)) {
-    return 'Jism Dard, Mochi aur Sozish (Pain & Inflammation NSAID)';
-  }
-  if (/polyfax|betnovate|fucidin|quench/i.test(combined)) {
-    return 'Zakhmon, Kharash aur Jild ki Sozish (Skin Infection & Ointment)';
-  }
-  if (/dermovate|hydrocortisone/i.test(combined)) {
-    return 'Jild ki Shadeed Kharash aur Eczema (Steroid Skin Ointment)';
-  }
-  if (/daktarin|canesten|clotrimazole/i.test(combined)) {
-    return 'Fungal Infection, Daad aur Khujli (Antifungal)';
-  }
-  if (/nilstat|nystatin/i.test(combined)) {
-    return 'Moonh ke Chhalay aur Fungal Infection (Oral Thrush)';
-  }
-  if (/somogel|bonjela/i.test(combined)) {
-    return 'Moonh ke Chhalon aur Masorhon ka Dard (Mouth Ulcers)';
-  }
-  if (/tears naturale|refresh/i.test(combined)) {
-    return 'Aankhon ki Khushki aur Jalan (Dry Eyes)';
-  }
-  if (/betnesol|dexamethasone/i.test(combined)) {
-    return 'Shadeed Allergy aur Sozish (Corticosteroid)';
-  }
-  if (/lopamide|imodium|loperamide/i.test(combined)) {
-    return 'Dast aur Bar Bar Pakhana rokne kelye (Antidiarrheal)';
-  }
-  if (/duphalac|lilac|lactulose/i.test(combined)) {
-    return 'Qabz (Constipation) door karne kelye (Laxative)';
-  }
-  if (/ezivac|skilax/i.test(combined)) {
-    return 'Daimi Qabz ki Dawa (Laxative Drops/Tabs)';
-  }
+  // 1. Direct Brand & Salt Mappings (Strictly 3 to 4 words)
+  if (/panadol|paracetamol|calpol|febrol|disprol/i.test(combined)) return 'Dard aur Bukhar';
+  if (/augmentin|amoxil|curam|klamoks|amoxicillin/i.test(combined)) return 'Bacterial Infection Ilaj';
+  if (/risek|omeprazole|omega|losec/i.test(combined)) return 'Maiday ki Tezabiyat';
+  if (/nexum|esomeprazole|ezaday|eso\b/i.test(combined)) return 'Maida Jalan Ulcer';
+  if (/brufen|ibuprofen|profen/i.test(combined)) return 'Dard aur Sozish';
+  if (/ponstan|mefenamic/i.test(combined)) return 'Daant Mahwari Dard';
+  if (/disprin|aspirin|ascard|loprin/i.test(combined)) return 'Khoon Patla Dil Hifazat';
+  if (/flagyl|metronidazole/i.test(combined)) return 'Pait Kharab Dast';
+  if (/entamizole/i.test(combined)) return 'Pait Maror Pechish';
+  if (/arinac|sinus|panadol cf|actifed/i.test(combined)) return 'Nazla Zukam Band Naak';
+  if (/rigix|zyrtec|softin|cetirizine|loratadine/i.test(combined)) return 'Allergy Khujli Cheenkain';
+  if (/kestine|ebastine/i.test(combined)) return 'Mausami Allergy Zukam';
+  if (/klaricid|clarithromycin/i.test(combined)) return 'Gala Sans Infection';
+  if (/ciproxin|novidat|ciprofloxacin/i.test(combined)) return 'Peshab Pait Infection';
+  if (/leflox|cravit|levofloxacin/i.test(combined)) return 'Sans Phephray Infection';
+  if (/azomax|zithro|azithromycin/i.test(combined)) return 'Gala Kharash Tonsils';
+  if (/cefspan|caricef|cefixime/i.test(combined)) return 'Miyadi Bukhar Infection';
+  if (/ceftriaxone|rocephin|epiceph/i.test(combined)) return 'Shadeed Bukhar Infection';
+  if (/velosef|cephradine/i.test(combined)) return 'Zakham Jild Infection';
+  if (/ventolin|salbo|salbutamol|asthalin/i.test(combined)) return 'Dama Sans Tangi';
+  if (/montiget|myteka|montelukast/i.test(combined)) return 'Dama Mausami Allergy';
+  if (/hydryllin|pulmonol|acefyl|broncholate/i.test(combined)) return 'Balgham Khansi Aaram';
+  if (/sancos|cophylac|corex|torex/i.test(combined)) return 'Khushk Khansi Gala';
+  if (/gravinate|dimenhydrinate|vomilux|motilium|domperidone/i.test(combined)) return 'Ulti Matli Bechaini';
+  if (/gaviscon|digene|mucaine|simeco/i.test(combined)) return 'Seene Jalan Tezabiyat';
+  if (/glucophage|neodipar|metformin/i.test(combined)) return 'Sugar Diabetes Control';
+  if (/amaryl|getryl|glimepiride/i.test(combined)) return 'Khoon Sugar Control';
+  if (/januvia|sitagliptin|galvus|vildagliptin/i.test(combined)) return 'Sugar Kam Karne Wali';
+  if (/mixtard|lantus|humalog|insulin/i.test(combined)) return 'Sugar Control Teeka';
+  if (/concor|bisoprolol|tenormin|atenolol/i.test(combined)) return 'Blood Pressure Dil Dharkan';
+  if (/capoten|captopril|zestril|lisinopril/i.test(combined)) return 'High Blood Pressure Control';
+  if (/sofvasc|norvasc|amlodipine/i.test(combined)) return 'Blood Pressure Angina';
+  if (/exforge|co-diovan|valsartan/i.test(combined)) return 'Ziddi Blood Pressure';
+  if (/lipitor|x-plat|atorvastatin|rosuvastatin/i.test(combined)) return 'Cholesterol Charbi Kami';
+  if (/surbex z|sangobion|theragran/i.test(combined)) return 'Taqat Jismi Kamzori';
+  if (/cac 1000|calcee|osteocare|osnate/i.test(combined)) return 'Haddiyon Mazbooti Calcium';
+  if (/neurobion|mecobal|methycobal/i.test(combined)) return 'Patthon Asabi Dard';
+  if (/evion|vitamin e/i.test(combined)) return 'Jild Balon Taqat';
+  if (/fefol|iberet|folic acid/i.test(combined)) return 'Khoon Kami Hamal Taqat';
+  if (/spasler|no-spa|buscopan/i.test(combined)) return 'Pait Maror Kheenchaao';
+  if (/tanzo|tramal|tramadol/i.test(combined)) return 'Shadeed Dard Aaram';
+  if (/synflex|naproxen/i.test(combined)) return 'Joron Pathon Dard';
+  if (/voltral|dicloran|diclofenac/i.test(combined)) return 'Jism Dard Sozish';
+  if (/polyfax|betnovate|fucidin|quench/i.test(combined)) return 'Zakham Jild Sozish';
+  if (/dermovate|hydrocortisone/i.test(combined)) return 'Jild Khujli Eczema';
+  if (/daktarin|canesten|clotrimazole/i.test(combined)) return 'Fungal Infection Daad';
+  if (/nilstat|nystatin/i.test(combined)) return 'Moonh Chhalay Infection';
+  if (/somogel|bonjela/i.test(combined)) return 'Moonh Chhalon Dard';
+  if (/tears naturale|refresh/i.test(combined)) return 'Aankhon Khushki Jalan';
+  if (/betnesol|dexamethasone/i.test(combined)) return 'Shadeed Allergy Sozish';
+  if (/lopamide|imodium|loperamide/i.test(combined)) return 'Dast Pechish Rokna';
+  if (/duphalac|lilac|lactulose/i.test(combined)) return 'Qabz Door Karna';
+  if (/ezivac|skilax/i.test(combined)) return 'Daimi Qabz Dawa';
 
-  // 2. Pharmacology Suffix Heuristics (Matches almost every medicinal compound)
-  if (/prazole/i.test(combined)) return 'Maiday ki Tezabiyat, Jalan aur Ulcer (PPI Acid Reducer)';
-  if (/tidine/i.test(combined)) return 'Maiday ki Gas aur Tezabiyat (H2 Blocker)';
-  if (/cillin/i.test(combined)) return 'Bacterial Infection aur Galay/Kaan ki Kharabi (Antibiotic)';
-  if (/oxacin/i.test(combined)) return 'Bacterial Infection, Peshab aur Phephron ka Ilaj (Antibiotic)';
-  if (/mycin|micin/i.test(combined)) return 'Bacterial Infection aur Galay ki Kharash (Macrolide Antibiotic)';
-  if (/cycline/i.test(combined)) return 'Bacterial Infection aur Acne/Dano ka Ilaj (Antibiotic)';
-  if (/cefa|cefi|ceph/i.test(combined)) return 'Bacterial Infection aur Bukhar (Cephalosporin Antibiotic)';
-  if (/statin/i.test(combined)) return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
-  if (/sartan/i.test(combined)) return 'High Blood Pressure aur Dil ki Hifazat (ARB Antihypertensive)';
-  if (/olol/i.test(combined)) return 'High Blood Pressure aur Dil ki Dharkan (Beta Blocker)';
-  if (/dipine/i.test(combined)) return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
-  if (/pril/i.test(combined)) return 'Blood Pressure aur Dil ki Hifazat (ACE Inhibitor)';
-  if (/formin/i.test(combined)) return 'Sugar (Diabetes Type-2) Control karne kelye';
-  if (/gliptin/i.test(combined)) return 'Sugar Control karne kelye (DPP-4 Inhibitor)';
-  if (/glitazone/i.test(combined)) return 'Sugar Control karne kelye (Thiazolidinedione)';
-  if (/fenac|profen/i.test(combined)) return 'Dard, Sozish aur Joron ka Dard (NSAID Pain Relief)';
-  if (/coxib/i.test(combined)) return 'Joron ka Dard aur Sozish (COX-2 Inhibitor)';
-  if (/tirizine|tadine|astine/i.test(combined)) return 'Allergy, Khujli aur Cheenkain (Antihistamine)';
-  if (/lukast/i.test(combined)) return 'Dama aur Mausami Allergy (Leukotriene Blocker)';
-  if (/butamol|terol/i.test(combined)) return 'Sans ki Tangi aur Dama (Bronchodilator)';
-  if (/conazole|fungin/i.test(combined)) return 'Fungal Infection, Daad aur Khujli (Antifungal)';
-  if (/sone|lone|onide/i.test(combined)) return 'Shadeed Allergy aur Sozish rokne kelye (Steroid)';
-  if (/pram|xetine|line/i.test(combined)) return 'Zehni Dabao aur Depression (Antidepressant)';
-  if (/zepam|zolam/i.test(combined)) return 'Bechaini aur Neend ki Kami (Sedative/Anxiolytic)';
-  if (/semide|thiazide/i.test(combined)) return 'Peshab-awar aur BP / Sozish kam karne kelye (Diuretic)';
+  // 2. Pharmacology Suffix Heuristics (Strictly 3 to 4 words)
+  if (/prazole/i.test(combined)) return 'Maiday Jalan Tezabiyat';
+  if (/tidine/i.test(combined)) return 'Maida Gas Tezabiyat';
+  if (/cillin/i.test(combined)) return 'Bacterial Infection Ilaj';
+  if (/oxacin/i.test(combined)) return 'Peshab Sans Infection';
+  if (/mycin|micin/i.test(combined)) return 'Gala Sans Infection';
+  if (/cycline/i.test(combined)) return 'Infection Chehray Danay';
+  if (/cefa|cefi|ceph/i.test(combined)) return 'Bukhar Bacterial Infection';
+  if (/statin/i.test(combined)) return 'Cholesterol Charbi Kami';
+  if (/sartan/i.test(combined)) return 'Blood Pressure Control';
+  if (/olol/i.test(combined)) return 'Blood Pressure Dil Dharkan';
+  if (/dipine/i.test(combined)) return 'Blood Pressure Angina';
+  if (/pril/i.test(combined)) return 'Blood Pressure Hifazat';
+  if (/formin/i.test(combined)) return 'Sugar Diabetes Control';
+  if (/gliptin/i.test(combined)) return 'Sugar Control Ilaj';
+  if (/glitazone/i.test(combined)) return 'Sugar Control Ilaj';
+  if (/fenac|profen/i.test(combined)) return 'Dard Sozish Aaram';
+  if (/coxib/i.test(combined)) return 'Joron Dard Sozish';
+  if (/tirizine|tadine|astine/i.test(combined)) return 'Allergy Khujli Cheenkain';
+  if (/lukast/i.test(combined)) return 'Dama Mausami Allergy';
+  if (/butamol|terol/i.test(combined)) return 'Dama Sans Tangi';
+  if (/conazole|fungin/i.test(combined)) return 'Fungal Infection Khujli';
+  if (/sone|lone|onide/i.test(combined)) return 'Shadeed Allergy Sozish';
+  if (/pram|xetine|line/i.test(combined)) return 'Zehni Dabao Depression';
+  if (/zepam|zolam/i.test(combined)) return 'Bechaini Pur-sukoon Neend';
+  if (/semide|thiazide/i.test(combined)) return 'Peshab-awar Blood Pressure';
 
   if (generic && generic.trim().length > 2) {
-    return `${generic.trim()} (Clinical Formula)`;
+    const cleanGen = generic.trim().split(/\s+/).slice(0, 3).join(' ');
+    return `${cleanGen} Formula`;
   }
-  return 'Dawai ka istemal doctor ki hidayat ke mutabiq';
+  return 'Doctor Hidayat Mutabiq';
 }
 
 function normalizePrescriptionData(parsed: any) {
@@ -436,8 +331,8 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // High-performance multimodal vision models: primary powerhouse gemini-3.8-flash, fast fallback gemini-3.1-flash-lite
-  const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  // High-performance multimodal vision models: primary powerhouse gemini-3.8-flash, fast fallback gemini-flash-latest
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest'];
 
   for (const modelName of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -445,7 +340,8 @@ async function generateWithVisionFallback(
         const config: any = {
           responseMimeType: 'application/json'
         };
-        if (responseSchema) {
+        // On attempt 0 try with strict schema. On attempt 1 fallback to resilient JSON mode
+        if (responseSchema && attempt === 0) {
           config.responseSchema = responseSchema;
         }
         if (systemInstruction) {
@@ -454,7 +350,7 @@ async function generateWithVisionFallback(
 
         const effectivePrompt = attempt === 0 
           ? prompt 
-          : `${prompt}\n\n[RETRY FORENSIC SCAN]: Inspect doctor handwriting, printed text, thermal receipt print, table columns, and medicine packaging carefully. Transcribe all visible items accurately.`;
+          : `${prompt}\n\n[RETRY FORENSIC SCAN]: Inspect doctor handwriting, printed text, thermal receipt print, table columns, and medicine packaging carefully. Transcribe all visible items accurately into JSON format.`;
 
         const response: any = await ai.models.generateContent({
           model: modelName,
@@ -481,7 +377,7 @@ async function generateWithVisionFallback(
       } catch (err: any) {
         console.warn(`Vision model ${modelName} (attempt ${attempt + 1}) note:`, err?.message || err);
         if (attempt === 0) {
-          await new Promise(r => setTimeout(r, 150));
+          await new Promise(r => setTimeout(r, 100));
         }
       }
     }
@@ -509,7 +405,7 @@ CRITICAL MANDATES:
 4. DOSAGE INSTRUCTIONS: Translate dosage directions (OD, BD, TDS, QID, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
 5. If doctor or patient name is not stated on the slip, output "Doctor / Clinic Slip" and "General Patient".
 6. Return strictly valid JSON adhering to the provided schema. If no medicines can be identified on the paper, return medicines as an empty array [].
-7. MEDICINE SHORT USE (AI HINT): For each transcribed medicine, provide a helpful and accurate "shortUse" hint in Roman Urdu + English explaining what this medicine is for ("ye dawai kis marz / maqsad kelye hai"), based on its clinical indication / pharmacology (e.g. "Dard aur Bukhar kelye (Pain & Fever)", "Maiday ki tezabiyat aur jalan (Acidity & GERD)", "Bacterial infection (Antibiotic)").`;
+7. MEDICINE SHORT USE: For each medicine, provide a strictly 3 to 4 words short clinical use in Roman Urdu without any headings, bullet points, or "AI Hint" prefixes (e.g. "Dard aur Bukhar", "Maiday ki Tezabiyat", "Bacterial Infection Ilaj", "Allergy Khujli Cheenkain").`;
 
     const prompt = `Perform thorough clinical OCR on this prescription slip.
 Carefully transcribe all prescribed medicines, strengths, dosage forms, and directions written under Rx.
@@ -534,7 +430,7 @@ Return strict structured JSON conforming to the schema.`;
               timing: { type: Type.STRING, description: 'Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)' },
               usage: { type: Type.STRING, description: 'Usage instructions in Roman Urdu e.g. Taza paani ke sath lein' },
               purpose: { type: Type.STRING, description: 'Specific medical reason only if clearly written. Return empty string if not written.' },
-              shortUse: { type: Type.STRING, description: 'Concise medical short use AI hint in Roman Urdu + English explaining what this medicine is for e.g. "Dard aur Bukhar kelye (Pain & Fever)" or "Maiday ki tezabiyat (Acidity/GERD)"' }
+              shortUse: { type: Type.STRING, description: 'Concise medical short use in strictly 3-4 words Roman Urdu e.g. "Dard aur Bukhar" or "Maiday ki Tezabiyat"' }
             },
             required: ['name']
           }

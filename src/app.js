@@ -601,96 +601,111 @@ export function extractSmartJson(text) {
 }
 window.extractSmartJson = extractSmartJson;
 
-// AI Clinical Pharmacy Knowledge Base for Instant Medicine Indications & Short Uses
+// Clean 3 to 4 Words Medicine Short Use Helper
+// STRICT USER REQUIREMENT: Show ONLY the short clinical use itself (3-4 words). No "AI Hint:" prefix, no headings, no bullet points!
+export function cleanShortUse(text) {
+    if (!text || typeof text !== 'string') return 'Tibb aur Ilaj kelye';
+    let s = text.replace(/^(ai hint|ai|hint|purpose|use|dwai|dawaii|heading|point|bullet)[\s:–—-]*/gi, '').trim();
+    // Strip leading emojis like 💡 or ✨
+    s = s.replace(/^[\p{Emoji}\s]+/u, '').trim();
+    const words = s.split(/\s+/).filter(Boolean);
+    if (words.length > 4) {
+        return words.slice(0, 4).join(' ');
+    }
+    return s || 'Tibb aur Ilaj kelye';
+}
+window.cleanShortUse = cleanShortUse;
+
+// AI Clinical Pharmacy Knowledge Base for Instant Medicine Indications & Short Uses (Strict 3 to 4 Words)
 const MEDICINE_USE_HINTS = [
     // Pain, Fever & Inflammation
-    { keys: ['panadol', 'paracetamol', 'calpol', 'disprol', 'febrol'], use: 'Bukhar aur Har Qism ke Dard kelye' },
-    { keys: ['brufen', 'ibuprofen', 'profen'], use: 'Dard, Sozish aur Bukhar kelye' },
-    { keys: ['dispirin', 'aspirin', 'loprin', 'ascard'], use: 'Khoon Patla karne aur Dard kelye' },
-    { keys: ['caflam', 'diclofenac', 'voltral', 'voren', 'dicloran'], use: 'Shadeed Dard aur Jodo ke Dard kelye' },
-    { keys: ['ponstan', 'mefenamic'], use: 'Dard, Daant Dard aur Khawateen ke Dard kelye' },
-    { keys: ['tramal', 'tramadol'], use: 'Shadeed Dard (Painkiller) kelye' },
-    { keys: ['toradol', 'ketorolac'], use: 'Operation / Shadeed Zakham ke Dard kelye' },
-    { keys: ['feldene', 'piroxicam'], use: 'Jodo aur Patho ke Dard kelye' },
-    { keys: ['ansaid', 'flurbiprofen'], use: 'Galay ki Kharash aur Dard kelye' },
-    { keys: ['synflex', 'naproxen'], use: 'Jodo, Haddi aur Patho ke Dard kelye' },
+    { keys: ['panadol', 'paracetamol', 'calpol', 'disprol', 'febrol'], use: 'Dard aur Bukhar' },
+    { keys: ['brufen', 'ibuprofen', 'profen'], use: 'Dard aur Sozish' },
+    { keys: ['dispirin', 'aspirin', 'loprin', 'ascard'], use: 'Khoon Patla, Dard' },
+    { keys: ['caflam', 'diclofenac', 'voltral', 'voren', 'dicloran'], use: 'Shadeed Jodon ka Dard' },
+    { keys: ['ponstan', 'mefenamic'], use: 'Dard aur Daant Dard' },
+    { keys: ['tramal', 'tramadol'], use: 'Shadeed Dard rokna' },
+    { keys: ['toradol', 'ketorolac'], use: 'Shadeed Zakham Dard' },
+    { keys: ['feldene', 'piroxicam'], use: 'Jodon Pathon Dard' },
+    { keys: ['ansaid', 'flurbiprofen'], use: 'Galay ki Kharash, Dard' },
+    { keys: ['synflex', 'naproxen'], use: 'Jodon Haddian Dard' },
 
     // Stomach, Acidity, Gas & Digestion
-    { keys: ['risek', 'omeprazole', 'omega'], use: 'Meda, Tezabiat aur Jalan kelye' },
-    { keys: ['nexum', 'esomeprazole', 'esita'], use: 'Meda, Acid Reflux aur Gas kelye' },
-    { keys: ['zopent', 'pantoprazole', 'pantra'], use: 'Meday ke Zakham aur Tezabiat kelye' },
-    { keys: ['pariet', 'rabeprazole'], use: 'Seene ki Jalan aur Meday kelye' },
-    { keys: ['gaviscon', 'mucaine', 'antacid', 'famotidine'], use: 'Seene ki Jalan aur Badhazmi kelye' },
-    { keys: ['flagyl', 'metronidazole'], use: 'Pait Kharabi, Motion aur Anto ke Infection kelye' },
-    { keys: ['entamizole', 'diloxanide'], use: 'Pait ke Maror aur Amoebic Dast kelye' },
-    { keys: ['imodium', 'loperamide'], use: 'Shadeed Motion (Dast) rokne kelye' },
-    { keys: ['gravinate', 'dimenhydrinate'], use: 'Ulti aur Safar ke Chakkar kelye' },
-    { keys: ['maxolon', 'metoclopramide'], use: 'Matli aur Ulti rokne kelye' },
-    { keys: ['motilium', 'domperidone', 'motilat'], use: 'Badhazmi, Pait Phoolne aur Matli kelye' },
-    { keys: ['spasler', 'no-spa', 'drotaverine', 'buscopan', 'hyoscine'], use: 'Pait ke Maror aur Dard kelye' },
-    { keys: ['duphalac', 'lactulose', 'ezilax'], use: 'Qabz (Constipation) door karne kelye' },
-    { keys: ['ors', 'hydralyte'], use: 'Namkiyat aur Paani ki kami kelye' },
+    { keys: ['risek', 'omeprazole', 'omega'], use: 'Maiday ki Tezabiyat, Jalan' },
+    { keys: ['nexum', 'esomeprazole', 'esita'], use: 'Maida, Acid Reflux' },
+    { keys: ['zopent', 'pantoprazole', 'pantra'], use: 'Maiday ka Zakham, Tezabiyat' },
+    { keys: ['pariet', 'rabeprazole'], use: 'Seene ki Jalan, Maida' },
+    { keys: ['gaviscon', 'mucaine', 'antacid', 'famotidine'], use: 'Seene Jalan, Badhazmi' },
+    { keys: ['flagyl', 'metronidazole'], use: 'Pait Kharabi, Anto Infection' },
+    { keys: ['entamizole', 'diloxanide'], use: 'Pait Maror, Dast' },
+    { keys: ['imodium', 'loperamide'], use: 'Shadeed Motion rokna' },
+    { keys: ['gravinate', 'dimenhydrinate'], use: 'Ulti aur Safar Chakkar' },
+    { keys: ['maxolon', 'metoclopramide'], use: 'Matli aur Ulti rokna' },
+    { keys: ['motilium', 'domperidone', 'motilat'], use: 'Badhazmi aur Matli' },
+    { keys: ['spasler', 'no-spa', 'drotaverine', 'buscopan', 'hyoscine'], use: 'Pait ke Maror, Dard' },
+    { keys: ['duphalac', 'lactulose', 'ezilax'], use: 'Qabz Kusha (Constipation)' },
+    { keys: ['ors', 'hydralyte'], use: 'Namkiyat aur Paani kami' },
 
     // Antibiotics & Anti-infectives
-    { keys: ['augmentin', 'co-amoxiclav', 'curam', 'calamox'], use: 'Antibiotic - Galay, Kaan aur Chest Infection kelye' },
-    { keys: ['amoxil', 'amoxicillin'], use: 'Antibiotic - Galay aur Zakham ke Infection kelye' },
-    { keys: ['cefixime', 'cefspan', 'caricef', 'maxima'], use: 'Antibiotic - Bukhar, Galla aur Sinus kelye' },
-    { keys: ['azomax', 'azithromycin', 'zithro', 'macrozit'], use: 'Antibiotic - Galla, Khansi aur Saans Infection kelye' },
-    { keys: ['ciproxin', 'ciprofloxacin', 'mercip'], use: 'Antibiotic - Pait aur Peshaab (UTI) Infection kelye' },
-    { keys: ['leflox', 'levofloxacin', 'cravit'], use: 'Antibiotic - Phayphray aur Saans ki Nali kelye' },
-    { keys: ['klaricid', 'clarithromycin', 'claritek'], use: 'Antibiotic - Saans aur Galay ke Infection kelye' },
-    { keys: ['vibramycin', 'doxycycline'], use: 'Antibiotic - Chhaati aur Skin Infection kelye' },
-    { keys: ['rocephin', 'ceftriaxone', 'epicephin'], use: 'Antibiotic Inj - Shadeed Bacterial Infection kelye' },
+    { keys: ['augmentin', 'co-amoxiclav', 'curam', 'calamox'], use: 'Antibiotic, Har Qism Infection' },
+    { keys: ['amoxil', 'amoxicillin'], use: 'Antibiotic, Galla aur Zakham' },
+    { keys: ['cefixime', 'cefspan', 'caricef', 'maxima'], use: 'Antibiotic, Bukhar aur Galla' },
+    { keys: ['azomax', 'azithromycin', 'zithro', 'macrozit'], use: 'Antibiotic, Galla aur Saans' },
+    { keys: ['ciproxin', 'ciprofloxacin', 'mercip'], use: 'Antibiotic, Peshab aur Pait' },
+    { keys: ['leflox', 'levofloxacin', 'cravit'], use: 'Antibiotic, Phephray aur Saans' },
+    { keys: ['klaricid', 'clarithromycin', 'claritek'], use: 'Antibiotic, Saans aur Galla' },
+    { keys: ['vibramycin', 'doxycycline'], use: 'Antibiotic, Skin aur Chhaati' },
+    { keys: ['rocephin', 'ceftriaxone', 'epicephin'], use: 'Antibiotic, Shadeed Infection' },
 
     // Cold, Cough, Allergy & Respiratory
-    { keys: ['arinac', 'pseudoephedrine', 'sinutab', 'actifed'], use: 'Nazla, Zukam aur Naak Bandi kelye' },
-    { keys: ['rigix', 'cetirizine', 'zyrtec'], use: 'Allergy, Chheenkein aur Khujli kelye' },
-    { keys: ['softin', 'loratadine'], use: 'Allergy aur Nazla Zukam kelye' },
-    { keys: ['telfast', 'fexofenadine', 'fexit'], use: 'Mausami Allergy aur Chheenkein kelye' },
-    { keys: ['xyzal', 'levocetirizine', 't-day'], use: 'Shadeed Allergy aur Naak Behne kelye' },
-    { keys: ['myteka', 'montelukast', 'montiget'], use: 'Dama (Asthma) aur Saans ki Allergy kelye' },
-    { keys: ['ventolin', 'salbutamol'], use: 'Saans Phoolne aur Asthma kelye' },
-    { keys: ['sancos', 'corex', 'pulmonol', 'dextromethorphan'], use: 'Khushk Khansi (Dry Cough) kelye' },
-    { keys: ['prospan', 'hederacol', 'ivy leaf'], use: 'Balghami Khansi kelye' },
-    { keys: ['somophyllin', 'acefylline'], use: 'Saans ki Nali kholne aur Dama kelye' },
+    { keys: ['arinac', 'pseudoephedrine', 'sinutab', 'actifed'], use: 'Nazla, Zukam, Band Naak' },
+    { keys: ['rigix', 'cetirizine', 'zyrtec'], use: 'Allergy, Chheenkein aur Khujli' },
+    { keys: ['softin', 'loratadine'], use: 'Allergy aur Nazla Zukam' },
+    { keys: ['telfast', 'fexofenadine', 'fexit'], use: 'Mausami Allergy, Chheenkein' },
+    { keys: ['xyzal', 'levocetirizine', 't-day'], use: 'Shadeed Allergy aur Naak' },
+    { keys: ['myteka', 'montelukast', 'montiget'], use: 'Dama aur Saans Allergy' },
+    { keys: ['ventolin', 'salbutamol'], use: 'Saans Phoolna, Dama' },
+    { keys: ['sancos', 'corex', 'pulmonol', 'dextromethorphan'], use: 'Khushk Khansi rokna' },
+    { keys: ['prospan', 'hederacol', 'ivy leaf'], use: 'Balghami Khansi nikalna' },
+    { keys: ['somophyllin', 'acefylline'], use: 'Saans Nali kholna' },
 
     // Blood Pressure, Heart & Cholesterol
-    { keys: ['norvasc', 'amlodipine', 'amcard'], use: 'High Blood Pressure Control kelye' },
-    { keys: ['concor', 'bisoprolol', 'bipress'], use: 'Blood Pressure aur Dil ki Hifazat kelye' },
-    { keys: ['eziday', 'losartan'], use: 'Blood Pressure aur Gurdon ki Hifazat kelye' },
-    { keys: ['tenormin', 'atenolol'], use: 'High Blood Pressure aur Dil ki Dhadkan kelye' },
-    { keys: ['diovan', 'valsartan'], use: 'Blood Pressure Control kelye' },
-    { keys: ['capoten', 'captopril'], use: 'Blood Pressure Emergency Control kelye' },
-    { keys: ['lipiget', 'atorvastatin', 'lipitor'], use: 'Cholesterol kam karne kelye' },
-    { keys: ['rovista', 'rosuvastatin', 'x-plat'], use: 'Cholesterol aur Dil ki Hifazat kelye' },
-    { keys: ['lowplat', 'clopidogrel', 'plavix'], use: 'Dil ke Daure se Bachao aur Khoon Patla kelye' },
+    { keys: ['norvasc', 'amlodipine', 'amcard'], use: 'High Blood Pressure' },
+    { keys: ['concor', 'bisoprolol', 'bipress'], use: 'Blood Pressure, Dil Dhadkan' },
+    { keys: ['eziday', 'losartan'], use: 'Blood Pressure, Gurday Hifazat' },
+    { keys: ['tenormin', 'atenolol'], use: 'High Blood Pressure Control' },
+    { keys: ['diovan', 'valsartan'], use: 'Blood Pressure Control' },
+    { keys: ['capoten', 'captopril'], use: 'Emergency Blood Pressure' },
+    { keys: ['lipiget', 'atorvastatin', 'lipitor'], use: 'Cholesterol kam karna' },
+    { keys: ['rovista', 'rosuvastatin', 'x-plat'], use: 'Cholesterol, Dil Hifazat' },
+    { keys: ['lowplat', 'clopidogrel', 'plavix'], use: 'Dil Hifazat, Khoon Patla' },
 
     // Diabetes / Sugar
-    { keys: ['glucophage', 'metformin', 'neodipar'], use: 'Sugar (Type-2 Diabetes) Control kelye' },
-    { keys: ['getryl', 'glimepiride', 'amaryl'], use: 'Sugar ki Miqdaar Normal rakhne kelye' },
-    { keys: ['januvia', 'sitagliptin', 'zita'], use: 'Sugar Control kelye' },
-    { keys: ['jardiance', 'empagliflozin'], use: 'Sugar aur Dil / Gurdon ki Hifazat kelye' },
-    { keys: ['mixtard', 'insulin', 'humulin'], use: 'Sugar Control Injection kelye' },
+    { keys: ['glucophage', 'metformin', 'neodipar'], use: 'Sugar (Diabetes) Control' },
+    { keys: ['getryl', 'glimepiride', 'amaryl'], use: 'Sugar Miqdaar Normal rakhna' },
+    { keys: ['januvia', 'sitagliptin', 'zita'], use: 'Sugar Control (Diabetes)' },
+    { keys: ['jardiance', 'empagliflozin'], use: 'Sugar aur Gurday Hifazat' },
+    { keys: ['mixtard', 'insulin', 'humulin'], use: 'Sugar Control Insulin' },
 
     // Vitamins, Blood & Minerals
-    { keys: ['cac-1000', 'calcium', 'osnate-d'], use: 'Haddion ki Mazbooti aur Calcium kelye' },
-    { keys: ['indrop-d', 'sunny-d', 'vitamin d'], use: 'Vitamin D ki Kami aur Jodo kelye' },
-    { keys: ['surbex-z', 'neurobion', 'b-complex'], use: 'Tawaanai, Aasabi Kamzori aur Patho kelye' },
-    { keys: ['folvite', 'folic acid'], use: 'Khoon ki Kami aur Pregnancy Hifazat kelye' },
-    { keys: ['fefol-vit', 'iberet-folic', 'iron'], use: 'Khoon (Hemoglobin) barhane kelye' },
-    { keys: ['methycobal', 'mecobalamin'], use: 'Haath Paon Sun hone aur Aasabi Dard kelye' },
+    { keys: ['cac-1000', 'calcium', 'osnate-d'], use: 'Haddian aur Calcium' },
+    { keys: ['indrop-d', 'sunny-d', 'vitamin d'], use: 'Vitamin D ki Kami' },
+    { keys: ['surbex-z', 'neurobion', 'b-complex'], use: 'Aasabi Kamzori, Taqat' },
+    { keys: ['folvite', 'folic acid'], use: 'Khoon Kami, Folic Acid' },
+    { keys: ['fefol-vit', 'iberet-folic', 'iron'], use: 'Khoon (Hemoglobin) barhana' },
+    { keys: ['methycobal', 'mecobalamin'], use: 'Pathay aur Aasabi Dard' },
 
     // Skin & Eyes
-    { keys: ['polyfax', 'polymyxin'], use: 'Zakham aur Skin / Aankh Infection kelye' },
-    { keys: ['betnovate', 'dermovate', 'betamethasone'], use: 'Jild ki Sozish aur Khujli kelye' },
-    { keys: ['fucidin', 'hydrocortisone'], use: 'Zakhmo ke Bacterial Infection kelye' },
-    { keys: ['canesten', 'clotrimazole'], use: 'Fungal Infection aur Daad kelye' },
-    { keys: ['vigamox', 'moxifloxacin'], use: 'Aankho ke Lal hone aur Infection kelye' }
+    { keys: ['polyfax', 'polymyxin'], use: 'Zakham, Skin / Aankh Malham' },
+    { keys: ['betnovate', 'dermovate', 'betamethasone'], use: 'Jild ki Kharish, Sozish' },
+    { keys: ['fucidin', 'hydrocortisone'], use: 'Zakham Bacterial Infection' },
+    { keys: ['canesten', 'clotrimazole'], use: 'Fungal Infection, Daad' },
+    { keys: ['vigamox', 'moxifloxacin'], use: 'Aankhon Lalgi, Infection' }
 ];
 
 export function getMedicineShortUse(name, generic, existingPurpose) {
     if (existingPurpose && typeof existingPurpose === 'string' && existingPurpose.trim().length > 2 && !/^(ilaj|dawai|medicine|n\/a)$/i.test(existingPurpose.trim())) {
-        return existingPurpose.trim();
+        return cleanShortUse(existingPurpose.trim());
     }
     const combined = `${name || ''} ${generic || ''}`.toLowerCase();
     for (const item of MEDICINE_USE_HINTS) {
@@ -698,13 +713,13 @@ export function getMedicineShortUse(name, generic, existingPurpose) {
             return item.use;
         }
     }
-    // Context-sensitive fallback
+    // Context-sensitive fallback (strict 3-4 words)
     if (combined.includes('syp') || combined.includes('syrup')) return 'Peene ka Sharbath';
-    if (combined.includes('inj') || combined.includes('injection')) return 'Teeqa / Injection';
+    if (combined.includes('inj') || combined.includes('injection')) return 'Teeqa (Injection)';
     if (combined.includes('drop')) return 'Qatray (Drops)';
-    if (combined.includes('cream') || combined.includes('ointment')) return 'Jild par lagane kelye';
+    if (combined.includes('cream') || combined.includes('ointment')) return 'Jild par lagana';
     if (combined.includes('inhaler')) return 'Saans kelye Inhaler';
-    return 'Tibb / Ilaj kelye';
+    return 'Tibb aur Ilaj kelye';
 }
 window.getMedicineShortUse = getMedicineShortUse;
 
@@ -2152,7 +2167,7 @@ CRITICAL MANDATES:
 2. ZERO-HALLUCINATION ENFORCEMENT: NEVER invent or hallucinate illnesses, fevers ("bukhar"), infections, or fake medicines. ONLY transcribe what is visibly represented under Rx. If no clinical diagnosis is written, leave treatmentSummary as empty string "".
 3. Decipher doctor handwriting, brand names, active salts, strengths (e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg), and dosage forms (Tab, Cap, Syp, Inj, Drop, Sachet).
 4. Translate dosage schedule abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-5. Provide a helpful concise "shortUse" hint for each medicine in Roman Urdu + English explaining what it is for ("ye dawai kis marz / maqsad kelye hai").
+5. Provide a helpful concise "shortUse" for each medicine in strictly 3 to 4 words Roman Urdu explaining what it is for without any prefixes or headings (e.g. "Dard aur Bukhar", "Maiday ki Tezabiyat", "Bacterial Infection Ilaj", "Allergy Khujli Cheenkain").
 6. Return strictly valid JSON conforming to the schema:
 {
   "doctor": "Doctor or Clinic name from slip",
@@ -2167,7 +2182,7 @@ CRITICAL MANDATES:
       "timing": "Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)",
       "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
       "purpose": "",
-      "shortUse": "Dawai kis marz kelye hai in Roman Urdu + English"
+      "shortUse": "Strict 3-4 words Roman Urdu e.g. Dard aur Bukhar"
     }
   ]
 }`;
@@ -2260,7 +2275,7 @@ window.handlePrescriptionScan = async function(event) {
                 `;
             } else {
                 medList.innerHTML = (parsed.medicines || []).map((m, idx) => {
-                    const shortUse = m.shortUse || m.purpose || window.getMedicineShortUse(m.name, m.formula);
+                    const shortUse = cleanShortUse(m.shortUse || m.purpose || window.getMedicineShortUse(m.name, m.formula));
                     return `
                     <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
                         <div class="flex justify-between items-start gap-2">
@@ -2269,11 +2284,10 @@ window.handlePrescriptionScan = async function(event) {
                                 <div>
                                     <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
                                     <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
-                                    <!-- AI Hint / Medicine Short Use -->
+                                    <!-- Medicine Short Use (Strictly 3-4 Words, No AI Hint / Heading prefix) -->
                                     <div class="mt-1">
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
-                                            <i data-lucide="sparkles" class="w-3 h-3 text-amber-600 shrink-0"></i>
-                                            <span><strong>AI Hint:</strong> ${shortUse}</span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                                            ${shortUse}
                                         </span>
                                     </div>
                                 </div>
@@ -2319,9 +2333,31 @@ window.handlePrescriptionScan = async function(event) {
         }
     } catch(err) {
         console.error('Prescription OCR Error:', err);
-        modal?.classList.add('hidden');
+        loading?.classList.add('hidden');
+        content?.classList.remove('hidden');
+        const medList = document.getElementById('presc-medicines-list');
+        if (medList) {
+            medList.innerHTML = `
+                <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-3">
+                    <div class="w-12 h-12 mx-auto rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <i data-lucide="camera" class="w-6 h-6"></i>
+                    </div>
+                    <strong class="text-sm font-black text-slate-800 block">Prescription Scan Mukammal Nahi Ho Saka</strong>
+                    <p class="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                        Slip ki roshni ya likhai saaf nahi thi. Barah-e-karam camera seedha rakh kar dobara saaf tasweer lein.
+                    </p>
+                    <div class="pt-2 flex justify-center gap-2">
+                        <label class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Dobara Tasweer Upload Karein
+                            <input type="file" accept="image/*" class="hidden" onchange="window.handlePrescriptionScan(event)">
+                        </label>
+                    </div>
+                </div>
+            `;
+        }
+        safeCreateIcons();
         syncModalScrollLock();
-        showToast('Prescription scan mukammal nahi ho saka, dobara koshish karein.', 'error');
+        showToast('Prescription dobara scan karein ya saaf tasweer upload karein.', 'warning');
     } finally {
         event.target.value = '';
     }
@@ -2852,8 +2888,8 @@ window.searchMedicineForPos = function() {
                         <strong class="text-slate-800 text-xs">${m.name}</strong>
                         <span class="text-[10px] text-slate-400 block">${m.generic ? m.generic + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
                         <div class="mt-0.5">
-                            <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-                                <span class="text-amber-600">💡 AI Hint:</span> ${shortUse}
+                            <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                ${cleanShortUse(shortUse)}
                             </span>
                         </div>
                     </div>
@@ -2878,11 +2914,11 @@ window.selectMedicineForPos = function(id) {
     document.getElementById('pos-search-results')?.classList.add('hidden');
     document.getElementById('pos-search').value = '';
     
-    // Display Short Use AI Hint on Selected Item Banner
-    const useHint = window.getMedicineShortUse(med.name, med.generic);
+    // Display Short Use on Selected Item Banner (Strict 3-4 Words, No AI Hint Prefix)
+    const useHint = cleanShortUse(window.getMedicineShortUse(med.name, med.generic));
     const useBadge = document.getElementById('pos-selected-use-hint');
     if (useBadge) {
-        useBadge.innerHTML = `💡 <span class="text-amber-700 font-black">AI Hint:</span> ${useHint}`;
+        useBadge.innerText = useHint;
         useBadge.classList.remove('hidden');
     }
 
@@ -3304,8 +3340,8 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                             </div>
                             <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
                             <div class="mt-1">
-                                <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                                    <span class="text-amber-600">💡 AI Hint:</span> ${window.getMedicineShortUse(m.name, m.generic)}
+                                <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                    ${cleanShortUse(window.getMedicineShortUse(m.name, m.generic))}
                                 </span>
                             </div>
                         </div>
@@ -3347,10 +3383,16 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
             `;
         }).join('');
     } else {
-        html += `<div class="p-3 text-xs text-amber-800 bg-amber-50 rounded-xl font-semibold border border-amber-200">Aap ke store par yeh medicine mojood nahi hai. Niche connected partner pharmacies chk karein:</div>`;
+        html += `<div class="p-3 text-xs text-amber-800 bg-amber-50 rounded-xl font-semibold border border-amber-200 flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4 text-amber-600 shrink-0"></i>
+            <span>Aap ke store shelf par yeh medicine dastiyab nahi hai.</span>
+        </div>`;
     }
 
-    // Connected Network Partner Pharmacies Stock & Rates
+    // Connected Network Partner Pharmacies Stock & Rates Verification
+    // STRICT USER REQUIREMENT:
+    // Only show connected partner pharmacies IF they ACTUALLY have this item in stock.
+    // Never show pharmacy names blindly or without verified available inventory!
     let savedStores = [];
     try {
         const s = localStorage.getItem('sm_network_stores');
@@ -3365,45 +3407,79 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
         savedStores = [];
     }
 
-    if (savedStores.length > 0) {
-        const medNameDisplay = myMatch[0] ? myMatch[0].name : (query.charAt(0).toUpperCase() + query.slice(1));
-        const genericDisplay = myMatch[0] ? myMatch[0].generic : 'Authentic Formula';
-        const packDisplay = myMatch[0] ? parsePackSize(myMatch[0].packSize).displayText : '20 Tablets / Pack';
-        const mrpDisplay = myMatch[0] ? Number(myMatch[0].mrp).toFixed(1) : '350.0';
+    const queryLower = query.toLowerCase().trim();
+    const queryTokens = queryLower.split(/\s+/).filter(w => w.length > 1);
 
-        html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network:</span><span>${savedStores.length} stores</span></div>`;
-        html += savedStores.map(p => `
+    const verifiedPartnerMatches = [];
+    savedStores.forEach(p => {
+        const partnerInv = Array.isArray(p.inventory) ? p.inventory : (Array.isArray(p.medicines) ? p.medicines : []);
+        if (!partnerInv || partnerInv.length === 0) return;
+
+        // Check if partner truly has positive stock for this exact medicine
+        const matchedItem = partnerInv.find(item => {
+            const iName = String(item.name || '').toLowerCase();
+            const iGen = String(item.generic || item.formula || '').toLowerCase();
+            const stockQty = Number(item.stock || item.qty || 0);
+            if (stockQty <= 0) return false;
+
+            if (iName.includes(queryLower)) return true;
+            if (queryTokens.length > 0 && queryTokens.every(w => iName.includes(w))) return true;
+            if (iGen && iGen.includes(queryLower)) return true;
+            return false;
+        });
+
+        if (matchedItem) {
+            verifiedPartnerMatches.push({
+                pharmacy: p,
+                item: matchedItem
+            });
+        }
+    });
+
+    if (verifiedPartnerMatches.length > 0) {
+        html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network (Verified Stock Available):</span><span>${verifiedPartnerMatches.length} stores</span></div>`;
+        html += verifiedPartnerMatches.map(({ pharmacy: p, item }) => {
+            const packInfo = parsePackSize(item.packSize || '20');
+            const mrpVal = Number(item.mrp || 0).toFixed(1);
+            return `
             <div class="p-3 hover:bg-emerald-50/40 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white">
                 <div class="flex items-start justify-between gap-2">
                     <div>
-                        <strong class="text-slate-900 text-xs sm:text-sm font-black">${medNameDisplay}</strong>
-                        <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${genericDisplay ? genericDisplay + ' • ' : ''}<span class="text-emerald-700 font-bold">🏪 ${p.name || p.store}</span> • <span class="text-slate-500 font-mono text-[10px]">${p.city || 'Near City'}</span></span>
+                        <strong class="text-slate-900 text-xs sm:text-sm font-black">${item.name}</strong>
+                        <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${item.generic ? item.generic + ' • ' : ''}<span class="text-emerald-700 font-bold">🏪 ${p.name || p.store}</span> • <span class="text-slate-500 font-mono text-[10px]">${p.city || 'Connected City'}</span></span>
                     </div>
                     <div class="text-right shrink-0">
                         <span class="text-[10px] text-slate-400 font-bold uppercase block">Retail MRP</span>
-                        <strong class="text-emerald-700 font-black text-sm block">Rs. ${mrpDisplay}</strong>
+                        <strong class="text-emerald-700 font-black text-sm block">Rs. ${mrpVal}</strong>
                     </div>
                 </div>
                 <!-- Product Name, Generic, Pack Size, Availability & WhatsApp -->
                 <div class="grid grid-cols-3 gap-1.5 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80 items-center">
                     <div>
-                        <span class="text-[9px] uppercase font-bold text-indigo-600 block">Pack Size:</span>
-                        <strong class="text-indigo-950 font-black text-[11px]">📦 ${packDisplay}</strong>
+                        <span class="text-[9px] uppercase font-bold text-indigo-600 block">Pack / Stock:</span>
+                        <strong class="text-indigo-950 font-black text-[11px]">📦 ${packInfo.displayText} (Qty: ${item.stock || item.qty})</strong>
                     </div>
                     <div>
-                        <span class="text-[9px] uppercase font-bold text-slate-400 block">Network:</span>
+                        <span class="text-[9px] uppercase font-bold text-emerald-600 block">Network Stock:</span>
                         <span class="text-emerald-700 font-bold text-[10px] flex items-center gap-1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Available
                         </span>
                     </div>
                     <div class="text-right">
-                        <a href="https://wa.me/92${String(p.phone || '').replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, kya aap ke paas ' + medNameDisplay + ' (Pack: ' + packDisplay + ', MRP: Rs.' + mrpDisplay + ') available hai?')}" target="_blank" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs active:scale-95 transition">
+                        <a href="https://wa.me/92${String(p.phone || '').replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, kya aap ke paas ' + item.name + ' available hai?')}" target="_blank" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs active:scale-95 transition">
                             <i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp
                         </a>
                     </div>
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
+    } else if (myMatch.length === 0) {
+        // No item in own store AND no connected partner pharmacy has it in stock
+        html += `<div class="p-3 text-xs text-rose-800 bg-rose-50 rounded-xl font-semibold border border-rose-200 flex items-center gap-2 mt-1">
+            <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
+            <span>Aap ke store aur connected network pharmacies par yeh medicine dastiyab nahi hai (Out of Stock).</span>
+        </div>`;
     }
 
     resultsEl.innerHTML = html;
@@ -3559,7 +3635,7 @@ function renderInventoryTable() {
                             <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span class="text-[10px] text-slate-500">${m.generic || 'Formula'}</span>
                                 <span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-mono font-medium">📍 ${m.location ? m.location : 'None'}</span>
-                                <span class="px-1.5 py-0.2 rounded text-[9px] font-bold text-amber-900 bg-amber-50 border border-amber-200">💡 ${window.getMedicineShortUse(m.name, m.generic)}</span>
+                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-900 bg-amber-50 border border-amber-200">${cleanShortUse(window.getMedicineShortUse(m.name, m.generic))}</span>
                             </div>
                         </td>
                         <td class="p-3 text-slate-600 font-semibold">${m.distributor || 'General'}</td>
@@ -3612,8 +3688,8 @@ function renderInventoryTable() {
                                 </div>
                                 <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
                                 <div class="mt-1">
-                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-md">
-                                        💡 <strong class="text-amber-700">AI Hint:</strong> ${window.getMedicineShortUse(m.name, m.generic)}
+                                    <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-md">
+                                        ${cleanShortUse(window.getMedicineShortUse(m.name, m.generic))}
                                     </span>
                                 </div>
                             </div>
