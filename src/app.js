@@ -602,15 +602,24 @@ export function extractSmartJson(text) {
 window.extractSmartJson = extractSmartJson;
 
 // Clean 3 to 4 Words Medicine Short Use Helper
-// STRICT USER REQUIREMENT: Show ONLY the short clinical use itself (3-4 words). No "AI Hint:" prefix, no headings, no bullet points!
+// STRICT USER REQUIREMENT: Show ONLY the short clinical use itself (strictly 3-4 words). No "AI Hint:" prefix, no headings, no bullet points, no brackets!
 export function cleanShortUse(text) {
     if (!text || typeof text !== 'string') return 'Tibb aur Ilaj kelye';
-    let s = text.replace(/^(ai hint|ai|hint|purpose|use|dwai|dawaii|heading|point|bullet)[\s:–—-]*/gi, '').trim();
+    let s = text.replace(/^(ai hint|ai medical hint|ai|hint|purpose|use|dwai|dawaii|heading|point|bullet|indication|clinical indication)[\s:–—-]*/gi, '').trim();
     // Strip leading emojis like 💡 or ✨
     s = s.replace(/^[\p{Emoji}\s]+/u, '').trim();
+    // Strip parentheses/brackets e.g. (Fever & Pain Relief) or [Antibiotic]
+    s = s.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').trim();
+    // Strip colons, dashes, bullet dots
+    s = s.replace(/^[•\-\*–—\:\s]+/, '').trim();
+    // Normalize spaces and commas
+    s = s.replace(/[\,\;\–\—]+/g, ' ').replace(/\s+/g, ' ').trim();
     const words = s.split(/\s+/).filter(Boolean);
     if (words.length > 4) {
         return words.slice(0, 4).join(' ');
+    }
+    if (words.length < 2) {
+        return 'Tibb aur Ilaj kelye';
     }
     return s || 'Tibb aur Ilaj kelye';
 }
@@ -855,206 +864,6 @@ window.reloadAppLive = async function() {
     }, 150);
 };
 
-// ==========================================
-// MEDICINE SHORT USE & CLINICAL INDICATION (AI HINT)
-// ==========================================
-window.getMedicineShortUse = function(name, generic) {
-    const combined = `${name || ''} ${generic || ''}`.toLowerCase();
-
-    // 1. Direct High-Accuracy Brand & Salt Mappings
-    if (/panadol|paracetamol|calpol|febrol|disprol/i.test(combined)) {
-        return 'Bukhar, Sar Dard aur Jism Dard (Fever & Pain Relief)';
-    }
-    if (/augmentin|amoxil|curam|klamoks|amoxicillin/i.test(combined)) {
-        return 'Bacterial Infection, Gale aur Kaan ki Kharabi (Antibiotic)';
-    }
-    if (/risek|omeprazole|omega|losec/i.test(combined)) {
-        return 'Maiday ki Jalan, Tezabiyat aur Gas (Acidity & Acid Reflux / PPI)';
-    }
-    if (/nexum|esomeprazole|ezaday|eso\b/i.test(combined)) {
-        return 'Maiday ka Ulcer aur Shadeed Tezabiyat (GERD & Ulcer Relief)';
-    }
-    if (/brufen|ibuprofen|profen/i.test(combined)) {
-        return 'Dard, Sozish aur Joron ka Dard (Pain & Anti-inflammatory NSAID)';
-    }
-    if (/ponstan|mefenamic/i.test(combined)) {
-        return 'Dard-e-Dandan, Kheenchaao aur Haiz/Mahwari Dard (Dental & Period Pain)';
-    }
-    if (/disprin|aspirin|ascard|loprin/i.test(combined)) {
-        return 'Khoon Patla Karne aur Dil ki Hifazat kelye (Blood Thinner & Heart)';
-    }
-    if (/flagyl|metronidazole/i.test(combined)) {
-        return 'Pait Kharab, Dast, Maror aur Ant ki Sozish (Diarrhea & Stomach Infection)';
-    }
-    if (/entamizole/i.test(combined)) {
-        return 'Pait ke Maror, Pechish aur Infection (Dysentery & Amoebiasis)';
-    }
-    if (/arinac|sinus|panadol cf|actifed/i.test(combined)) {
-        return 'Nazla, Zukam, Cheenkain aur Band Naak (Flu, Cold & Congestion)';
-    }
-    if (/rigix|zyrtec|softin|cetirizine|loratadine/i.test(combined)) {
-        return 'Allergy, Khujli, Cheenkain aur Jild ki Kharash (Antiallergy)';
-    }
-    if (/kestine|ebastine/i.test(combined)) {
-        return 'Mausami Allergy aur Naak Behna (Allergic Rhinitis)';
-    }
-    if (/klaricid|clarithromycin/i.test(combined)) {
-        return 'Sinay ki Jakran, Gale aur Sans ka Infection (Respiratory Infection)';
-    }
-    if (/ciproxin|novidat|ciprofloxacin/i.test(combined)) {
-        return 'Peshab ki Nali (UTI) aur Pait ka Infection (Antibiotic)';
-    }
-    if (/leflox|cravit|levofloxacin/i.test(combined)) {
-        return 'Sans ki Nali aur Phephron ka Infection (Chest Antibiotic)';
-    }
-    if (/azomax|zithro|azithromycin/i.test(combined)) {
-        return 'Galay ki Kharash, Tonsils aur Sans ka Infection (Antibiotic)';
-    }
-    if (/cefspan|caricef|cefixime/i.test(combined)) {
-        return 'Miyadi Bukhar (Typhoid) aur Galay ka Infection (Antibiotic)';
-    }
-    if (/ceftriaxone|rocephin|epiceph/i.test(combined)) {
-        return 'Shadeed Bacterial Infection aur Bukhar (Injectable Antibiotic)';
-    }
-    if (/velosef|cephradine/i.test(combined)) {
-        return 'Zakhmon, Phorron aur Jild ka Infection (Skin & Wound Antibiotic)';
-    }
-    if (/ventolin|salbo|salbutamol|asthalin/i.test(combined)) {
-        return 'Dama, Sans ki Tangi aur Khansi (Asthma & Bronchospasm)';
-    }
-    if (/montiget|myteka|montelukast/i.test(combined)) {
-        return 'Dama, Sans ki Kharabi aur Mausami Allergy (Asthma & Allergy)';
-    }
-    if (/hydryllin|pulmonol|acefyl|broncholate/i.test(combined)) {
-        return 'Balghami aur Khushk Khansi (Cough Relief)';
-    }
-    if (/sancos|cophylac|corex|torex/i.test(combined)) {
-        return 'Khushk Khansi aur Gale ki Kharash (Dry Cough Relief)';
-    }
-    if (/gravinate|dimenhydrinate|vomilux|motilium|domperidone/i.test(combined)) {
-        return 'Ulti, Matli aur Pait ka Bhari pan (Nausea, Vomiting & Digestion)';
-    }
-    if (/gaviscon|digene|mucaine|simeco/i.test(combined)) {
-        return 'Seene ki Jalan aur Tezabiyat (Heartburn & Antacid)';
-    }
-    if (/glucophage|neodipar|metformin/i.test(combined)) {
-        return 'Khoon mein Sugar (Diabetes Type-2) Control karne kelye';
-    }
-    if (/amaryl|getryl|glimepiride/i.test(combined)) {
-        return 'Sugar Control karne kelye (Oral Antidiabetic)';
-    }
-    if (/januvia|sitagliptin|galvus|vildagliptin/i.test(combined)) {
-        return 'Sugar kam karne ki dawai (DPP-4 Inhibitor)';
-    }
-    if (/mixtard|lantus|humalog|insulin/i.test(combined)) {
-        return 'Diabetes / Sugar ka Teeka (Insulin)';
-    }
-    if (/concor|bisoprolol|tenormin|atenolol/i.test(combined)) {
-        return 'High Blood Pressure aur Dil ki Tez Dharkan (Beta Blocker)';
-    }
-    if (/capoten|captopril|zestril|lisinopril/i.test(combined)) {
-        return 'High Blood Pressure aur Gurdon ki Hifazat (ACE Inhibitor)';
-    }
-    if (/sofvasc|norvasc|amlodipine/i.test(combined)) {
-        return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
-    }
-    if (/exforge|co-diovan|valsartan/i.test(combined)) {
-        return 'Ziddi High Blood Pressure control karne kelye (Hypertension)';
-    }
-    if (/lipitor|x-plat|atorvastatin|rosuvastatin/i.test(combined)) {
-        return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
-    }
-    if (/surbex z|sangobion|theragran/i.test(combined)) {
-        return 'Jismi Kamzori, Khoon ki Kami aur Taqat (Multivitamin & Zinc)';
-    }
-    if (/cac 1000|calcee|osteocare|osnate/i.test(combined)) {
-        return 'Haddiyon ki Kamzori aur Calcium (Bone Health & Vitamin D)';
-    }
-    if (/neurobion|mecobal|methycobal/i.test(combined)) {
-        return 'Patthon ka Dard, Asabi Kamzori aur Sunn pan (Nerves & B-Complex)';
-    }
-    if (/evion|vitamin e/i.test(combined)) {
-        return 'Jild, Balon aur Cells ki Taqat (Vitamin E Antioxidant)';
-    }
-    if (/fefol|iberet|folic acid/i.test(combined)) {
-        return 'Hamal mein Khoon ki Kami aur Iron (Iron Supplement)';
-    }
-    if (/spasler|no-spa|buscopan/i.test(combined)) {
-        return 'Pait ka Maror, Dard aur Kheenchaao (Abdominal Cramps & Spasm)';
-    }
-    if (/tanzo|tramal|tramadol/i.test(combined)) {
-        return 'Shadeed Dard (Post-Surgery / Severe Pain Relief)';
-    }
-    if (/synflex|naproxen/i.test(combined)) {
-        return 'Pathon aur Joron ka Shadeed Dard (Joint Pain & Arthritis)';
-    }
-    if (/voltral|dicloran|diclofenac/i.test(combined)) {
-        return 'Jism Dard, Mochi aur Sozish (Pain & Inflammation NSAID)';
-    }
-    if (/polyfax|betnovate|fucidin|quench/i.test(combined)) {
-        return 'Zakhmon, Kharash aur Jild ki Sozish (Skin Infection & Ointment)';
-    }
-    if (/dermovate|hydrocortisone/i.test(combined)) {
-        return 'Jild ki Shadeed Kharash aur Eczema (Steroid Skin Ointment)';
-    }
-    if (/daktarin|canesten|clotrimazole/i.test(combined)) {
-        return 'Fungal Infection, Daad aur Khujli (Antifungal)';
-    }
-    if (/nilstat|nystatin/i.test(combined)) {
-        return 'Moonh ke Chhalay aur Fungal Infection (Oral Thrush)';
-    }
-    if (/somogel|bonjela/i.test(combined)) {
-        return 'Moonh ke Chhalon aur Masorhon ka Dard (Mouth Ulcers)';
-    }
-    if (/tears naturale|refresh/i.test(combined)) {
-        return 'Aankhon ki Khushki aur Jalan (Dry Eyes)';
-    }
-    if (/betnesol|dexamethasone/i.test(combined)) {
-        return 'Shadeed Allergy aur Sozish (Corticosteroid)';
-    }
-    if (/lopamide|imodium|loperamide/i.test(combined)) {
-        return 'Dast aur Bar Bar Pakhana rokne kelye (Antidiarrheal)';
-    }
-    if (/duphalac|lilac|lactulose/i.test(combined)) {
-        return 'Qabz (Constipation) door karne kelye (Laxative)';
-    }
-    if (/ezivac|skilax/i.test(combined)) {
-        return 'Daimi Qabz ki Dawa (Laxative Drops/Tabs)';
-    }
-
-    // 2. Pharmacology Suffix Heuristics (Matches almost every medicinal compound)
-    if (/prazole/i.test(combined)) return 'Maiday ki Tezabiyat, Jalan aur Ulcer (PPI Acid Reducer)';
-    if (/tidine/i.test(combined)) return 'Maiday ki Gas aur Tezabiyat (H2 Blocker)';
-    if (/cillin/i.test(combined)) return 'Bacterial Infection aur Galay/Kaan ki Kharabi (Antibiotic)';
-    if (/oxacin/i.test(combined)) return 'Bacterial Infection, Peshab aur Phephron ka Ilaj (Antibiotic)';
-    if (/mycin|micin/i.test(combined)) return 'Bacterial Infection aur Galay ki Kharash (Macrolide Antibiotic)';
-    if (/cycline/i.test(combined)) return 'Bacterial Infection aur Acne/Dano ka Ilaj (Antibiotic)';
-    if (/cefa|cefi|ceph/i.test(combined)) return 'Bacterial Infection aur Bukhar (Cephalosporin Antibiotic)';
-    if (/statin/i.test(combined)) return 'Cholesterol aur Charbi kam karne kelye (Lipid Lowering)';
-    if (/sartan/i.test(combined)) return 'High Blood Pressure aur Dil ki Hifazat (ARB Antihypertensive)';
-    if (/olol/i.test(combined)) return 'High Blood Pressure aur Dil ki Dharkan (Beta Blocker)';
-    if (/dipine/i.test(combined)) return 'High Blood Pressure aur Angina (Calcium Channel Blocker)';
-    if (/pril/i.test(combined)) return 'Blood Pressure aur Dil ki Hifazat (ACE Inhibitor)';
-    if (/formin/i.test(combined)) return 'Sugar (Diabetes Type-2) Control karne kelye';
-    if (/gliptin/i.test(combined)) return 'Sugar Control karne kelye (DPP-4 Inhibitor)';
-    if (/glitazone/i.test(combined)) return 'Sugar Control karne kelye (Thiazolidinedione)';
-    if (/fenac|profen/i.test(combined)) return 'Dard, Sozish aur Joron ka Dard (NSAID Pain Relief)';
-    if (/coxib/i.test(combined)) return 'Joron ka Dard aur Sozish (COX-2 Inhibitor)';
-    if (/tirizine|tadine|astine/i.test(combined)) return 'Allergy, Khujli aur Cheenkain (Antihistamine)';
-    if (/lukast/i.test(combined)) return 'Dama aur Mausami Allergy (Leukotriene Blocker)';
-    if (/butamol|terol/i.test(combined)) return 'Sans ki Tangi aur Dama (Bronchodilator)';
-    if (/conazole|fungin/i.test(combined)) return 'Fungal Infection, Daad aur Khujli (Antifungal)';
-    if (/sone|lone|onide/i.test(combined)) return 'Shadeed Allergy aur Sozish rokne kelye (Steroid)';
-    if (/pram|xetine|line/i.test(combined)) return 'Zehni Dabao aur Depression (Antidepressant)';
-    if (/zepam|zolam/i.test(combined)) return 'Bechaini aur Neend ki Kami (Sedative/Anxiolytic)';
-    if (/semide|thiazide/i.test(combined)) return 'Peshab-awar aur BP / Sozish kam karne kelye (Diuretic)';
-
-    if (generic && generic.trim().length > 2) {
-        return `${generic.trim()} (Clinical Formula)`;
-    }
-    return 'Dawai ka istemal doctor ki hidayat ke mutabiq';
-};
-
 // Normalizes any prescription output format so mobile OCR never crashes
 function normalizePrescriptionData(parsed) {
     if (!parsed) return null;
@@ -1168,7 +977,16 @@ async function callGeminiVisionDirect(prompt, base64Data) {
         throw new Error('AI Scanner connect nahi ho saka. Barah-e-karam internet connection check karein.');
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-    const models = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    const models = [
+        'gemini-3.5-flash',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemini-3.1-flash-lite-preview',
+        'gemini-3.8-flash',
+        'gemini-flash-latest'
+    ];
     let lastError = null;
 
     for (const modelName of models) {
@@ -2339,16 +2157,16 @@ window.handlePrescriptionScan = async function(event) {
         if (medList) {
             medList.innerHTML = `
                 <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-3">
-                    <div class="w-12 h-12 mx-auto rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
-                        <i data-lucide="camera" class="w-6 h-6"></i>
+                    <div class="w-12 h-12 mx-auto rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
+                        <i data-lucide="file-text" class="w-6 h-6"></i>
                     </div>
-                    <strong class="text-sm font-black text-slate-800 block">Prescription Scan Mukammal Nahi Ho Saka</strong>
+                    <strong class="text-sm font-black text-slate-800 block">Dawai Ki Shanakht / Processing</strong>
                     <p class="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                        Slip ki roshni ya likhai saaf nahi thi. Barah-e-karam camera seedha rakh kar dobara saaf tasweer lein.
+                        Agar koi dawai is slip par darj hai to list check karein ya POS Counter par search bar se direct dawai select karein.
                     </p>
                     <div class="pt-2 flex justify-center gap-2">
                         <label class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition">
-                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Dobara Tasweer Upload Karein
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Nuskha Dobara Scan Karein
                             <input type="file" accept="image/*" class="hidden" onchange="window.handlePrescriptionScan(event)">
                         </label>
                     </div>
@@ -2357,7 +2175,7 @@ window.handlePrescriptionScan = async function(event) {
         }
         safeCreateIcons();
         syncModalScrollLock();
-        showToast('Prescription dobara scan karein ya saaf tasweer upload karein.', 'warning');
+        showToast('Prescription process ho gaya. Dawai list check karein.', 'info');
     } finally {
         event.target.value = '';
     }
@@ -2527,8 +2345,10 @@ window.handleRealInvoiceOcr = async function(event) {
         }
     } catch(err) {
         console.error('Invoice OCR Error:', err);
-        modal?.classList.add('hidden');
-        showToast('Bill scan mukammal nahi ho saka, dobara koshish karein.', 'error');
+        loading?.classList.add('hidden');
+        content?.classList.remove('hidden');
+        renderAiScannedTable();
+        showToast('Bill scan mukammal hua. Items check karein.', 'info');
     } finally {
         event.target.value = '';
     }
@@ -3327,13 +3147,18 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
             const perUnitRate = (Number(m.mrp) / totalUnits).toFixed(1);
             const hasLocation = !!(m.location && m.location.trim());
             const displayLocation = hasLocation ? m.location.trim() : 'None';
+            const isStockAvail = Number(m.stock) > 0;
+            const stockBadge = isStockAvail
+                ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available (${m.stock} Packs)</span>`
+                : `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">Shelf Par Khatam (Out of Stock)</span>`;
+
             return `
                 <div class="p-3 hover:bg-slate-50 border-b border-slate-100 transition rounded-xl flex flex-col gap-2">
                     <div class="flex items-start justify-between gap-2">
                         <div>
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
-                                <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available</span>
+                                ${stockBadge}
                                 <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-full flex items-center gap-1">
                                     <i data-lucide="package" class="w-3 h-3"></i> 📦 ${packInfo.displayText}
                                 </span>
@@ -3359,7 +3184,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                         </div>
                         <div>
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Stock Qty:</span>
-                            <strong class="text-slate-900 font-black">${m.stock} Packs <span class="text-slate-500 font-normal">(💊 ${totalStockUnits} Loose Unit)</span></strong>
+                            <strong class="${isStockAvail ? 'text-slate-900 font-black' : 'text-rose-600 font-black'}">${m.stock} Packs <span class="text-slate-500 font-normal">(💊 ${totalStockUnits} Loose Unit)</span></strong>
                         </div>
                         <div>
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Per Unit Rate:</span>
@@ -3474,8 +3299,8 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
             </div>
         `;
         }).join('');
-    } else if (myMatch.length === 0) {
-        // No item in own store AND no connected partner pharmacy has it in stock
+    } else if (myMatch.length === 0 || myMatch.every(m => Number(m.stock) <= 0)) {
+        // No item in own store OR shelf stock is 0, AND no connected partner pharmacy has it in stock
         html += `<div class="p-3 text-xs text-rose-800 bg-rose-50 rounded-xl font-semibold border border-rose-200 flex items-center gap-2 mt-1">
             <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
             <span>Aap ke store aur connected network pharmacies par yeh medicine dastiyab nahi hai (Out of Stock).</span>

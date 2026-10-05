@@ -705,61 +705,61 @@
         <section id="view-margin" class="tab-content hidden max-w-3xl mx-auto w-full flex flex-col items-center justify-start gap-2 pt-0.5 pb-2">
             <!-- CALCULATOR 1: Simple Standard Math Hisaab Calculator (Digital Shop Mobile-Fit Citizen/Casio Style) -->
             <!-- STRICT REQUIREMENTS: No heading, no footer, mobile screen fit, zero wobble, 00 button included, large plus button -->
-            <div id="calc-section-simple" class="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-xl flex flex-col justify-start max-w-[360px] sm:max-w-[390px] w-full select-none touch-manipulation gap-1.5 overflow-hidden overscroll-none mx-auto shrink-0">
+            <div id="calc-section-simple" class="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xl flex flex-col justify-start max-w-[420px] sm:max-w-[440px] w-full select-none touch-manipulation gap-2 overflow-hidden overscroll-none mx-auto shrink-0">
                 <!-- Digital LCD Screen (Shop Style with Memory & Operator Indicators - Fixed Height, No Wobble) -->
-                <div class="bg-gradient-to-b from-slate-950 to-slate-900 text-white rounded-xl p-2.5 shadow-inner border border-slate-800 shrink-0 h-[72px] sm:h-[78px] flex flex-col justify-between select-none">
-                    <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono border-b border-slate-800/80 pb-0.5">
+                <div class="bg-gradient-to-b from-slate-950 to-slate-900 text-white rounded-xl p-3 shadow-inner border border-slate-800 shrink-0 h-[80px] sm:h-[88px] flex flex-col justify-between select-none">
+                    <div class="flex items-center justify-between text-xs text-slate-400 font-mono border-b border-slate-800/80 pb-0.5">
                         <div class="flex items-center gap-1.5">
-                            <span id="simple-calc-mem-indicator" class="hidden px-1 py-0.2 bg-amber-400/20 text-amber-300 border border-amber-400/40 rounded text-[9px] font-black uppercase">M</span>
-                            <span id="simple-calc-op-indicator" class="text-emerald-400 font-black text-xs min-w-[14px]"></span>
+                            <span id="simple-calc-mem-indicator" class="hidden px-1.5 py-0.5 bg-amber-400/20 text-amber-300 border border-amber-400/40 rounded text-[10px] font-black uppercase">M</span>
+                            <span id="simple-calc-op-indicator" class="text-emerald-400 font-black text-sm min-w-[16px]"></span>
                         </div>
-                        <div id="simple-calc-history" class="text-[10px] text-slate-400 font-mono truncate max-w-[210px] tracking-wide text-right"></div>
+                        <div id="simple-calc-history" class="text-[11px] text-slate-400 font-mono truncate max-w-[240px] tracking-wide text-right"></div>
                     </div>
                     <div id="simple-calc-display" class="text-3xl sm:text-4xl font-black text-emerald-400 font-mono tracking-wider text-right overflow-x-auto no-scrollbar select-all leading-none py-0.5">0</div>
                 </div>
 
                 <!-- Memory Toolbar (MC, MR, M-, M+) - Tight and Compact Gap -->
-                <div class="grid grid-cols-4 gap-1 text-[11px] font-bold select-none shrink-0">
-                    <button type="button" onclick="window.simpleCalcMemClear()" class="py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition active:scale-95" title="Memory Clear">MC</button>
-                    <button type="button" onclick="window.simpleCalcMemRecall()" class="py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Recall">MR</button>
-                    <button type="button" onclick="window.simpleCalcMemSub()" class="py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Minus">M−</button>
-                    <button type="button" onclick="window.simpleCalcMemAdd()" class="py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-black transition active:scale-95" title="Memory Add">M+</button>
+                <div class="grid grid-cols-4 gap-1.5 text-xs font-black select-none shrink-0">
+                    <button type="button" onclick="window.simpleCalcMemClear()" class="py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition active:scale-95" title="Memory Clear">MC</button>
+                    <button type="button" onclick="window.simpleCalcMemRecall()" class="py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Recall">MR</button>
+                    <button type="button" onclick="window.simpleCalcMemSub()" class="py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95" title="Memory Minus">M−</button>
+                    <button type="button" onclick="window.simpleCalcMemAdd()" class="py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-black transition active:scale-95" title="Memory Add">M+</button>
                 </div>
 
                 <!-- Calculator Main Keypad (Mobile-fit, gap-1.5, includes '00' and LARGE DOUBLE-HEIGHT PLUS BUTTON) -->
                 <div class="grid grid-cols-4 gap-1.5 select-none shrink-0">
                     <!-- Row 1: AC, Backspace, %, Divide -->
-                    <button type="button" onclick="window.simpleCalcClear()" class="h-11 sm:h-12 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-lg transition active:scale-95 shadow-xs flex items-center justify-center">AC</button>
-                    <button type="button" onclick="window.simpleCalcBackspace()" class="h-11 sm:h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg transition active:scale-95 shadow-xs flex items-center justify-center">⌫</button>
-                    <button type="button" onclick="window.simpleCalcPercent()" class="h-11 sm:h-12 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-lg transition active:scale-95 shadow-xs flex items-center justify-center">%</button>
-                    <button type="button" onclick="window.simpleCalcOp('÷')" class="h-11 sm:h-12 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">÷</button>
+                    <button type="button" onclick="window.simpleCalcClear()" class="h-13 sm:h-14 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">AC</button>
+                    <button type="button" onclick="window.simpleCalcBackspace()" class="h-13 sm:h-14 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">⌫</button>
+                    <button type="button" onclick="window.simpleCalcPercent()" class="h-13 sm:h-14 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">%</button>
+                    <button type="button" onclick="window.simpleCalcOp('÷')" class="h-13 sm:h-14 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">÷</button>
 
                     <!-- Row 2: 7, 8, 9, Multiply -->
-                    <button type="button" onclick="window.simpleCalcDigit('7')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">7</button>
-                    <button type="button" onclick="window.simpleCalcDigit('8')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">8</button>
-                    <button type="button" onclick="window.simpleCalcDigit('9')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">9</button>
-                    <button type="button" onclick="window.simpleCalcOp('×')" class="h-11 sm:h-12 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">×</button>
+                    <button type="button" onclick="window.simpleCalcDigit('7')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">7</button>
+                    <button type="button" onclick="window.simpleCalcDigit('8')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">8</button>
+                    <button type="button" onclick="window.simpleCalcDigit('9')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">9</button>
+                    <button type="button" onclick="window.simpleCalcOp('×')" class="h-13 sm:h-14 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">×</button>
 
                     <!-- Row 3: 4, 5, 6, Subtract -->
-                    <button type="button" onclick="window.simpleCalcDigit('4')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">4</button>
-                    <button type="button" onclick="window.simpleCalcDigit('5')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">5</button>
-                    <button type="button" onclick="window.simpleCalcDigit('6')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">6</button>
-                    <button type="button" onclick="window.simpleCalcOp('-')" class="h-11 sm:h-12 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">−</button>
+                    <button type="button" onclick="window.simpleCalcDigit('4')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">4</button>
+                    <button type="button" onclick="window.simpleCalcDigit('5')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">5</button>
+                    <button type="button" onclick="window.simpleCalcDigit('6')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">6</button>
+                    <button type="button" onclick="window.simpleCalcOp('-')" class="h-13 sm:h-14 rounded-xl bg-brand-100 hover:bg-brand-200 text-brand-900 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">−</button>
 
                     <!-- Row 4 & 5: Numbers, 0, 00, Decimal, and LARGE DOUBLE-HEIGHT PLUS BUTTON -->
-                    <button type="button" onclick="window.simpleCalcDigit('1')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">1</button>
-                    <button type="button" onclick="window.simpleCalcDigit('2')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">2</button>
-                    <button type="button" onclick="window.simpleCalcDigit('3')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">3</button>
+                    <button type="button" onclick="window.simpleCalcDigit('1')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">1</button>
+                    <button type="button" onclick="window.simpleCalcDigit('2')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">2</button>
+                    <button type="button" onclick="window.simpleCalcDigit('3')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">3</button>
                     <!-- LARGE PLUS BUTTON: row-span-2, double height, prominent, high-contrast, easy to tap -->
-                    <button type="button" onclick="window.simpleCalcOp('+')" class="row-span-2 h-full min-h-[96px] sm:min-h-[106px] rounded-xl bg-gradient-to-b from-brand-600 via-brand-700 to-brand-800 hover:from-brand-700 hover:to-brand-900 text-white font-black text-3xl sm:text-4xl shadow-md transition active:scale-95 flex items-center justify-center cursor-pointer ring-2 ring-brand-500" title="Add (+)">+</button>
+                    <button type="button" onclick="window.simpleCalcOp('+')" class="row-span-2 h-full min-h-[110px] sm:min-h-[122px] rounded-xl bg-gradient-to-b from-brand-600 via-brand-700 to-brand-800 hover:from-brand-700 hover:to-brand-900 text-white font-black text-3xl sm:text-4xl shadow-md transition active:scale-95 flex items-center justify-center cursor-pointer ring-2 ring-brand-500" title="Add (+)">+</button>
 
                     <!-- Row 5: 0, 00 (Requested Button), Decimal (.) -->
-                    <button type="button" onclick="window.simpleCalcDigit('0')" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl transition active:scale-95 shadow-xs flex items-center justify-center">0</button>
-                    <button type="button" onclick="window.simpleCalcDoubleZero()" class="h-11 sm:h-12 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-lg transition active:scale-95 shadow-xs flex items-center justify-center">00</button>
-                    <button type="button" onclick="window.simpleCalcDigit('.')" class="h-11 sm:h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">.</button>
+                    <button type="button" onclick="window.simpleCalcDigit('0')" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-xl sm:text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">0</button>
+                    <button type="button" onclick="window.simpleCalcDoubleZero()" class="h-13 sm:h-14 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 font-black text-lg sm:text-xl transition active:scale-95 shadow-xs flex items-center justify-center">00</button>
+                    <button type="button" onclick="window.simpleCalcDigit('.')" class="h-13 sm:h-14 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-2xl transition active:scale-95 shadow-xs flex items-center justify-center">.</button>
 
                     <!-- Row 6: EQUALS (=) Button (Full Width Col-span-4, Prominent & High Impact for Easy Calculation) -->
-                    <button type="button" onclick="window.simpleCalcEquals()" class="col-span-4 h-11 sm:h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-3xl shadow-md transition active:scale-95 flex items-center justify-center cursor-pointer ring-2 ring-emerald-500" title="Equals (=)">=</button>
+                    <button type="button" onclick="window.simpleCalcEquals()" class="col-span-4 h-13 sm:h-14 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-3xl shadow-md transition active:scale-95 flex items-center justify-center cursor-pointer ring-2 ring-emerald-500" title="Equals (=)">=</button>
                 </div>
             </div>
 

@@ -331,8 +331,17 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // High-performance multimodal vision models: primary powerhouse gemini-3.8-flash, fast fallback gemini-flash-latest
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest'];
+  // Comprehensive Gemini Multimodal Vision Cascade (Primary models with fresh quota + fallback models)
+  const models = [
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3.8-flash',
+    'gemini-flash-latest'
+  ];
 
   for (const modelName of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -350,7 +359,7 @@ async function generateWithVisionFallback(
 
         const effectivePrompt = attempt === 0 
           ? prompt 
-          : `${prompt}\n\n[RETRY FORENSIC SCAN]: Inspect doctor handwriting, printed text, thermal receipt print, table columns, and medicine packaging carefully. Transcribe all visible items accurately into JSON format.`;
+          : `${prompt}\n\n[FORENSIC OCR SCAN]: Transcribe all visible doctor prescriptions, printed slips, thermal receipts, or packaging into JSON without refusal.`;
 
         const response: any = await ai.models.generateContent({
           model: modelName,
@@ -376,9 +385,6 @@ async function generateWithVisionFallback(
         }
       } catch (err: any) {
         console.warn(`Vision model ${modelName} (attempt ${attempt + 1}) note:`, err?.message || err);
-        if (attempt === 0) {
-          await new Promise(r => setTimeout(r, 100));
-        }
       }
     }
   }
