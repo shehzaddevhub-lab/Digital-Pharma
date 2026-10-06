@@ -876,38 +876,152 @@ window.getMedicineShortUse = getMedicineShortUse;
 export async function enhanceImageLikeCamScanner(file) {
     if (!file) throw new Error("Tasweer select nahi hui.");
 
-    // Helper: Resizes canvas and exports clean JPEG under 300KB
+    // Helper: Canvas API Auto-Crop Document Area + Grayscale & High-Contrast Filter
     function renderEnhancedCanvas(source, originalW, originalH) {
+        const origW = originalW || 1200;
+        const origH = originalH || 1600;
+
+        // Step 1: Detect Document Bounding Box (Auto-Crop table / background borders)
+        let cropX = 0, cropY = 0, cropW = origW, cropH = origH;
+        try {
+            const sampleW = 280;
+            const sampleH = Math.max(160, Math.round((origH * sampleW) / origW));
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = sampleW;
+            sampleCanvas.height = sampleH;
+            const sCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+            if (sCtx) {
+                sCtx.drawImage(source, 0, 0, sampleW, sampleH);
+                const imgData = sCtx.getImageData(0, 0, sampleW, sampleH);
+                const d = imgData.data;
+
+                // Estimate corner background luminance (average of 4 corners)
+                const cIdxs = [
+                    0,
+                    (sampleW - 1) * 4,
+                    ((sampleH - 1) * sampleW) * 4,
+                    ((sampleH - 1) * sampleW + sampleW - 1) * 4
+                ];
+                let bgLum = 0;
+                for (const idx of cIdxs) {
+                    bgLum += 0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2];
+                }
+                bgLum /= 4;
+
+                let minX = sampleW, maxX = 0, minY = sampleH, maxY = 0;
+                let docPixels = 0;
+
+                for (let y = 0; y < sampleH; y++) {
+                    for (let x = 0; x < sampleW; x++) {
+                        const i = (y * sampleW + x) * 4;
+                        const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                        // Document paper pixel is distinctly brighter or differs from outer background
+                        if (Math.abs(lum - bgLum) > 26 || lum > 130) {
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                            docPixels++;
+                        }
+                    }
+                }
+
+                // If a coherent document boundary is found covering at least 25% of the frame, crop to it
+                const totalSampleArea = sampleW * sampleH;
+                const detectedArea = (maxX - minX) * (maxY - minY);
+                if (docPixels > totalSampleArea * 0.22 && detectedArea > totalSampleArea * 0.25 && maxX > minX && maxY > minY) {
+                    const scaleX = origW / sampleW;
+                    const scaleY = origH / sampleH;
+                    // Add safe 3% padding so text at page margin is never clipped
+                    const padX = Math.round((maxX - minX) * 0.03 * scaleX);
+                    const padY = Math.round((maxY - minY) * 0.03 * scaleY);
+
+                    cropX = Math.max(0, Math.round(minX * scaleX) - padX);
+                    cropY = Math.max(0, Math.round(minY * scaleY) - padY);
+                    cropW = Math.min(origW - cropX, Math.round((maxX - minX) * scaleX) + padX * 2);
+                    cropH = Math.min(origH - cropY, Math.round((maxY - minY) * scaleY) + padY * 2);
+                }
+            }
+        } catch(eCrop) {
+            console.warn("Auto-crop fallback to full frame:", eCrop);
+        }
+
+        // Step 2: Target Canvas Scaling (Max 1280px for optimal handwriting & thermal receipt clarity)
         const maxDim = 1280;
-        let w = originalW || 1200;
-        let h = originalH || 1600;
-        if (w > maxDim || h > maxDim) {
-            if (w > h) {
-                h = Math.round((h * maxDim) / w);
-                w = maxDim;
+        let targetW = cropW;
+        let targetH = cropH;
+        if (targetW > maxDim || targetH > maxDim) {
+            if (targetW > targetH) {
+                targetH = Math.round((targetH * maxDim) / targetW);
+                targetW = maxDim;
             } else {
-                w = Math.round((w * maxDim) / h);
-                h = maxDim;
+                targetW = Math.round((targetW * maxDim) / targetH);
+                targetW = maxDim;
             }
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!ctx) return null;
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        // Fill solid white background so transparent or dark margins don't corrupt OCR
+        // Solid clean white background
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillRect(0, 0, targetW, targetH);
 
-        ctx.drawImage(source, 0, 0, w, h);
+        // Draw cropped document
+        ctx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
 
-        // Export as clean JPEG at 0.82 quality
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        // Step 3: Grayscale Filter & High-Contrast Dynamic Range Enhancement
+        // Mandated: "apply a grayscale filter before sending it to the Gemini API, ensuring the model receives higher contrast inputs"
+        try {
+            const imgData = ctx.getImageData(0, 0, targetW, targetH);
+            const data = imgData.data;
+            const len = data.length;
+
+            // 1st Pass: Dynamic Range Min/Max
+            let minLum = 255;
+            let maxLum = 0;
+            for (let i = 0; i < len; i += 16) {
+                const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                if (l < minLum) minLum = l;
+                if (l > maxLum) maxLum = l;
+            }
+            const lumRange = Math.max(35, maxLum - minLum);
+
+            // 2nd Pass: Convert to High-Contrast Grayscale
+            for (let i = 0; i < len; i += 4) {
+                const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                // Linear contrast stretch
+                const stretched = ((lum - minLum) / lumRange) * 255;
+
+                // High-contrast S-curve: highlights become pure white, faint ink becomes deep black
+                let val;
+                if (stretched > 180) {
+                    val = Math.min(255, stretched + 40); // pure white paper background
+                } else if (stretched < 115) {
+                    val = Math.max(0, stretched * 0.72); // dark, crisp readable ink/print
+                } else {
+                    val = stretched;
+                }
+
+                data[i] = val;     // R
+                data[i + 1] = val; // G
+                data[i + 2] = val; // B
+                // Alpha remains 255
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+        } catch(eFilter) {
+            console.warn("Grayscale filter note:", eFilter);
+        }
+
+        // Export as clean JPEG at 0.85 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
     }
 
@@ -1186,59 +1300,44 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
     }
 
     const payload = JSON.stringify({ imageBase64: base64Data });
-    const targetUrls = [];
-
-    // 1. Direct relative endpoint (works seamlessly across all domains, subpaths, and reverse proxies)
-    targetUrls.push(endpoint);
-
-    // 2. Absolute URL with origin (for PWA standalone window contexts)
-    if (typeof window !== 'undefined' && window.location?.origin) {
-        const absUrl = `${window.location.origin}${endpoint}`;
-        if (!targetUrls.includes(absUrl)) {
-            targetUrls.push(absUrl);
-        }
-    }
-
     let lastError = null;
 
-    for (const url of targetUrls) {
-        try {
-            const controller = new AbortController();
-            // Generous 60-second timeout for full multimodal AI document inference
-            const timeoutId = setTimeout(() => controller.abort(), 60000);
+    // 1. Direct Server Endpoint (Fast 25-second timeout to prevent UI hanging)
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: payload,
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: payload,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
 
-            if (res.ok) {
-                const data = await res.json();
-                if (data && (data.success !== false)) {
-                    return data;
-                }
-                if (data && data.error) {
-                    lastError = data.error;
-                }
-            } else {
-                const errJson = await res.json().catch(() => null);
-                lastError = errJson?.error || `Server response status: ${res.status}`;
+        if (res.ok) {
+            const data = await res.json();
+            if (data && (data.success !== false)) {
+                return data;
             }
-        } catch (e) {
-            console.warn(`Local endpoint (${url}) note:`, e?.message || e);
-            lastError = e?.name === 'AbortError'
-                ? 'Server response ka waqt mukammal ho gaya (timeout). Barah-e-karam dobara koshish karein.'
-                : (e?.message || 'Server se rabta nahi ho saka.');
+            if (data && data.error) {
+                lastError = data.error;
+            }
+        } else {
+            const errJson = await res.json().catch(() => null);
+            lastError = errJson?.error || `Server status: ${res.status}`;
         }
+    } catch (e) {
+        console.warn(`Local endpoint (${endpoint}) note:`, e?.message || e);
+        lastError = e?.name === 'AbortError'
+            ? 'Server response ka waqt mukammal ho gaya (timeout). Barah-e-karam dobara koshish karein.'
+            : (e?.message || 'Server se rabta nahi ho saka.');
     }
 
-    // 3. Direct client-side Vision fallback (Guarantees scanning works even on purely static hosting if API key is provided)
+    // 2. Direct client-side Vision fallback (Guarantees scanning works across static hosting, APK, GitHub Pages & offline caches)
     if (clientPrompt) {
         try {
             const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);

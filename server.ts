@@ -331,7 +331,7 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // Comprehensive Gemini Multimodal Vision Cascade (Primary models with fresh quota + fallback models)
+  // Comprehensive Gemini Multimodal Vision Cascade (Fast models with fresh quota first)
   const models = [
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
@@ -343,25 +343,64 @@ async function generateWithVisionFallback(
     'gemini-flash-latest'
   ];
 
+  let bestParsedFallback: string | null = null;
+
   for (const modelName of models) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const config: any = {
+        responseMimeType: 'application/json'
+      };
+      if (responseSchema) {
+        config.responseSchema = responseSchema;
+      }
+      if (systemInstruction) {
+        config.systemInstruction = systemInstruction;
+      }
+
+      // Hard 9-second timeout per model so requests never hang or cause spinning UI
+      const apiCall = ai.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            inlineData: {
+              mimeType: mime || 'image/jpeg',
+              data: clean
+            }
+          },
+          {
+            text: prompt
+          }
+        ],
+        config
+      });
+
+      const timeoutCall = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error(`Model ${modelName} 9s timeout`)), 9000)
+      );
+
+      const response: any = await Promise.race([apiCall, timeoutCall]);
+
+      if (response && response.text) {
+        const parsed = extractJsonFromText(response.text);
+        if (parsed) {
+          // If items/medicines found, return immediately!
+          const hasItems = (Array.isArray(parsed) && parsed.length > 0) ||
+                           (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) ||
+                           (Array.isArray(parsed.items) && parsed.items.length > 0) ||
+                           (Array.isArray(parsed.lines) && parsed.lines.length > 0);
+          if (hasItems) {
+            return response.text;
+          }
+          if (!bestParsedFallback) {
+            bestParsedFallback = response.text;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`Vision model ${modelName} note:`, err?.message || err);
+      // If error was related to schema or config, do a lightning fast unconstrained retry
       try {
-        const config: any = {
-          responseMimeType: 'application/json'
-        };
-        // On attempt 0 try with strict schema. On attempt 1 fallback to resilient JSON mode
-        if (responseSchema && attempt === 0) {
-          config.responseSchema = responseSchema;
-        }
-        if (systemInstruction) {
-          config.systemInstruction = systemInstruction;
-        }
-
-        const effectivePrompt = attempt === 0 
-          ? prompt 
-          : `${prompt}\n\n[FORENSIC OCR SCAN]: Transcribe all visible doctor prescriptions, printed slips, thermal receipts, or packaging into JSON without refusal.`;
-
-        const response: any = await ai.models.generateContent({
+        const retryCall = ai.models.generateContent({
           model: modelName,
           contents: [
             {
@@ -371,24 +410,33 @@ async function generateWithVisionFallback(
               }
             },
             {
-              text: effectivePrompt
+              text: `${prompt}\n\nTranscribe all visible medicines/bill items strictly as JSON format without refusing.`
             }
-          ],
-          config
+          ]
         });
-
-        if (response && response.text) {
-          const parsed = extractJsonFromText(response.text);
+        const retryTimeout = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error(`Retry ${modelName} timeout`)), 6000)
+        );
+        const retryRes: any = await Promise.race([retryCall, retryTimeout]);
+        if (retryRes && retryRes.text) {
+          const parsed = extractJsonFromText(retryRes.text);
           if (parsed) {
-            return response.text;
+            const hasItems = (Array.isArray(parsed) && parsed.length > 0) ||
+                             (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) ||
+                             (Array.isArray(parsed.items) && parsed.items.length > 0);
+            if (hasItems) {
+              return retryRes.text;
+            }
+            if (!bestParsedFallback) {
+              bestParsedFallback = retryRes.text;
+            }
           }
         }
-      } catch (err: any) {
-        console.warn(`Vision model ${modelName} (attempt ${attempt + 1}) note:`, err?.message || err);
-      }
+      } catch (errRetry) {}
     }
   }
-  return null;
+
+  return bestParsedFallback;
 }
 
 // -------------------------------------------------------------
