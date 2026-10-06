@@ -331,16 +331,14 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // Comprehensive Gemini Multimodal Vision Cascade (Fast models with fresh quota first)
+  // Comprehensive Gemini Multimodal Vision Cascade (Flagship & fast models with fresh quota)
   const models = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-flash-lite-latest',
-    'gemini-3.5-flash',
-    'gemini-3.6-flash',
-    'gemini-3.1-flash-lite-preview',
     'gemini-3.8-flash',
-    'gemini-flash-latest'
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.6-flash'
   ];
 
   let bestParsedFallback: string | null = null;
@@ -357,7 +355,7 @@ async function generateWithVisionFallback(
         config.systemInstruction = systemInstruction;
       }
 
-      // Hard 9-second timeout per model so requests never hang or cause spinning UI
+      // 22-second timeout per model ensuring high-resolution phone photos finish parsing
       const apiCall = ai.models.generateContent({
         model: modelName,
         contents: [
@@ -375,7 +373,7 @@ async function generateWithVisionFallback(
       });
 
       const timeoutCall = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`Model ${modelName} 9s timeout`)), 9000)
+        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 22000)
       );
 
       const response: any = await Promise.race([apiCall, timeoutCall]);
@@ -387,7 +385,9 @@ async function generateWithVisionFallback(
           const hasItems = (Array.isArray(parsed) && parsed.length > 0) ||
                            (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) ||
                            (Array.isArray(parsed.items) && parsed.items.length > 0) ||
-                           (Array.isArray(parsed.lines) && parsed.lines.length > 0);
+                           (Array.isArray(parsed.lines) && parsed.lines.length > 0) ||
+                           (Array.isArray(parsed.drugs) && parsed.drugs.length > 0) ||
+                           (Array.isArray(parsed.prescription) && parsed.prescription.length > 0);
           if (hasItems) {
             return response.text;
           }
@@ -398,7 +398,7 @@ async function generateWithVisionFallback(
       }
     } catch (err: any) {
       console.warn(`Vision model ${modelName} note:`, err?.message || err);
-      // If error was related to schema or config, do a lightning fast unconstrained retry
+      // Lightning fast unconstrained retry without schema restriction
       try {
         const retryCall = ai.models.generateContent({
           model: modelName,
@@ -415,7 +415,7 @@ async function generateWithVisionFallback(
           ]
         });
         const retryTimeout = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error(`Retry ${modelName} timeout`)), 6000)
+          setTimeout(() => reject(new Error(`Retry ${modelName} timeout`)), 15000)
         );
         const retryRes: any = await Promise.race([retryCall, retryTimeout]);
         if (retryRes && retryRes.text) {
@@ -423,7 +423,9 @@ async function generateWithVisionFallback(
           if (parsed) {
             const hasItems = (Array.isArray(parsed) && parsed.length > 0) ||
                              (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) ||
-                             (Array.isArray(parsed.items) && parsed.items.length > 0);
+                             (Array.isArray(parsed.items) && parsed.items.length > 0) ||
+                             (Array.isArray(parsed.lines) && parsed.lines.length > 0) ||
+                             (Array.isArray(parsed.drugs) && parsed.drugs.length > 0);
             if (hasItems) {
               return retryRes.text;
             }
@@ -450,50 +452,35 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
       return;
     }
 
-    const prescriptionSystemInstruction = `You are a distinguished Pakistani Clinical Pharmacist and forensic medical handwriting OCR specialist.
-Your mission is to accurately transcribe doctor handwriting, clinic pads, hospital OPD slips, and prescription slips.
-CRITICAL MANDATES:
-1. NEVER REFUSE TO PROCESS THE IMAGE: You must NEVER generate refusal phrases like "tasveer roshni mein dubara banao", "image not clear", "dhundli hai", "unable to read", or "retake the photo". Always transcribe all visible markings and medicine lines.
-2. ZERO-HALLUCINATION ENFORCEMENT: NEVER invent or hallucinate illnesses, fevers ("bukhar"), infections, or fake medicines. ONLY transcribe what is visibly represented on this prescription under Rx or doctor notes. If no illness is written, leave treatmentSummary as "".
-3. PHARMACEUTICAL DECIPHERING: Use your comprehensive Pakistani pharmaceutical knowledge (common brand names, strengths e.g. 10mg, 20mg, 40mg, 250mg, 500mg, 625mg, 1g, and dosage forms e.g. Tab, Cap, Syp, Inj, Drop, Sachet, Inhaler, Ointment) to resolve cursive or rapid doctor handwriting.
-4. DOSAGE INSTRUCTIONS: Translate dosage directions (OD, BD, TDS, QID, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-5. If doctor or patient name is not stated on the slip, output "Doctor / Clinic Slip" and "General Patient".
-6. Return strictly valid JSON adhering to the provided schema. If no medicines can be identified on the paper, return medicines as an empty array [].
-7. MEDICINE SHORT USE: For each medicine, provide a strictly concise clinical indication in Roman Urdu ending with "kelye" without any headings, bullet points, or "AI Hint" prefixes (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki jalan kelye", "Allergy aur khujli kelye", "Khansi aur balgham kelye", "Infection ke ilaj kelye").`;
+    const prescriptionSystemInstruction = `You are a helpful pharmacy assistant reading prescription slips, clinic pads, hospital notes, and doctor handwriting.
+Read what is written on this paper naturally and extract all visible medicines.
+For each medicine:
+- name: brand or medicine name and strength written on slip
+- formula: generic salt if known
+- form: dosage form e.g. Goli (Tablet), Capsule, Sharbath (Syrup), Drops, Injection, Sachet
+- timing: dosage instructions in Roman Urdu e.g. Subah sham 1 goli (1+0+1)
+- shortUse: clinical use in Roman Urdu strictly ending with "kelye" (e.g. Bukhar aur dard kelye, Ulti kelye, Maiday ki jalan kelye, Infection ke ilaj kelye, Khansi kelye, Allergy kelye)
+Return valid JSON.`;
 
-    const prompt = `Perform thorough clinical OCR on this prescription slip.
-Carefully transcribe all prescribed medicines, strengths, dosage forms, and directions written under Rx.
-Return strict structured JSON conforming to the schema.`;
+    const prompt = `Read this prescription slip and extract all medicines written on it.
+Return structured JSON:
+{
+  "doctor": "Doctor name or clinic name if visible, else Doctor / Clinic Slip",
+  "patient": "Patient name if visible, else General Patient",
+  "treatmentSummary": "",
+  "advice": "Precautions in Roman Urdu if written",
+  "medicines": [
+    {
+      "name": "Medicine name and strength",
+      "formula": "Generic salt if visible",
+      "form": "Goli/Capsule/Syrup",
+      "timing": "Subah sham 1 goli (1+0+1)",
+      "shortUse": "Medicine use in Roman Urdu ending with kelye (e.g. Bukhar aur dard kelye, Ulti kelye)"
+    }
+  ]
+}`;
 
-    const prescriptionSchema = {
-      type: Type.OBJECT,
-      properties: {
-        doctor: { type: Type.STRING, description: 'Doctor or Clinic name from slip' },
-        patient: { type: Type.STRING, description: 'Patient name and details if visible' },
-        treatmentSummary: { type: Type.STRING, description: 'Brief diagnosis/indication if explicitly written on the slip in Roman Urdu. Return empty string if not written.' },
-        advice: { type: Type.STRING, description: 'Doctor precautions or advice in Roman Urdu if written.' },
-        medicines: {
-          type: Type.ARRAY,
-          description: 'Exhaustive list of ALL genuine medicines written on this prescription',
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING, description: 'Exact brand name and strength e.g. Augmentin 625mg' },
-              formula: { type: Type.STRING, description: 'Generic salt if known or visible' },
-              form: { type: Type.STRING, description: 'Form e.g. Goli (Tablet), Capsule, Sharbath (Syrup), Injection, Drops, Sachet' },
-              timing: { type: Type.STRING, description: 'Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)' },
-              usage: { type: Type.STRING, description: 'Usage instructions in Roman Urdu e.g. Taza paani ke sath lein' },
-              purpose: { type: Type.STRING, description: 'Specific medical reason only if clearly written. Return empty string if not written.' },
-              shortUse: { type: Type.STRING, description: 'Concise medical short use in Roman Urdu ending with "kelye" e.g. "Bukhar aur dard kelye" or "Ulti aur matli kelye"' }
-            },
-            required: ['name']
-          }
-        }
-      },
-      required: ['medicines']
-    };
-
-    const text = await generateWithVisionFallback(prompt, imageBase64, prescriptionSchema, prescriptionSystemInstruction);
+    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, prescriptionSystemInstruction);
     const parsed = text ? extractJsonFromText(text) : null;
     let normalized = normalizePrescriptionData(parsed);
 
@@ -542,46 +529,34 @@ app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const invoiceSystemInstruction = `You are a senior pharmaceutical wholesale invoice and distributor billing OCR auditor.
-Your mission is to read every medicine item row on this wholesale bill, delivery challan, credit memo, or cash receipt.
-CRITICAL MANDATES:
-1. NEVER REFUSE TO PROCESS THE BILL: Invoices may be printed on dot-matrix printers, thermal paper, POS cash register slips, or hand-written challans. Read every visible row.
-2. ZERO-HALLUCINATION ENFORCEMENT: Do NOT invent fake medicines or substitute products. Extract ONLY real items printed on the bill.
-3. TABLE COLUMNS: Extract exact brand name with strength, generic formula if visible, batch number, expiry date (standardized to YYYY-MM), pack size, quantity of packs invoiced (qty as number), and wholesale trade price / buy rate (buyRate as number).
-4. HEADER DETAILS: Extract distributor / company name from the bill header if visible. If not visible, return "".
-5. Return strictly valid JSON adhering to the schema. If no line items exist, return items as an empty array [].`;
+    const invoiceSystemInstruction = `You are a helpful pharmacy wholesale bill reader.
+Examine this invoice or receipt slip and extract all medicine line items:
+- name: medicine name and strength as printed
+- qty: quantity of packs (number)
+- buyRate: wholesale buy rate TP per pack (number)
+- batch: batch number if visible
+- expiry: expiry date if visible
+- packSize: pack size e.g. 20
+- distributor: distributor or supplier name from bill header
+Return valid JSON.`;
 
-    const prompt = `Carefully examine this wholesale medicine invoice or bill image.
-Read all medicine line items, quantities, trade prices (TP / buy rates), batch numbers, and distributor name.
-Return structured JSON with all detected items.`;
+    const prompt = `Read this wholesale bill and extract all medicine items.
+Return structured JSON:
+{
+  "distributor": "Distributor name from header if visible",
+  "items": [
+    {
+      "name": "Medicine name and strength",
+      "qty": 1,
+      "buyRate": 100,
+      "batch": "B-01",
+      "expiry": "2026-12",
+      "packSize": "20"
+    }
+  ]
+}`;
 
-    const invoiceSchema = {
-      type: Type.OBJECT,
-      properties: {
-        distributor: { type: Type.STRING, description: 'Distributor or company name from header if visible' },
-        invoiceNo: { type: Type.STRING, description: 'Invoice number if visible' },
-        items: {
-          type: Type.ARRAY,
-          description: 'All medicine line items on this bill',
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING, description: 'Medicine brand name and strength' },
-              generic: { type: Type.STRING, description: 'Generic formula if visible' },
-              batch: { type: Type.STRING, description: 'Batch number' },
-              expiry: { type: Type.STRING, description: 'Expiry date YYYY-MM' },
-              packSize: { type: Type.STRING, description: 'Pack size e.g. 20 or 10x10' },
-              qty: { type: Type.NUMBER, description: 'Invoiced quantity of packs' },
-              buyRate: { type: Type.NUMBER, description: 'Invoiced buy rate TP per pack' }
-            },
-            required: ['name']
-          }
-        }
-      },
-      required: ['items']
-    };
-
-    const text = await generateWithVisionFallback(prompt, imageBase64, invoiceSchema, invoiceSystemInstruction);
+    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, invoiceSystemInstruction);
     const parsed = text ? extractJsonFromText(text) : null;
     let items = normalizeInvoiceItems(parsed);
 

@@ -1,5 +1,5 @@
 // Digital Pharma PWA Service Worker - High Performance & Live Auto-Update
-const CACHE_NAME = 'digital-pharma-v2';
+const CACHE_NAME = 'digital-pharma-v3-fresh';
 
 self.addEventListener('install', (event) => {
   // Activate new worker immediately

@@ -876,80 +876,15 @@ window.getMedicineShortUse = getMedicineShortUse;
 export async function enhanceImageLikeCamScanner(file) {
     if (!file) throw new Error("Tasweer select nahi hui.");
 
-    // Helper: Canvas API Auto-Crop Document Area + Grayscale & High-Contrast Filter
+    // Helper: Canvas API Full Frame Natural Processing & Contrast Enhancement
     function renderEnhancedCanvas(source, originalW, originalH) {
         const origW = originalW || 1200;
         const origH = originalH || 1600;
 
-        // Step 1: Detect Document Bounding Box (Auto-Crop table / background borders)
-        let cropX = 0, cropY = 0, cropW = origW, cropH = origH;
-        try {
-            const sampleW = 280;
-            const sampleH = Math.max(160, Math.round((origH * sampleW) / origW));
-            const sampleCanvas = document.createElement('canvas');
-            sampleCanvas.width = sampleW;
-            sampleCanvas.height = sampleH;
-            const sCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
-            if (sCtx) {
-                sCtx.drawImage(source, 0, 0, sampleW, sampleH);
-                const imgData = sCtx.getImageData(0, 0, sampleW, sampleH);
-                const d = imgData.data;
-
-                // Estimate corner background luminance (average of 4 corners)
-                const cIdxs = [
-                    0,
-                    (sampleW - 1) * 4,
-                    ((sampleH - 1) * sampleW) * 4,
-                    ((sampleH - 1) * sampleW + sampleW - 1) * 4
-                ];
-                let bgLum = 0;
-                for (const idx of cIdxs) {
-                    bgLum += 0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2];
-                }
-                bgLum /= 4;
-
-                let minX = sampleW, maxX = 0, minY = sampleH, maxY = 0;
-                let docPixels = 0;
-
-                for (let y = 0; y < sampleH; y++) {
-                    for (let x = 0; x < sampleW; x++) {
-                        const i = (y * sampleW + x) * 4;
-                        const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-                        // Document paper pixel is distinctly brighter or differs from outer background
-                        if (Math.abs(lum - bgLum) > 26 || lum > 130) {
-                            if (x < minX) minX = x;
-                            if (x > maxX) maxX = x;
-                            if (y < minY) minY = y;
-                            if (y > maxY) maxY = y;
-                            docPixels++;
-                        }
-                    }
-                }
-
-                // If a coherent document boundary is found covering at least 25% of the frame, crop to it
-                const totalSampleArea = sampleW * sampleH;
-                const detectedArea = (maxX - minX) * (maxY - minY);
-                if (docPixels > totalSampleArea * 0.22 && detectedArea > totalSampleArea * 0.25 && maxX > minX && maxY > minY) {
-                    const scaleX = origW / sampleW;
-                    const scaleY = origH / sampleH;
-                    // Add safe 3% padding so text at page margin is never clipped
-                    const padX = Math.round((maxX - minX) * 0.03 * scaleX);
-                    const padY = Math.round((maxY - minY) * 0.03 * scaleY);
-
-                    cropX = Math.max(0, Math.round(minX * scaleX) - padX);
-                    cropY = Math.max(0, Math.round(minY * scaleY) - padY);
-                    cropW = Math.min(origW - cropX, Math.round((maxX - minX) * scaleX) + padX * 2);
-                    cropH = Math.min(origH - cropY, Math.round((maxY - minY) * scaleY) + padY * 2);
-                }
-            }
-        } catch(eCrop) {
-            console.warn("Auto-crop fallback to full frame:", eCrop);
-        }
-
-        // Step 2: Target Canvas Scaling (Max 1280px for optimal handwriting & thermal receipt clarity)
-        const maxDim = 1280;
-        let targetW = cropW;
-        let targetH = cropH;
+        // Preserve full document without fragile auto-crop clipping margins
+        const maxDim = 1600;
+        let targetW = origW;
+        let targetH = origH;
         if (targetW > maxDim || targetH > maxDim) {
             if (targetW > targetH) {
                 targetH = Math.round((targetH * maxDim) / targetW);
@@ -969,59 +904,44 @@ export async function enhanceImageLikeCamScanner(file) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        // Solid clean white background
+        // Clean white background
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, targetW, targetH);
 
-        // Draw cropped document
-        ctx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+        // Draw complete full image preserving all headers, margins and doctor notes
+        ctx.drawImage(source, 0, 0, origW, origH, 0, 0, targetW, targetH);
 
-        // Step 3: Grayscale Filter & High-Contrast Dynamic Range Enhancement
-        // Mandated: "apply a grayscale filter before sending it to the Gemini API, ensuring the model receives higher contrast inputs"
+        // Gentle clarity and contrast adjustment (preserves blue ink, doctor ballpoint, printed text & stamps)
         try {
             const imgData = ctx.getImageData(0, 0, targetW, targetH);
-            const data = imgData.data;
-            const len = data.length;
+            const d = imgData.data;
+            const len = d.length;
 
-            // 1st Pass: Dynamic Range Min/Max
-            let minLum = 255;
-            let maxLum = 0;
-            for (let i = 0; i < len; i += 16) {
-                const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                if (l < minLum) minLum = l;
-                if (l > maxLum) maxLum = l;
+            // Sample luminance range
+            let minL = 255, maxL = 0;
+            for (let i = 0; i < len; i += 32) {
+                const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                if (lum < minL) minL = lum;
+                if (lum > maxL) maxL = lum;
             }
-            const lumRange = Math.max(35, maxLum - minLum);
 
-            // 2nd Pass: Convert to High-Contrast Grayscale
-            for (let i = 0; i < len; i += 4) {
-                const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                // Linear contrast stretch
-                const stretched = ((lum - minLum) / lumRange) * 255;
-
-                // High-contrast S-curve: highlights become pure white, faint ink becomes deep black
-                let val;
-                if (stretched > 180) {
-                    val = Math.min(255, stretched + 40); // pure white paper background
-                } else if (stretched < 115) {
-                    val = Math.max(0, stretched * 0.72); // dark, crisp readable ink/print
-                } else {
-                    val = stretched;
+            const range = Math.max(40, maxL - minL);
+            if (range < 220) {
+                // Mild contrast boost so faint ink is clearly legible
+                const factor = 255 / range;
+                for (let i = 0; i < len; i += 4) {
+                    d[i] = Math.min(255, Math.max(0, Math.round((d[i] - minL) * factor)));
+                    d[i + 1] = Math.min(255, Math.max(0, Math.round((d[i + 1] - minL) * factor)));
+                    d[i + 2] = Math.min(255, Math.max(0, Math.round((d[i + 2] - minL) * factor)));
                 }
-
-                data[i] = val;     // R
-                data[i + 1] = val; // G
-                data[i + 2] = val; // B
-                // Alpha remains 255
+                ctx.putImageData(imgData, 0, 0);
             }
-
-            ctx.putImageData(imgData, 0, 0);
         } catch(eFilter) {
-            console.warn("Grayscale filter note:", eFilter);
+            console.warn("Clarity filter note:", eFilter);
         }
 
-        // Export as clean JPEG at 0.85 quality
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        // Export as crisp JPEG at 0.88 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
         return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
     }
 
@@ -1245,14 +1165,12 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
     const models = [
-        'gemini-3.5-flash-lite',
-        'gemini-3.1-flash-lite',
-        'gemini-flash-lite-latest',
-        'gemini-3.5-flash',
-        'gemini-3.6-flash',
-        'gemini-3.1-flash-lite-preview',
         'gemini-3.8-flash',
-        'gemini-flash-latest'
+        'gemini-flash-latest',
+        'gemini-3.1-flash-lite',
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
+        'gemini-3.6-flash'
     ];
     let lastError = null;
 
@@ -1293,6 +1211,16 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     throw new Error(lastError || 'Google AI Vision connect nahi ho saka. Barah-e-karam dobara koshish karein.');
 }
 
+// Global resilient file input trigger for mobile web & installed PWA
+window.triggerFileInput = function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    try {
+        el.value = '';
+    } catch(e) {}
+    el.click();
+};
+
 // Unified AI Caller: Seamlessly supports full-stack Node backends, GitHub Pages, Firebase Hosting, Vercel, and installed mobile PWA
 async function callAiBackend(endpoint, base64Data, clientPrompt) {
     if (!base64Data) {
@@ -1302,10 +1230,10 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
     const payload = JSON.stringify({ imageBase64: base64Data });
     let lastError = null;
 
-    // 1. Direct Server Endpoint (Fast 25-second timeout to prevent UI hanging)
+    // 1. Direct Server Endpoint (Resilient 50-second timeout for mobile networks)
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), 50000);
 
         const res = await fetch(endpoint, {
             method: 'POST',
@@ -2360,7 +2288,7 @@ window.handlePrescriptionScan = async function(event) {
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
                                             💊 ${shortUse}
                                         </span>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50/90 text-amber-900 border border-amber-200/80 shadow-2xs">
                                             🔬 ${formulaClass}
                                         </span>
                                     </div>
@@ -2420,10 +2348,9 @@ window.handlePrescriptionScan = async function(event) {
                         Agar koi dawai is slip par darj hai to list check karein ya POS Counter par search bar se direct dawai select karein.
                     </p>
                     <div class="pt-2 flex justify-center gap-2">
-                        <label class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition">
-                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Nuskha Dobara Scan Karein
-                            <input type="file" accept="image/*" class="hidden" onchange="window.handlePrescriptionScan(event)">
-                        </label>
+                        <button type="button" onclick="window.triggerFileInput('dashboard-presc-input')" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition">
+                            <i data-lucide="camera" class="w-4 h-4"></i> Nuskha Dobara Scan Karein
+                        </button>
                     </div>
                 </div>
             `;
@@ -2432,7 +2359,9 @@ window.handlePrescriptionScan = async function(event) {
         syncModalScrollLock();
         showToast('Prescription process ho gaya. Dawai list check karein.', 'info');
     } finally {
-        event.target.value = '';
+        if (event?.target) {
+            try { event.target.value = ''; } catch(e) {}
+        }
     }
 };
 
@@ -2605,7 +2534,9 @@ window.handleRealInvoiceOcr = async function(event) {
         renderAiScannedTable();
         showToast('Bill scan mukammal hua. Items check karein.', 'info');
     } finally {
-        event.target.value = '';
+        if (event?.target) {
+            try { event.target.value = ''; } catch(e) {}
+        }
     }
 };
 
@@ -2759,7 +2690,9 @@ window.handleAiMarginBillScan = async function(event) {
         container?.classList.add('hidden');
         showToast('Margin bill scan nahi ho saka, dobara koshish karein.', 'error');
     } finally {
-        event.target.value = '';
+        if (event?.target) {
+            try { event.target.value = ''; } catch(e) {}
+        }
     }
 };
 
@@ -2963,7 +2896,7 @@ window.searchMedicineForPos = function() {
                         <strong class="text-slate-800 text-xs">${m.name}</strong>
                         <span class="text-[10px] text-slate-400 block">${m.generic ? m.generic + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
                         <div class="mt-0.5">
-                            <span class="inline-flex items-center text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                            <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50/90 border border-amber-200/80 px-1.5 py-0.5 rounded">
                                 🔬 ${formulaClass}
                             </span>
                         </div>
@@ -3414,13 +3347,13 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
                                 ${stockBadge}
-                                <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-full flex items-center gap-1">
+                                <span class="px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-200/80 text-[10px] font-bold rounded-full flex items-center gap-1">
                                     <i data-lucide="package" class="w-3 h-3"></i> 📦 ${packInfo.displayText}
                                 </span>
                             </div>
                             <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
                             <div class="mt-1">
-                                <span class="inline-flex items-center text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                                <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50/90 border border-amber-200/80 px-2 py-0.5 rounded-md">
                                     🔬 ${window.getMedicineFormulaClass(m.name, m.generic)}
                                 </span>
                             </div>
@@ -3710,7 +3643,7 @@ function renderInventoryTable() {
                         <td class="p-3">
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <strong class="text-slate-900 block text-xs sm:text-sm break-words">${m.name}</strong>
-                                <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">${typeLabel}</span>
+                                <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-50 text-amber-900 border border-amber-200/80">${typeLabel}</span>
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span class="text-[10px] text-slate-500">${m.generic || 'Formula'}</span>
@@ -3764,7 +3697,7 @@ function renderInventoryTable() {
                             <div>
                                 <div class="flex items-center gap-1.5 flex-wrap">
                                     <h4 class="font-black text-sm text-slate-900 leading-tight break-words">${m.name}</h4>
-                                    <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">${typeLabel}</span>
+                                    <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-50 text-amber-900 border border-amber-200/80">${typeLabel}</span>
                                 </div>
                                 <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
                                 <div class="mt-1">

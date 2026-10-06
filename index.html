@@ -345,19 +345,12 @@
                         <p class="text-[11px] text-slate-300">Doctor prescription ya clinic slip scan karein</p>
                     </div>
                 </div>
-                <!-- Dual Button for Mobile & Installed PWA: Direct Camera + Gallery File Chooser -->
-                <div class="flex items-center gap-1.5 shrink-0">
-                    <button type="button" onclick="document.getElementById('dashboard-presc-camera').click()" class="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow transition flex items-center gap-1.5 active:scale-95" title="Camera se photo lein">
-                        <i data-lucide="camera" class="w-4 h-4"></i>
-                        <span>Camera</span>
-                    </button>
-                    <button type="button" onclick="document.getElementById('dashboard-presc-input').click()" class="bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs px-3 py-2 sm:py-2.5 rounded-xl border border-slate-700 shadow transition flex items-center gap-1.5 active:scale-95" title="Gallery ya File se upload karein">
-                        <i data-lucide="image" class="w-4 h-4"></i>
-                        <span class="hidden sm:inline">Gallery</span>
-                    </button>
-                    <input type="file" id="dashboard-presc-camera" capture="environment" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handlePrescriptionScan(event)" onclick="this.value=null">
-                    <input type="file" id="dashboard-presc-input" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handlePrescriptionScan(event)" onclick="this.value=null">
-                </div>
+                <!-- 1 Single Unified Scan Button for Camera or Gallery -->
+                <button type="button" onclick="window.triggerFileInput('dashboard-presc-input')" class="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl shadow transition shrink-0 flex items-center gap-1.5 active:scale-95" title="Camera ya Gallery se nuskha scan karein">
+                    <i data-lucide="camera" class="w-4 h-4"></i>
+                    <span>Scan Prescription</span>
+                </button>
+                <input type="file" id="dashboard-presc-input" accept="image/*" class="sr-only absolute opacity-0 -z-10" onchange="window.handlePrescriptionScan(event)">
             </div>
 
             <!-- 4 Interactive Metric Boxes: Total Medicines, Today Sale (Sale & Invest Depth), Today Customers, Low Stock Medicines -->
@@ -484,12 +477,12 @@
                         <span class="text-[10px] bg-brand-50 text-brand-700 font-bold px-2 py-0.5 rounded-full hidden sm:inline">Use Arrow keys & Enter for speed</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button type="button" onclick="document.getElementById('pos-presc-input').click()" class="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs" title="Scan Prescription / Nuskha directly to Bill">
+                        <button type="button" onclick="window.triggerFileInput('pos-presc-input')" class="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs" title="Scan Prescription / Nuskha directly to Bill">
                             <i data-lucide="scan" class="w-3.5 h-3.5 text-amber-700"></i>
                             <span class="hidden sm:inline">Scan Nuskha</span>
                             <span class="sm:hidden">Nuskha</span>
                         </button>
-                        <input type="file" id="pos-presc-input" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handlePrescriptionScan(event)" onclick="this.value=null">
+                        <input type="file" id="pos-presc-input" accept="image/*" class="sr-only absolute opacity-0 -z-10" onchange="window.handlePrescriptionScan(event)">
                         <button onclick="window.clearCartPrompt()" class="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Cart
                         </button>
@@ -511,8 +504,8 @@
                     <div class="col-span-2 md:col-span-1">
                         <span class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Selected Item:</span>
                         <strong id="pos-selected-title" class="text-xs sm:text-sm text-slate-900 truncate block font-black">Koi Select Nahi</strong>
-                        <span id="pos-selected-hint" class="hidden text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded mt-0.5 truncate block"></span>
-                        <span id="pos-selected-use-hint" class="hidden text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded mt-0.5 truncate block"></span>
+                        <span id="pos-selected-hint" class="hidden text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded mt-0.5 truncate block"></span>
+                        <span id="pos-selected-use-hint" class="hidden text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded mt-0.5 truncate block"></span>
                     </div>
                     <div>
                         <span class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Stock Available:</span>
@@ -627,18 +620,11 @@
                     </div>
                     <h2 class="font-bold text-sm sm:text-base tracking-wide">Wholesale Bill AI Scanner</h2>
                 </div>
-                <div class="flex items-center gap-1.5 shrink-0">
-                    <button type="button" onclick="document.getElementById('inv-bill-camera').click()" class="bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs px-3 sm:px-3.5 py-2 rounded-xl shadow transition flex items-center gap-1.5 active:scale-95" title="Camera se bill photo lein">
-                        <i data-lucide="camera" class="w-4 h-4"></i>
-                        <span>Camera</span>
-                    </button>
-                    <button type="button" onclick="document.getElementById('inv-bill-file').click()" class="bg-white/10 hover:bg-white/20 text-white font-bold text-xs px-3 py-2 rounded-xl border border-white/20 shadow transition flex items-center gap-1.5 active:scale-95" title="Gallery ya File se upload karein">
-                        <i data-lucide="image" class="w-4 h-4"></i>
-                        <span class="hidden sm:inline">Gallery</span>
-                    </button>
-                    <input type="file" id="inv-bill-camera" capture="environment" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handleRealInvoiceOcr(event)" onclick="this.value=null">
-                    <input type="file" id="inv-bill-file" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handleRealInvoiceOcr(event)" onclick="this.value=null">
-                </div>
+                <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="bg-white hover:bg-emerald-50 text-emerald-950 font-black text-xs px-3.5 py-2 rounded-xl shadow transition shrink-0 flex items-center gap-1.5 active:scale-95" title="Camera ya Gallery se bill scan karein">
+                    <i data-lucide="camera" class="w-4 h-4 text-emerald-700"></i>
+                    <span>Scan Bill</span>
+                </button>
+                <input type="file" id="inv-bill-file" accept="image/*" class="sr-only absolute opacity-0 -z-10" onchange="window.handleRealInvoiceOcr(event)">
             </div>
 
             <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row gap-3 justify-between items-center">
@@ -870,18 +856,11 @@
                         </div>
                         <h2 class="font-bold text-sm sm:text-base tracking-wide">Trade Margin & Profit % AI Auditor</h2>
                     </div>
-                    <div class="flex items-center gap-1.5 shrink-0">
-                        <button type="button" onclick="document.getElementById('margin-bill-camera').click()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-3 sm:px-3.5 py-2 rounded-xl shadow transition flex items-center gap-1.5 active:scale-95" title="Camera se bill photo lein">
-                            <i data-lucide="camera" class="w-4 h-4"></i>
-                            <span>Camera</span>
-                        </button>
-                        <button type="button" onclick="document.getElementById('margin-bill-file').click()" class="bg-white/10 hover:bg-white/20 text-white font-bold text-xs px-3 py-2 rounded-xl border border-white/20 shadow transition flex items-center gap-1.5 active:scale-95" title="Gallery ya File se upload karein">
-                            <i data-lucide="image" class="w-4 h-4"></i>
-                            <span class="hidden sm:inline">Gallery</span>
-                        </button>
-                        <input type="file" id="margin-bill-camera" capture="environment" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handleAiMarginBillScan(event)" onclick="this.value=null">
-                        <input type="file" id="margin-bill-file" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handleAiMarginBillScan(event)" onclick="this.value=null">
-                    </div>
+                    <button type="button" onclick="window.triggerFileInput('margin-bill-file')" class="bg-white hover:bg-amber-50 text-amber-950 font-black text-xs px-3.5 py-2 rounded-xl shadow transition shrink-0 flex items-center gap-1.5 active:scale-95" title="Camera ya Gallery se bill scan karein">
+                        <i data-lucide="camera" class="w-4 h-4 text-amber-700"></i>
+                        <span>Scan Bill</span>
+                    </button>
+                    <input type="file" id="margin-bill-file" accept="image/*" class="sr-only absolute opacity-0 -z-10" onchange="window.handleAiMarginBillScan(event)">
                 </div>
 
                 <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
@@ -1352,11 +1331,11 @@
             <div class="flex items-center justify-between border-b pb-2">
                 <h3 id="medicine-modal-title" class="font-bold text-slate-800 text-xs sm:text-sm">Nayi Medicine Shamil Karein</h3>
                 <div class="flex items-center gap-2">
-                    <button type="button" onclick="document.getElementById('pack-scan-input').click()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition active:scale-95 shadow-xs" title="Camera se medicine box / strip / pack scan karein">
+                    <button type="button" onclick="window.triggerFileInput('pack-scan-input')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition active:scale-95 shadow-xs" title="Camera se medicine box / strip / pack scan karein">
                         <i data-lucide="camera" class="w-3.5 h-3.5 text-emerald-700"></i>
                         <span>AI Scan Dabba</span>
                     </button>
-                    <input type="file" id="pack-scan-input" accept="image/*" class="sr-only opacity-0 absolute w-px h-px pointer-events-none" onchange="window.handleMedicinePackagingScan(event)" onclick="this.value=null">
+                    <input type="file" id="pack-scan-input" accept="image/*" class="sr-only absolute opacity-0 -z-10" onchange="window.handleMedicinePackagingScan(event)">
                     <button onclick="window.closeMedicineModal()" class="text-slate-400 hover:text-slate-600 p-1">
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
