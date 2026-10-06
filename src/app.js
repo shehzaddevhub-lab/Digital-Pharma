@@ -625,91 +625,231 @@ export function cleanShortUse(text) {
 }
 window.cleanShortUse = cleanShortUse;
 
+// =========================================================================
+// PHARMACOLOGICAL FORMULA CLASS DICTIONARY (For Search Bar & Inventory)
+// User Requirement: Search bar mn medicine use ki jga formula ki class show ho (Antihistamine, PPI, NSAID, Antibiotic etc.)
+// =========================================================================
+export function getMedicineFormulaClass(name, generic) {
+    const combined = `${name || ''} ${generic || ''}`.toLowerCase();
+
+    // Analgesics & Anti-inflammatory
+    if (/paracetamol|panadol|calpol|febrol|disprol/i.test(combined)) return 'Analgesic & Antipyretic';
+    if (/brufen|ibuprofen|fenac|diclofenac|voltral|caflam|ponstan|mefenamic|flurbiprofen|naproxen|piroxicam|ketorolac|meloxicam|celecoxib|etoricoxib|nsaid/i.test(combined)) return 'NSAID (Pain/Inflammation)';
+    if (/tramadol|tramal|nalbuphine/i.test(combined)) return 'Opioid Analgesic';
+    if (/aspirin|disprin|loprin|ascard|clopidogrel|lowplat|plavix/i.test(combined)) return 'Antiplatelet (Blood Thinner)';
+
+    // Gastrointestinal & Acid Suppression
+    if (/prazole|risek|nexum|losec|omeprazole|esomeprazole|pantoprazole|rabeprazole|zopent/i.test(combined)) return 'PPI (Proton Pump Inhibitor)';
+    if (/tidine|famotidine|ranitidine/i.test(combined)) return 'H2 Receptor Antagonist';
+    if (/gaviscon|mucaine|antacid|alginate|hydrotalcite/i.test(combined)) return 'Antacid & Anti-reflux';
+    if (/domperidone|motilium|metoclopramide|maxolon|itopride/i.test(combined)) return 'Prokinetic (Antiemetic)';
+    if (/dimenhydrinate|gravinate|ondansetron|onsett/i.test(combined)) return 'Antiemetic (Anti-vomiting)';
+    if (/hyoscine|buscopan|drotaverine|no-spa|spasler|mebeverine|colofac/i.test(combined)) return 'Antispasmodic (Anti-cramp)';
+    if (/loperamide|imodium|lopamide/i.test(combined)) return 'Antidiarrheal';
+    if (/lactulose|duphalac|ezilax|skilax|bisacodyl|senna/i.test(combined)) return 'Laxative (Constipation)';
+    if (/metronidazole|flagyl|entamizole|tinidazole/i.test(combined)) return 'Nitroimidazole (Antiprotozoal)';
+
+    // Antibiotics & Anti-infectives
+    if (/amoxicillin|augmentin|amoxil|co-amoxiclav|curam|ampicillin|penicillin/i.test(combined)) return 'Penicillin Antibiotic';
+    if (/cefixime|cefspan|caricef|ceftriaxone|rocephin|cephradine|velosef|cefuroxime|cef/i.test(combined)) return 'Cephalosporin Antibiotic';
+    if (/ciprofloxacin|ciproxin|novidat|levofloxacin|leflox|cravit|moxifloxacin|avelox/i.test(combined)) return 'Fluoroquinolone Antibiotic';
+    if (/azithromycin|azomax|zithro|clarithromycin|klaricid|claritek|erythromycin/i.test(combined)) return 'Macrolide Antibiotic';
+    if (/doxycycline|vibramycin|tetracycline/i.test(combined)) return 'Tetracycline Antibiotic';
+    if (/meropenem|imipenem/i.test(combined)) return 'Carbapenem Antibiotic';
+
+    // Allergy, Respiratory & ENT
+    if (/cetirizine|rigix|zyrtec|loratadine|softin|fexofenadine|telfast|ebastine|kestine|levocetirizine|xyzal|antihistamine/i.test(combined)) return 'Antihistamine (Antiallergy)';
+    if (/pseudoephedrine|arinac|sinutab|actifed|phenylephrine/i.test(combined)) return 'Sympathomimetic Decongestant';
+    if (/salbutamol|ventolin|formoterol|salmeterol/i.test(combined)) return 'Beta-2 Agonist (Bronchodilator)';
+    if (/montelukast|myteka|montiget/i.test(combined)) return 'Leukotriene Receptor Antagonist';
+    if (/dextromethorphan|sancos|corex|pulmonol/i.test(combined)) return 'Antitussive (Cough Suppressant)';
+    if (/ivy leaf|prospan|hederacol|ammonium|acefylline|theophylline|somophyllin/i.test(combined)) return 'Expectorant / Bronchodilator';
+
+    // Cardiovascular, BP & Lipids
+    if (/amlodipine|norvasc|amcard|nifedipine|diltiazem|verapamil/i.test(combined)) return 'Calcium Channel Blocker (CCB)';
+    if (/bisoprolol|concor|atenolol|tenormin|metoprolol|carvedilol/i.test(combined)) return 'Beta Blocker (Antihypertensive)';
+    if (/losartan|eziday|valsartan|diovan|candesartan|telmisartan/i.test(combined)) return 'ARB (Angiotensin Blocker)';
+    if (/captopril|capoten|lisinopril|zestril|enalapril/i.test(combined)) return 'ACE Inhibitor (Antihypertensive)';
+    if (/atorvastatin|lipiget|lipitor|rosuvastatin|rovista|x-plat|simvastatin/i.test(combined)) return 'Statin (Lipid-Lowering)';
+    if (/furosemide|lasix|spironolactone|aldactone|hydrochlorothiazide/i.test(combined)) return 'Diuretic (Water Pill)';
+
+    // Diabetes / Endocrine
+    if (/metformin|glucophage|neodipar/i.test(combined)) return 'Biguanide (Oral Antidiabetic)';
+    if (/glimepiride|getryl|amaryl|gliclazide|diamicron/i.test(combined)) return 'Sulfonylurea (Antidiabetic)';
+    if (/sitagliptin|januvia|vildagliptin|galvus|linagliptin/i.test(combined)) return 'DPP-4 Inhibitor (Antidiabetic)';
+    if (/empagliflozin|jardiance|dapagliflozin/i.test(combined)) return 'SGLT-2 Inhibitor (Antidiabetic)';
+    if (/insulin|mixtard|lantus|humulin|humalog/i.test(combined)) return 'Insulin (Antidiabetic Hormone)';
+    if (/thyroxine|levothyroxine|thyronorm/i.test(combined)) return 'Thyroid Hormone';
+
+    // Steroids, Skin & Antifungal
+    if (/hydrocortisone|prednisolone|dexamethasone|betamethasone|betnovate|dermovate/i.test(combined)) return 'Corticosteroid (Anti-inflammatory)';
+    if (/clotrimazole|canesten|miconazole|daktarin|fluconazole|diflucan|terbinafine/i.test(combined)) return 'Azole Antifungal';
+    if (/polymyxin|polyfax|fucidin|mupirocin/i.test(combined)) return 'Topical Antibacterial';
+
+    // Vitamins & Minerals
+    if (/calcium|cac 1000|osnate|calcee|vitamin d|indrop/i.test(combined)) return 'Calcium & Vitamin D';
+    if (/b-complex|neurobion|methycobal|mecobalamin|surbex/i.test(combined)) return 'Vitamin B Complex (Neurotropic)';
+    if (/iron|fefol|iberet|folic acid/i.test(combined)) return 'Hematinic (Iron & Folic Acid)';
+    if (/multivitamin|zinc|vitamin c|cecon/i.test(combined)) return 'Multivitamin & Mineral';
+
+    // CNS / Neurological
+    if (/alprazolam|xanax|diazepam|valium|bromazepam|lexotanil|clonazepam/i.test(combined)) return 'Benzodiazepine (Anxiolytic)';
+    if (/escitalopram|sertraline|fluoxetine|paroxetine/i.test(combined)) return 'SSRI (Antidepressant)';
+
+    if (generic && generic.trim().length > 2) {
+        return `${generic.trim().split(/\s+/).slice(0, 3).join(' ')} (Compound)`;
+    }
+    return 'Active Pharmaceutical Formula';
+}
+window.getMedicineFormulaClass = getMedicineFormulaClass;
+
+// =========================================================================
+// PRESCRIPTION MEDICINE USE IN ROMAN URDU (Ending with "... kelye")
+// User Requirement: Prescription me es trh likha ho ...... Kelye like ulti kelye, bukhar kelye etc
+// =========================================================================
+export function getPrescriptionShortUse(name, generic, existingPurpose) {
+    if (existingPurpose && typeof existingPurpose === 'string' && existingPurpose.trim().length > 2) {
+        let p = existingPurpose.trim().replace(/^(ai hint|ai|hint|purpose|use)[\s:–—-]*/gi, '').trim();
+        p = p.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').trim();
+        p = p.replace(/[\s\-_]*(kelye|ke liye|k liye)[\s\-_]*$/i, '').trim();
+        if (p.length > 1 && !/^(ilaj|dawai|medicine|n\/a)$/i.test(p)) {
+            const words = p.split(/\s+/).filter(Boolean).slice(0, 3);
+            return `${words.join(' ')} kelye`;
+        }
+    }
+
+    const combined = `${name || ''} ${generic || ''}`.toLowerCase();
+
+    // High accuracy symptom & indication mappings strictly ending with "kelye"
+    if (/panadol|paracetamol|calpol|febrol|disprol/i.test(combined)) return 'Bukhar aur dard kelye';
+    if (/gravinate|dimenhydrinate|vomilux|motilium|domperidone|maxolon/i.test(combined)) return 'Ulti aur matli kelye';
+    if (/brufen|ibuprofen|profen/i.test(combined)) return 'Dard aur sozish kelye';
+    if (/ponstan|mefenamic/i.test(combined)) return 'Daant aur dard kelye';
+    if (/risek|omeprazole|omega|losec/i.test(combined)) return 'Maiday ki jalan kelye';
+    if (/nexum|esomeprazole|ezaday|eso\b|pantoprazole|zopent/i.test(combined)) return 'Tezabiyat aur ulcer kelye';
+    if (/flagyl|metronidazole/i.test(combined)) return 'Pait kharabi kelye';
+    if (/entamizole/i.test(combined)) return 'Pait ke maror kelye';
+    if (/imodium|loperamide/i.test(combined)) return 'Dast aur motion kelye';
+    if (/spasler|no-spa|buscopan/i.test(combined)) return 'Pait ke dard kelye';
+    if (/arinac|sinus|panadol cf|actifed/i.test(combined)) return 'Nazla aur zukam kelye';
+    if (/rigix|zyrtec|softin|cetirizine|loratadine|kestine|fexofenadine/i.test(combined)) return 'Allergy aur khujli kelye';
+    if (/hydryllin|pulmonol|acefyl|sancos|corex/i.test(combined)) return 'Khansi aur balgham kelye';
+    if (/ventolin|salbutamol|myteka|montiget/i.test(combined)) return 'Dama aur saans kelye';
+    if (/augmentin|amoxil|curam|klamoks|amoxicillin/i.test(combined)) return 'Infection ke ilaj kelye';
+    if (/cefspan|caricef|cefixime/i.test(combined)) return 'Miyadi bukhar kelye';
+    if (/ciproxin|novidat|ciprofloxacin|leflox|cravit/i.test(combined)) return 'Bacterial infection kelye';
+    if (/azomax|zithro|azithromycin|klaricid/i.test(combined)) return 'Gale ki kharash kelye';
+    if (/glucophage|neodipar|metformin|getryl|amaryl/i.test(combined)) return 'Sugar control kelye';
+    if (/concor|bisoprolol|norvasc|amlodipine|eziday/i.test(combined)) return 'Blood pressure kelye';
+    if (/lipitor|lipiget|atorvastatin|rovista/i.test(combined)) return 'Cholesterol control kelye';
+    if (/disprin|aspirin|ascard|loprin/i.test(combined)) return 'Khoon patla karne kelye';
+    if (/surbex z|sangobion|neurobion|methycobal/i.test(combined)) return 'Taqat aur aasaab kelye';
+    if (/cac 1000|calcium|osnate/i.test(combined)) return 'Haddiyon ki taqat kelye';
+    if (/fefol|iberet|folic acid/i.test(combined)) return 'Khoon ki kami kelye';
+    if (/polyfax|betnovate|fucidin/i.test(combined)) return 'Zakham aur jild kelye';
+    if (/canesten|clotrimazole|daktarin/i.test(combined)) return 'Fungal infection kelye';
+    if (/duphalac|lactulose|ezilax/i.test(combined)) return 'Qabz door karne kelye';
+    if (/gaviscon|mucaine/i.test(combined)) return 'Seene ki jalan kelye';
+    if (/tears naturale|refresh/i.test(combined)) return 'Aankhon ki jalan kelye';
+
+    // Suffix rules
+    if (/prazole/i.test(combined)) return 'Maiday ki jalan kelye';
+    if (/cillin|oxacin|mycin|cefa|cefi/i.test(combined)) return 'Infection ke ilaj kelye';
+    if (/tirizine|tadine/i.test(combined)) return 'Allergy aur khujli kelye';
+    if (/fenac|profen/i.test(combined)) return 'Dard aur sozish kelye';
+    if (/formin|gliptin/i.test(combined)) return 'Sugar control kelye';
+    if (/olol|sartan|dipine/i.test(combined)) return 'Blood pressure kelye';
+    if (/statin/i.test(combined)) return 'Cholesterol control kelye';
+
+    return 'Dawai ke istemal kelye';
+}
+window.getPrescriptionShortUse = getPrescriptionShortUse;
+
 // AI Clinical Pharmacy Knowledge Base for Instant Medicine Indications & Short Uses (Strict 3 to 4 Words)
 const MEDICINE_USE_HINTS = [
     // Pain, Fever & Inflammation
-    { keys: ['panadol', 'paracetamol', 'calpol', 'disprol', 'febrol'], use: 'Dard aur Bukhar' },
-    { keys: ['brufen', 'ibuprofen', 'profen'], use: 'Dard aur Sozish' },
-    { keys: ['dispirin', 'aspirin', 'loprin', 'ascard'], use: 'Khoon Patla, Dard' },
-    { keys: ['caflam', 'diclofenac', 'voltral', 'voren', 'dicloran'], use: 'Shadeed Jodon ka Dard' },
-    { keys: ['ponstan', 'mefenamic'], use: 'Dard aur Daant Dard' },
-    { keys: ['tramal', 'tramadol'], use: 'Shadeed Dard rokna' },
-    { keys: ['toradol', 'ketorolac'], use: 'Shadeed Zakham Dard' },
-    { keys: ['feldene', 'piroxicam'], use: 'Jodon Pathon Dard' },
-    { keys: ['ansaid', 'flurbiprofen'], use: 'Galay ki Kharash, Dard' },
-    { keys: ['synflex', 'naproxen'], use: 'Jodon Haddian Dard' },
+    { keys: ['panadol', 'paracetamol', 'calpol', 'disprol', 'febrol'], use: 'Bukhar aur dard kelye' },
+    { keys: ['brufen', 'ibuprofen', 'profen'], use: 'Dard aur sozish kelye' },
+    { keys: ['dispirin', 'aspirin', 'loprin', 'ascard'], use: 'Khoon patla karne kelye' },
+    { keys: ['caflam', 'diclofenac', 'voltral', 'voren', 'dicloran'], use: 'Jodon ke dard kelye' },
+    { keys: ['ponstan', 'mefenamic'], use: 'Daant aur dard kelye' },
+    { keys: ['tramal', 'tramadol'], use: 'Shadeed dard kelye' },
+    { keys: ['toradol', 'ketorolac'], use: 'Zakham ke dard kelye' },
+    { keys: ['feldene', 'piroxicam'], use: 'Jodon pathon dard kelye' },
+    { keys: ['ansaid', 'flurbiprofen'], use: 'Gale ki kharash kelye' },
+    { keys: ['synflex', 'naproxen'], use: 'Haddiyon ke dard kelye' },
 
     // Stomach, Acidity, Gas & Digestion
-    { keys: ['risek', 'omeprazole', 'omega'], use: 'Maiday ki Tezabiyat, Jalan' },
-    { keys: ['nexum', 'esomeprazole', 'esita'], use: 'Maida, Acid Reflux' },
-    { keys: ['zopent', 'pantoprazole', 'pantra'], use: 'Maiday ka Zakham, Tezabiyat' },
-    { keys: ['pariet', 'rabeprazole'], use: 'Seene ki Jalan, Maida' },
-    { keys: ['gaviscon', 'mucaine', 'antacid', 'famotidine'], use: 'Seene Jalan, Badhazmi' },
-    { keys: ['flagyl', 'metronidazole'], use: 'Pait Kharabi, Anto Infection' },
-    { keys: ['entamizole', 'diloxanide'], use: 'Pait Maror, Dast' },
-    { keys: ['imodium', 'loperamide'], use: 'Shadeed Motion rokna' },
-    { keys: ['gravinate', 'dimenhydrinate'], use: 'Ulti aur Safar Chakkar' },
-    { keys: ['maxolon', 'metoclopramide'], use: 'Matli aur Ulti rokna' },
-    { keys: ['motilium', 'domperidone', 'motilat'], use: 'Badhazmi aur Matli' },
-    { keys: ['spasler', 'no-spa', 'drotaverine', 'buscopan', 'hyoscine'], use: 'Pait ke Maror, Dard' },
-    { keys: ['duphalac', 'lactulose', 'ezilax'], use: 'Qabz Kusha (Constipation)' },
-    { keys: ['ors', 'hydralyte'], use: 'Namkiyat aur Paani kami' },
+    { keys: ['risek', 'omeprazole', 'omega'], use: 'Maiday ki jalan kelye' },
+    { keys: ['nexum', 'esomeprazole', 'esita'], use: 'Tezabiyat aur ulcer kelye' },
+    { keys: ['zopent', 'pantoprazole', 'pantra'], use: 'Maiday ke zakham kelye' },
+    { keys: ['pariet', 'rabeprazole'], use: 'Seene ki jalan kelye' },
+    { keys: ['gaviscon', 'mucaine', 'antacid', 'famotidine'], use: 'Seene ki jalan kelye' },
+    { keys: ['flagyl', 'metronidazole'], use: 'Pait kharabi kelye' },
+    { keys: ['entamizole', 'diloxanide'], use: 'Pait ke maror kelye' },
+    { keys: ['imodium', 'loperamide'], use: 'Dast aur motion kelye' },
+    { keys: ['gravinate', 'dimenhydrinate'], use: 'Ulti aur matli kelye' },
+    { keys: ['maxolon', 'metoclopramide'], use: 'Matli aur ulti kelye' },
+    { keys: ['motilium', 'domperidone', 'motilat'], use: 'Badhazmi aur ulti kelye' },
+    { keys: ['spasler', 'no-spa', 'drotaverine', 'buscopan', 'hyoscine'], use: 'Pait ke maror kelye' },
+    { keys: ['duphalac', 'lactulose', 'ezilax'], use: 'Qabz door karne kelye' },
+    { keys: ['ors', 'hydralyte'], use: 'Paani ki kami kelye' },
 
     // Antibiotics & Anti-infectives
-    { keys: ['augmentin', 'co-amoxiclav', 'curam', 'calamox'], use: 'Antibiotic, Har Qism Infection' },
-    { keys: ['amoxil', 'amoxicillin'], use: 'Antibiotic, Galla aur Zakham' },
-    { keys: ['cefixime', 'cefspan', 'caricef', 'maxima'], use: 'Antibiotic, Bukhar aur Galla' },
-    { keys: ['azomax', 'azithromycin', 'zithro', 'macrozit'], use: 'Antibiotic, Galla aur Saans' },
-    { keys: ['ciproxin', 'ciprofloxacin', 'mercip'], use: 'Antibiotic, Peshab aur Pait' },
-    { keys: ['leflox', 'levofloxacin', 'cravit'], use: 'Antibiotic, Phephray aur Saans' },
-    { keys: ['klaricid', 'clarithromycin', 'claritek'], use: 'Antibiotic, Saans aur Galla' },
-    { keys: ['vibramycin', 'doxycycline'], use: 'Antibiotic, Skin aur Chhaati' },
-    { keys: ['rocephin', 'ceftriaxone', 'epicephin'], use: 'Antibiotic, Shadeed Infection' },
+    { keys: ['augmentin', 'co-amoxiclav', 'curam', 'calamox'], use: 'Infection ke ilaj kelye' },
+    { keys: ['amoxil', 'amoxicillin'], use: 'Gale ke infection kelye' },
+    { keys: ['cefixime', 'cefspan', 'caricef', 'maxima'], use: 'Miyadi bukhar kelye' },
+    { keys: ['azomax', 'azithromycin', 'zithro', 'macrozit'], use: 'Gale aur sans kelye' },
+    { keys: ['ciproxin', 'ciprofloxacin', 'mercip'], use: 'Peshab ke infection kelye' },
+    { keys: ['leflox', 'levofloxacin', 'cravit'], use: 'Phephron ke infection kelye' },
+    { keys: ['klaricid', 'clarithromycin', 'claritek'], use: 'Sans ke infection kelye' },
+    { keys: ['vibramycin', 'doxycycline'], use: 'Jild ke infection kelye' },
+    { keys: ['rocephin', 'ceftriaxone', 'epicephin'], use: 'Shadeed infection kelye' },
 
     // Cold, Cough, Allergy & Respiratory
-    { keys: ['arinac', 'pseudoephedrine', 'sinutab', 'actifed'], use: 'Nazla, Zukam, Band Naak' },
-    { keys: ['rigix', 'cetirizine', 'zyrtec'], use: 'Allergy, Chheenkein aur Khujli' },
-    { keys: ['softin', 'loratadine'], use: 'Allergy aur Nazla Zukam' },
-    { keys: ['telfast', 'fexofenadine', 'fexit'], use: 'Mausami Allergy, Chheenkein' },
-    { keys: ['xyzal', 'levocetirizine', 't-day'], use: 'Shadeed Allergy aur Naak' },
-    { keys: ['myteka', 'montelukast', 'montiget'], use: 'Dama aur Saans Allergy' },
-    { keys: ['ventolin', 'salbutamol'], use: 'Saans Phoolna, Dama' },
-    { keys: ['sancos', 'corex', 'pulmonol', 'dextromethorphan'], use: 'Khushk Khansi rokna' },
-    { keys: ['prospan', 'hederacol', 'ivy leaf'], use: 'Balghami Khansi nikalna' },
-    { keys: ['somophyllin', 'acefylline'], use: 'Saans Nali kholna' },
+    { keys: ['arinac', 'pseudoephedrine', 'sinutab', 'actifed'], use: 'Nazla aur zukam kelye' },
+    { keys: ['rigix', 'cetirizine', 'zyrtec'], use: 'Allergy aur khujli kelye' },
+    { keys: ['softin', 'loratadine'], use: 'Allergy aur zukam kelye' },
+    { keys: ['telfast', 'fexofenadine', 'fexit'], use: 'Mausami allergy kelye' },
+    { keys: ['xyzal', 'levocetirizine', 't-day'], use: 'Shadeed allergy kelye' },
+    { keys: ['myteka', 'montelukast', 'montiget'], use: 'Dama aur allergy kelye' },
+    { keys: ['ventolin', 'salbutamol'], use: 'Dama aur saans kelye' },
+    { keys: ['sancos', 'corex', 'pulmonol', 'dextromethorphan'], use: 'Khushk khansi kelye' },
+    { keys: ['prospan', 'hederacol', 'ivy leaf'], use: 'Balghami khansi kelye' },
+    { keys: ['somophyllin', 'acefylline'], use: 'Saans ki nali kelye' },
 
     // Blood Pressure, Heart & Cholesterol
-    { keys: ['norvasc', 'amlodipine', 'amcard'], use: 'High Blood Pressure' },
-    { keys: ['concor', 'bisoprolol', 'bipress'], use: 'Blood Pressure, Dil Dhadkan' },
-    { keys: ['eziday', 'losartan'], use: 'Blood Pressure, Gurday Hifazat' },
-    { keys: ['tenormin', 'atenolol'], use: 'High Blood Pressure Control' },
-    { keys: ['diovan', 'valsartan'], use: 'Blood Pressure Control' },
-    { keys: ['capoten', 'captopril'], use: 'Emergency Blood Pressure' },
-    { keys: ['lipiget', 'atorvastatin', 'lipitor'], use: 'Cholesterol kam karna' },
-    { keys: ['rovista', 'rosuvastatin', 'x-plat'], use: 'Cholesterol, Dil Hifazat' },
-    { keys: ['lowplat', 'clopidogrel', 'plavix'], use: 'Dil Hifazat, Khoon Patla' },
+    { keys: ['norvasc', 'amlodipine', 'amcard'], use: 'Blood pressure kelye' },
+    { keys: ['concor', 'bisoprolol', 'bipress'], use: 'Dil ki dharkan kelye' },
+    { keys: ['eziday', 'losartan'], use: 'Blood pressure kelye' },
+    { keys: ['tenormin', 'atenolol'], use: 'Blood pressure kelye' },
+    { keys: ['diovan', 'valsartan'], use: 'Blood pressure kelye' },
+    { keys: ['capoten', 'captopril'], use: 'Emergency BP kelye' },
+    { keys: ['lipiget', 'atorvastatin', 'lipitor'], use: 'Cholesterol kam kelye' },
+    { keys: ['rovista', 'rosuvastatin', 'x-plat'], use: 'Cholesterol control kelye' },
+    { keys: ['lowplat', 'clopidogrel', 'plavix'], use: 'Dil ki hifazat kelye' },
 
     // Diabetes / Sugar
-    { keys: ['glucophage', 'metformin', 'neodipar'], use: 'Sugar (Diabetes) Control' },
-    { keys: ['getryl', 'glimepiride', 'amaryl'], use: 'Sugar Miqdaar Normal rakhna' },
-    { keys: ['januvia', 'sitagliptin', 'zita'], use: 'Sugar Control (Diabetes)' },
-    { keys: ['jardiance', 'empagliflozin'], use: 'Sugar aur Gurday Hifazat' },
-    { keys: ['mixtard', 'insulin', 'humulin'], use: 'Sugar Control Insulin' },
+    { keys: ['glucophage', 'metformin', 'neodipar'], use: 'Sugar control kelye' },
+    { keys: ['getryl', 'glimepiride', 'amaryl'], use: 'Sugar normal kelye' },
+    { keys: ['januvia', 'sitagliptin', 'zita'], use: 'Sugar control kelye' },
+    { keys: ['jardiance', 'empagliflozin'], use: 'Sugar aur gurday kelye' },
+    { keys: ['mixtard', 'insulin', 'humulin'], use: 'Sugar control kelye' },
 
     // Vitamins, Blood & Minerals
-    { keys: ['cac-1000', 'calcium', 'osnate-d'], use: 'Haddian aur Calcium' },
-    { keys: ['indrop-d', 'sunny-d', 'vitamin d'], use: 'Vitamin D ki Kami' },
-    { keys: ['surbex-z', 'neurobion', 'b-complex'], use: 'Aasabi Kamzori, Taqat' },
-    { keys: ['folvite', 'folic acid'], use: 'Khoon Kami, Folic Acid' },
-    { keys: ['fefol-vit', 'iberet-folic', 'iron'], use: 'Khoon (Hemoglobin) barhana' },
-    { keys: ['methycobal', 'mecobalamin'], use: 'Pathay aur Aasabi Dard' },
+    { keys: ['cac-1000', 'calcium', 'osnate-d'], use: 'Haddiyon ki taqat kelye' },
+    { keys: ['indrop-d', 'sunny-d', 'vitamin d'], use: 'Vitamin D kami kelye' },
+    { keys: ['surbex-z', 'neurobion', 'b-complex'], use: 'Aasabi taqat kelye' },
+    { keys: ['folvite', 'folic acid'], use: 'Khoon ki kami kelye' },
+    { keys: ['fefol-vit', 'iberet-folic', 'iron'], use: 'Khoon barhane kelye' },
+    { keys: ['methycobal', 'mecobalamin'], use: 'Pathon ke dard kelye' },
 
     // Skin & Eyes
-    { keys: ['polyfax', 'polymyxin'], use: 'Zakham, Skin / Aankh Malham' },
-    { keys: ['betnovate', 'dermovate', 'betamethasone'], use: 'Jild ki Kharish, Sozish' },
-    { keys: ['fucidin', 'hydrocortisone'], use: 'Zakham Bacterial Infection' },
-    { keys: ['canesten', 'clotrimazole'], use: 'Fungal Infection, Daad' },
-    { keys: ['vigamox', 'moxifloxacin'], use: 'Aankhon Lalgi, Infection' }
+    { keys: ['polyfax', 'polymyxin'], use: 'Zakham aur jild kelye' },
+    { keys: ['betnovate', 'dermovate', 'betamethasone'], use: 'Jild ki kharish kelye' },
+    { keys: ['fucidin', 'hydrocortisone'], use: 'Jild ke infection kelye' },
+    { keys: ['canesten', 'clotrimazole'], use: 'Fungal infection kelye' },
+    { keys: ['vigamox', 'moxifloxacin'], use: 'Aankhon ke infection kelye' }
 ];
 
 export function getMedicineShortUse(name, generic, existingPurpose) {
@@ -723,36 +863,24 @@ export function getMedicineShortUse(name, generic, existingPurpose) {
         }
     }
     // Context-sensitive fallback (strict 3-4 words)
-    if (combined.includes('syp') || combined.includes('syrup')) return 'Peene ka Sharbath';
-    if (combined.includes('inj') || combined.includes('injection')) return 'Teeqa (Injection)';
-    if (combined.includes('drop')) return 'Qatray (Drops)';
-    if (combined.includes('cream') || combined.includes('ointment')) return 'Jild par lagana';
-    if (combined.includes('inhaler')) return 'Saans kelye Inhaler';
-    return 'Tibb aur Ilaj kelye';
+    if (combined.includes('syp') || combined.includes('syrup')) return 'Peene ka sharbath kelye';
+    if (combined.includes('inj') || combined.includes('injection')) return 'Teeqa injection kelye';
+    if (combined.includes('drop')) return 'Aankh kaan qatray kelye';
+    if (combined.includes('cream') || combined.includes('ointment')) return 'Jild par lagane kelye';
+    if (combined.includes('inhaler')) return 'Saans ki tangi kelye';
+    return 'Dawai ke istemal kelye';
 }
 window.getMedicineShortUse = getMedicineShortUse;
 
-// Universal High-Resolution Document & Handwriting Reader with CamScanner-Grade Enhancement
+// Universal High-Resolution Document & Handwriting Reader with Mobile PWA-Grade Resilient Compression
 export async function enhanceImageLikeCamScanner(file) {
     if (!file) throw new Error("Tasweer select nahi hui.");
 
-    const readFileAsBase64 = () => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const result = String(e.target?.result || '');
-            resolve(result.includes(',') ? result.split(',')[1] : result);
-        };
-        reader.onerror = () => reject(new Error("File read nahi ho saki."));
-        reader.readAsDataURL(file);
-    });
-
-    // Helper: Resizes canvas and applies document scanner contrast/brightness enhancement
+    // Helper: Resizes canvas and exports clean JPEG under 300KB
     function renderEnhancedCanvas(source, originalW, originalH) {
-        // 1600px is the optimal balance: sharp enough to read tiny dot-matrix / cursive writing,
-        // yet compresses into a ~400KB payload that uploads in milliseconds on mobile networks
-        const maxDim = 1600;
-        let w = originalW;
-        let h = originalH;
+        const maxDim = 1280;
+        let w = originalW || 1200;
+        let h = originalH || 1600;
         if (w > maxDim || h > maxDim) {
             if (w > h) {
                 h = Math.round((h * maxDim) / w);
@@ -772,64 +900,89 @@ export async function enhanceImageLikeCamScanner(file) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        // 1. Fill solid white background so transparent or dark margins don't corrupt OCR
+        // Fill solid white background so transparent or dark margins don't corrupt OCR
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, w, h);
 
-        // 2. CamScanner-grade contrast & brightness enhancement:
-        // Boost contrast by 25% and brightness by 5% so faint handwriting & thermal receipts stand out
-        if ('filter' in ctx) {
-            ctx.filter = 'contrast(1.25) brightness(1.05)';
-        }
-
         ctx.drawImage(source, 0, 0, w, h);
 
-        if ('filter' in ctx) {
-            ctx.filter = 'none';
-        }
-
-        // 3. Export as clean JPEG at 0.86 quality
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
-        return dataUrl.split(',')[1];
+        // Export as clean JPEG at 0.82 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
     }
 
+    // Helper: read file as raw base64 or Data URL
+    const readFileAsDataUrl = () => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(String(e.target?.result || ''));
+        reader.onerror = () => reject(new Error("File read nahi ho saki."));
+        reader.readAsDataURL(file);
+    });
+
+    // 1. Try Object URL first (fastest, preserves native mobile browser EXIF / colors / HEIC / JPEG / PNG)
     try {
-        // Modern createImageBitmap natively handles EXIF orientation from mobile phone cameras
+        if (typeof window.URL !== 'undefined' && typeof window.URL.createObjectURL === 'function') {
+            const blobUrl = window.URL.createObjectURL(file);
+            const base64 = await new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const w = img.naturalWidth || img.width || 1200;
+                    const h = img.naturalHeight || img.height || 1600;
+                    const rendered = renderEnhancedCanvas(img, w, h);
+                    window.URL.revokeObjectURL(blobUrl);
+                    resolve(rendered);
+                };
+                img.onerror = () => {
+                    window.URL.revokeObjectURL(blobUrl);
+                    resolve(null);
+                };
+                img.src = blobUrl;
+            });
+            if (base64) return base64;
+        }
+    } catch(eBlob) {
+        console.warn("createObjectURL mobile fallback:", eBlob);
+    }
+
+    // 2. Try modern createImageBitmap (fastest & handles EXIF orientation)
+    try {
         if (typeof window.createImageBitmap === 'function') {
+            let bitmap = null;
             try {
-                const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
+                bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
+            } catch(eOpt) {
+                bitmap = await window.createImageBitmap(file);
+            }
+            if (bitmap && bitmap.width > 0 && bitmap.height > 0) {
                 const base64 = renderEnhancedCanvas(bitmap, bitmap.width, bitmap.height);
                 bitmap.close?.();
                 if (base64) return base64;
-            } catch(eBitmap) {
-                console.warn("createImageBitmap fallback to HTMLImageElement:", eBitmap);
             }
         }
+    } catch(eBitmap) {
+        console.warn("createImageBitmap fallback to FileReader/Image:", eBitmap);
+    }
 
-        // Fallback using HTMLImageElement with ObjectURL
+    // 3. Resilient FileReader + Image fallback
+    try {
+        const fullDataUrl = await readFileAsDataUrl();
         return await new Promise((resolve) => {
             const img = new Image();
-            const objUrl = URL.createObjectURL(file);
             img.onload = () => {
-                URL.revokeObjectURL(objUrl);
                 const w = img.naturalWidth || img.width || 1200;
                 const h = img.naturalHeight || img.height || 1600;
                 const base64 = renderEnhancedCanvas(img, w, h);
-                if (base64) {
-                    resolve(base64);
-                } else {
-                    readFileAsBase64().then(resolve);
-                }
+                resolve(base64 || (fullDataUrl.includes(',') ? fullDataUrl.split(',')[1] : fullDataUrl));
             };
             img.onerror = () => {
-                URL.revokeObjectURL(objUrl);
-                readFileAsBase64().then(resolve);
+                resolve(fullDataUrl.includes(',') ? fullDataUrl.split(',')[1] : fullDataUrl);
             };
-            img.src = objUrl;
+            img.src = fullDataUrl;
         });
     } catch (err) {
         console.warn("enhanceImageLikeCamScanner fallback:", err);
-        return await readFileAsBase64();
+        const fallbackUrl = await readFileAsDataUrl();
+        return fallbackUrl.includes(',') ? fallbackUrl.split(',')[1] : fallbackUrl;
     }
 }
 window.enhanceImageLikeCamScanner = enhanceImageLikeCamScanner;
@@ -978,11 +1131,11 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
     const models = [
-        'gemini-3.5-flash',
-        'gemini-3.6-flash',
         'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
         'gemini-flash-lite-latest',
+        'gemini-3.5-flash',
+        'gemini-3.6-flash',
         'gemini-3.1-flash-lite-preview',
         'gemini-3.8-flash',
         'gemini-flash-latest'
@@ -1985,7 +2138,7 @@ CRITICAL MANDATES:
 2. ZERO-HALLUCINATION ENFORCEMENT: NEVER invent or hallucinate illnesses, fevers ("bukhar"), infections, or fake medicines. ONLY transcribe what is visibly represented under Rx. If no clinical diagnosis is written, leave treatmentSummary as empty string "".
 3. Decipher doctor handwriting, brand names, active salts, strengths (e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg), and dosage forms (Tab, Cap, Syp, Inj, Drop, Sachet).
 4. Translate dosage schedule abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-5. Provide a helpful concise "shortUse" for each medicine in strictly 3 to 4 words Roman Urdu explaining what it is for without any prefixes or headings (e.g. "Dard aur Bukhar", "Maiday ki Tezabiyat", "Bacterial Infection Ilaj", "Allergy Khujli Cheenkain").
+5. Provide a helpful concise "shortUse" for each medicine in strictly Roman Urdu ending with "kelye" explaining what it is for without any prefixes or headings (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki jalan kelye", "Allergy aur khujli kelye", "Khansi aur balgham kelye", "Infection ke ilaj kelye").
 6. Return strictly valid JSON conforming to the schema:
 {
   "doctor": "Doctor or Clinic name from slip",
@@ -2000,7 +2153,7 @@ CRITICAL MANDATES:
       "timing": "Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)",
       "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
       "purpose": "",
-      "shortUse": "Strict 3-4 words Roman Urdu e.g. Dard aur Bukhar"
+      "shortUse": "Strict Roman Urdu ending with kelye e.g. Bukhar aur dard kelye or Ulti aur matli kelye"
     }
   ]
 }`;
@@ -2093,7 +2246,8 @@ window.handlePrescriptionScan = async function(event) {
                 `;
             } else {
                 medList.innerHTML = (parsed.medicines || []).map((m, idx) => {
-                    const shortUse = cleanShortUse(m.shortUse || m.purpose || window.getMedicineShortUse(m.name, m.formula));
+                    const shortUse = window.getPrescriptionShortUse(m.name, m.formula, m.shortUse || m.purpose);
+                    const formulaClass = window.getMedicineFormulaClass(m.name, m.formula);
                     return `
                     <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
                         <div class="flex justify-between items-start gap-2">
@@ -2102,16 +2256,18 @@ window.handlePrescriptionScan = async function(event) {
                                 <div>
                                     <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
                                     <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
-                                    <!-- Medicine Short Use (Strictly 3-4 Words, No AI Hint / Heading prefix) -->
-                                    <div class="mt-1">
+                                    <!-- Medicine Short Use strictly in Roman Urdu ending with "... kelye" & Formula Class -->
+                                    <div class="mt-1 flex items-center gap-1.5 flex-wrap">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
-                                            ${shortUse}
+                                            💊 ${shortUse}
+                                        </span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                            🔬 ${formulaClass}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div class="flex flex-col items-end gap-1 shrink-0">
-                                <span class="text-[10px] bg-brand-50 border border-brand-200 text-brand-700 px-2 py-0.5 rounded-lg font-bold">${m.purpose || 'Ilaj'}</span>
                                 <button type="button" onclick="window.addPrescribedItemToPos('${encodeURIComponent(m.name)}')" class="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 active:scale-95 shadow-xs transition">
                                     <i data-lucide="plus" class="w-3 h-3"></i> Add to Counter
                                 </button>
@@ -2701,15 +2857,15 @@ window.searchMedicineForPos = function() {
     } else {
         results.innerHTML = matches.map(m => {
             const packInfo = parsePackSize(m.packSize);
-            const shortUse = window.getMedicineShortUse(m.name, m.generic);
+            const formulaClass = window.getMedicineFormulaClass(m.name, m.generic);
             return `
                 <div tabindex="0" onclick="window.selectMedicineForPos('${m.id}')" class="pos-result-row p-2.5 hover:bg-brand-50 outline-none cursor-pointer flex justify-between items-center text-xs transition border-b border-slate-100 last:border-0">
                     <div class="space-y-0.5">
                         <strong class="text-slate-800 text-xs">${m.name}</strong>
                         <span class="text-[10px] text-slate-400 block">${m.generic ? m.generic + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
                         <div class="mt-0.5">
-                            <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                                ${cleanShortUse(shortUse)}
+                            <span class="inline-flex items-center text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                🔬 ${formulaClass}
                             </span>
                         </div>
                     </div>
@@ -2734,11 +2890,11 @@ window.selectMedicineForPos = function(id) {
     document.getElementById('pos-search-results')?.classList.add('hidden');
     document.getElementById('pos-search').value = '';
     
-    // Display Short Use on Selected Item Banner (Strict 3-4 Words, No AI Hint Prefix)
-    const useHint = cleanShortUse(window.getMedicineShortUse(med.name, med.generic));
+    // Display Formula Class on Selected Item Banner
+    const formulaClass = window.getMedicineFormulaClass(med.name, med.generic);
     const useBadge = document.getElementById('pos-selected-use-hint');
     if (useBadge) {
-        useBadge.innerText = useHint;
+        useBadge.innerText = '🔬 ' + formulaClass;
         useBadge.classList.remove('hidden');
     }
 
@@ -3165,8 +3321,8 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                             </div>
                             <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
                             <div class="mt-1">
-                                <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                                    ${cleanShortUse(window.getMedicineShortUse(m.name, m.generic))}
+                                <span class="inline-flex items-center text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                                    🔬 ${window.getMedicineFormulaClass(m.name, m.generic)}
                                 </span>
                             </div>
                         </div>
