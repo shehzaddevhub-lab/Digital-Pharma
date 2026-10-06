@@ -1061,14 +1061,45 @@ function normalizePrescriptionData(parsed) {
         meds = parsed.medicines;
     } else if (Array.isArray(parsed.items)) {
         meds = parsed.items;
+    } else if (Array.isArray(parsed.lineItems)) {
+        meds = parsed.lineItems;
     } else if (Array.isArray(parsed.drugs)) {
         meds = parsed.drugs;
     } else if (Array.isArray(parsed.prescription)) {
         meds = parsed.prescription;
+    } else if (Array.isArray(parsed.prescribedMedicines)) {
+        meds = parsed.prescribedMedicines;
+    } else if (Array.isArray(parsed.prescriptions)) {
+        meds = parsed.prescriptions;
+    } else if (Array.isArray(parsed.meds)) {
+        meds = parsed.meds;
+    } else if (Array.isArray(parsed.list)) {
+        meds = parsed.list;
     } else if (parsed.medicines && typeof parsed.medicines === 'object') {
         meds = Object.values(parsed.medicines);
     } else if (parsed.data && typeof parsed.data === 'object') {
         return normalizePrescriptionData(parsed.data);
+    }
+
+    // Text line fallback parser if model returns formatted lines instead of strict JSON array
+    if (meds.length === 0 && (parsed.rawText || typeof parsed === 'string' || parsed.text)) {
+        const textToParse = parsed.rawText || (typeof parsed === 'string' ? parsed : parsed.text);
+        const lines = String(textToParse).split('\n').map(l => l.trim()).filter(Boolean);
+        for (const line of lines) {
+            const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
+            if (clean.length < 3 || isModelRefusalText(clean)) continue;
+            if (/^(rx|doctor|patient|clinic|date|advice|note|diagnosis|sig|treatment|name|instructions|summary|findings):/i.test(clean)) continue;
+            if (/(tab|cap|syp|inj|drop|goli|capsule|mg|ml|gm|sachet|syrup|tablet|ointment|cream)/i.test(clean) || clean.split(/\s+/).length >= 1) {
+                const parts = clean.split(/[-–—:]/);
+                const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+                if (name.length >= 2 && !isModelRefusalText(name)) {
+                    meds.push({
+                        name,
+                        timing: parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)'
+                    });
+                }
+            }
+        }
     }
 
     let rawAdvice = String(parsed.advice || parsed.precautions || parsed.instructions || '');
@@ -1081,33 +1112,41 @@ function normalizePrescriptionData(parsed) {
         rawSummary = 'Nuskha ke mutabiq adviyaat aur ilaj ki mukammal tafseelat darj hain.';
     }
 
-    let rawDoctor = String(parsed.doctor || parsed.doctor_name || parsed.clinic || '');
+    let rawDoctor = '';
+    if (typeof parsed.doctor === 'string') rawDoctor = parsed.doctor;
+    else if (parsed.doctor && typeof parsed.doctor === 'object' && parsed.doctor.name) rawDoctor = parsed.doctor.name;
+    else if (parsed.clinic) rawDoctor = String(parsed.clinic);
+    else if (parsed.doctorName) rawDoctor = String(parsed.doctorName);
     if (!rawDoctor || isModelRefusalText(rawDoctor) || /n\/a|not readable|unknown|mojood nahi/i.test(rawDoctor)) {
         rawDoctor = 'Doctor / Clinic Slip';
     }
 
-    let rawPatient = String(parsed.patient || parsed.patient_name || '');
+    let rawPatient = '';
+    if (typeof parsed.patient === 'string') rawPatient = parsed.patient;
+    else if (parsed.patient && typeof parsed.patient === 'object' && parsed.patient.name) rawPatient = parsed.patient.name;
+    else if (parsed.patientName) rawPatient = String(parsed.patientName);
     if (!rawPatient || isModelRefusalText(rawPatient) || /n\/a|not readable|unknown|mojood nahi/i.test(rawPatient)) {
         rawPatient = 'General Patient';
     }
 
     const cleanedMeds = meds
-        .filter(m => m && (m.name || m.medicine || m.brand))
+        .filter(m => m && (m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName))
         .filter(m => {
-            const nameStr = String(m.name || m.medicine || m.brand || '');
+            const nameStr = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || '');
             return !isModelRefusalText(nameStr);
         })
         .map(m => {
-            const name = String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim();
-            const formula = String(m.formula || m.generic || m.salt || '').trim();
-            const shortUseHint = String(m.shortUse || m.purpose || m.indication || '').trim() || window.getMedicineShortUse(name, formula);
+            const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || 'Prescribed Medicine').trim();
+            const formula = String(m.formula || m.generic || m.salt || m.composition || '').trim();
+            const rawUse = String(m.shortUse || m.use || m.purpose || m.indication || m.reason || '').trim();
+            const shortUseHint = rawUse || window.getMedicineShortUse(name, formula);
             return {
                 name,
                 formula,
                 form: String(m.form || m.type || 'Goli (Tablet)').trim(),
                 timing: isModelRefusalText(String(m.timing || '')) 
                     ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
-                    : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+                    : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
                 usage: isModelRefusalText(String(m.usage || '')) 
                     ? 'Taza paani ke sath lein' 
                     : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
@@ -1131,26 +1170,79 @@ function normalizeInvoiceItems(parsed) {
     let list = [];
     if (Array.isArray(parsed)) {
         list = parsed;
+    } else if (Array.isArray(parsed.lineItems)) {
+        list = parsed.lineItems;
     } else if (Array.isArray(parsed.items)) {
         list = parsed.items;
     } else if (Array.isArray(parsed.medicines)) {
         list = parsed.medicines;
     } else if (Array.isArray(parsed.invoicedItems)) {
         list = parsed.invoicedItems;
+    } else if (Array.isArray(parsed.invoiceItems)) {
+        list = parsed.invoiceItems;
     } else if (Array.isArray(parsed.lines)) {
         list = parsed.lines;
+    } else if (Array.isArray(parsed.products)) {
+        list = parsed.products;
+    } else if (Array.isArray(parsed.rows)) {
+        list = parsed.rows;
+    } else if (Array.isArray(parsed.table)) {
+        list = parsed.table;
+    } else if (Array.isArray(parsed.billItems)) {
+        list = parsed.billItems;
     } else if (parsed.data && typeof parsed.data === 'object') {
         return normalizeInvoiceItems(parsed.data);
     }
-    return list.filter(item => item && (item.name || item.item || item.description) && !isModelRefusalText(String(item.name || item.item))).map(item => ({
-        name: String(item.name || item.item || item.description || 'Medicine').trim(),
+
+    // Text line fallback for invoices
+    if (list.length === 0 && (parsed.rawText || typeof parsed === 'string' || parsed.text)) {
+        const textToParse = parsed.rawText || (typeof parsed === 'string' ? parsed : parsed.text);
+        const lines = String(textToParse).split('\n').map(l => l.trim()).filter(Boolean);
+        for (const line of lines) {
+            const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
+            if (clean.length < 3 || isModelRefusalText(clean)) continue;
+            if (/^(invoice|bill|date|total|subtotal|distributor|supplier|customer|terms|ntn|strn|discount|gst):/i.test(clean)) continue;
+            const parts = clean.split(/[|,;\t]/).map(p => p.trim()).filter(Boolean);
+            if (parts.length >= 2) {
+                const name = parts[0].replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+                const rateCandidate = Number(parts.find(p => /^\d+(\.\d+)?$/.test(p))) || 0;
+                if (name.length >= 2) {
+                    list.push({
+                        name,
+                        batch: 'B-01',
+                        expiry: '2027-12',
+                        packSize: '20',
+                        qty: 1,
+                        buyRate: rateCandidate
+                    });
+                }
+            } else {
+                const numMatch = clean.match(/^([a-zA-Z0-9\s\+\-\/\.]{3,35})\s*(?:.*?(\d+(?:\.\d+)?))?/);
+                if (numMatch && numMatch[1]) {
+                    list.push({
+                        name: numMatch[1].trim(),
+                        batch: 'B-01',
+                        expiry: '2027-12',
+                        packSize: '20',
+                        qty: 1,
+                        buyRate: Number(numMatch[2]) || 0
+                    });
+                }
+            }
+        }
+    }
+
+    const detectedDist = String(parsed.distributorName || parsed.distributor || parsed.supplier || parsed.vendor || '').trim();
+
+    return list.filter(item => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusalText(String(item.name || item.item))).map(item => ({
+        name: String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim(),
         generic: item.generic || item.formula || '',
-        batch: item.batch || item.batch_no || item.batchNumber || 'B-01',
-        expiry: item.expiry || item.exp || '',
+        batch: item.batch || item.batch_no || item.batchNo || item.batchNumber || 'B-01',
+        expiry: item.expiry || item.exp || '2027-12',
         packSize: String(item.packSize || item.pack_size || item.pack || '20'),
-        qty: Number(item.qty || item.quantity || item.packs || 1) || 1,
-        buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || 0) || 0,
-        distributor: item.distributor || item.supplier || '',
+        qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
+        buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
+        distributor: item.distributor || item.supplier || detectedDist || '',
         mrp: ''
     }));
 }
@@ -1165,12 +1257,9 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
     const models = [
-        'gemini-3.8-flash',
-        'gemini-flash-latest',
         'gemini-3.1-flash-lite',
-        'gemini-3.5-flash-lite',
-        'gemini-3.5-flash',
-        'gemini-3.6-flash'
+        'gemini-flash-latest',
+        'gemini-3.8-flash'
     ];
     let lastError = null;
 
@@ -1230,10 +1319,10 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
     const payload = JSON.stringify({ imageBase64: base64Data });
     let lastError = null;
 
-    // 1. Direct Server Endpoint (Resilient 50-second timeout for mobile networks)
+    // 1. Direct Server Endpoint (Resilient 45-second timeout)
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 50000);
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
 
         const res = await fetch(endpoint, {
             method: 'POST',
@@ -1249,7 +1338,12 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         if (res.ok) {
             const data = await res.json();
             if (data && (data.success !== false)) {
-                return data;
+                const hasPrescMeds = data.data && Array.isArray(data.data.medicines) && data.data.medicines.length > 0;
+                const hasInvItems = Array.isArray(data.data) && data.data.length > 0;
+                if (hasPrescMeds || hasInvItems || !clientPrompt) {
+                    return data;
+                }
+                console.log('Server endpoint returned 0 items, verifying via vision fallback...');
             }
             if (data && data.error) {
                 lastError = data.error;
@@ -1270,7 +1364,12 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         try {
             const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);
             const parsed = extractSmartJson(rawText);
-            if (parsed) return { success: true, data: parsed };
+            if (parsed) {
+                return { success: true, data: parsed };
+            }
+            if (rawText && rawText.length > 20) {
+                return { success: true, data: { rawText } };
+            }
         } catch (e) {
             console.warn('Direct vision fallback note:', e?.message || e);
         }
@@ -2158,58 +2257,65 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-const PRESCRIPTION_PROMPT = `You are a distinguished Clinical Pharmacist and forensic medical handwriting OCR specialist.
-Your mission is to read doctor handwriting, clinic pads, hospital slips, and prescription slips.
-CRITICAL MANDATES:
-1. NEVER REFUSE TO READ: Do not generate refusal phrases like "tasveer roshni mein dubara banao", "unable to read", or "retake photo". Transcribe every visible medicine line.
-2. ZERO-HALLUCINATION ENFORCEMENT: NEVER invent or hallucinate illnesses, fevers ("bukhar"), infections, or fake medicines. ONLY transcribe what is visibly represented under Rx. If no clinical diagnosis is written, leave treatmentSummary as empty string "".
-3. Decipher doctor handwriting, brand names, active salts, strengths (e.g. 500mg, 625mg, 1g, 400mg, 250mg, 20mg, 40mg), and dosage forms (Tab, Cap, Syp, Inj, Drop, Sachet).
-4. Translate dosage schedule abbreviations (OD, BD, TDS, 1+0+1, 1x2, HS, SOS) into polite Roman Urdu (e.g. "Subah sham 1 goli khane ke baad (1+0+1)").
-5. Provide a helpful concise "shortUse" for each medicine in strictly Roman Urdu ending with "kelye" explaining what it is for without any prefixes or headings (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki jalan kelye", "Allergy aur khujli kelye", "Khansi aur balgham kelye", "Infection ke ilaj kelye").
-6. Return strictly valid JSON conforming to the schema:
+const PRESCRIPTION_PROMPT = `Carefully examine this prescription slip, clinic pad, hospital note, or doctor handwriting photo.
+Transcribe every medicine written on the paper: brand or generic name, strength, and dosage instructions.
+For each medicine detected, determine its clinical medical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
+Also read doctor name, clinic name, and patient name if written.
+
+Return JSON format:
 {
-  "doctor": "Doctor or Clinic name from slip",
-  "patient": "Patient name and details if visible",
-  "treatmentSummary": "",
-  "advice": "Precautions in Roman Urdu if written",
+  "doctor": "Doctor / Clinic name",
+  "patient": "Patient name",
+  "treatmentSummary": "Short diagnosis or treatment summary",
+  "advice": "Precautions in Roman Urdu",
   "medicines": [
     {
-      "name": "Exact brand name and strength written on slip",
+      "name": "Medicine name and strength",
       "formula": "Generic salt if visible",
-      "form": "Goli (Tablet), Capsule, Sharbath (Syrup), Injection, Drops, Sachet",
-      "timing": "Dosage schedule in Roman Urdu e.g. Subah sham 1 goli khane ke baad (1+0+1)",
-      "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
-      "purpose": "",
-      "shortUse": "Strict Roman Urdu ending with kelye e.g. Bukhar aur dard kelye or Ulti aur matli kelye"
+      "form": "Goli/Capsule/Syrup/Drops/Injection",
+      "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1)",
+      "usage": "Usage instructions e.g. Taza paani ke sath lein",
+      "shortUse": "Use in Roman Urdu ending with kelye"
     }
   ]
 }`;
 
-const INVOICE_PROMPT = `You are an expert pharmacy wholesale bill and distributor invoice OCR reader.
-Examine this invoice, delivery challan, or receipt slip. Read all table rows and medicine line items.
-Extract:
-- name: brand name and strength as printed on the bill
-- generic: generic formula if visible, else empty string
-- batch: batch number if visible, else empty string
-- expiry: expiry date in YYYY-MM if visible, else empty string
-- packSize: pack size e.g. "20", "2x7", "10x10"
-- qty: quantity of packs invoiced (number)
-- buyRate: wholesale buy rate TP per pack (number)
-- distributor: distributor/supplier name from bill header if visible
-Return a JSON array of objects or object with items array.`;
+const INVOICE_PROMPT = `Examine this wholesale invoice, distributor bill, or delivery challan.
+Read all table rows and medicine line items printed on the paper.
+For each item row, extract:
+- name: brand or item name and strength
+- batch: batch number if visible
+- qty: quantity of packs (number)
+- buyRate: wholesale buy rate (TP) per pack (number)
+- expiry: expiry date (YYYY-MM) if visible
+- distributor: distributor / supplier name from bill header
 
-const MARGIN_PROMPT = `You are a specialist pharmacy wholesale trade margin and bonus scheme auditor.
-Scan this distributor invoice or scheme slip to extract ONLY REAL items present on the paper.
-DO NOT INVENT fake medicines. If no items found, return empty array [].
+Return JSON format:
+{
+  "distributorName": "Distributor name",
+  "lineItems": [
+    {
+      "name": "Medicine name",
+      "batch": "B-01",
+      "qty": 10,
+      "buyRate": 150.00,
+      "expiry": "2027-12"
+    }
+  ]
+}`;
 
-Extract for each real line:
-- name: medicine name and strength
-- buyRate: wholesale invoiced buy rate per pack (number)
-- qty: quantity of packs invoiced (number, default 1)
-- freeQty: bonus/free scheme packs received (number, default 0, e.g. 1 in a 10+1 scheme)
+const MARGIN_PROMPT = `Scan this distributor invoice or scheme slip.
+Read all printed medicine items, invoiced wholesale buy rates (TP), quantities, and any free bonus packs received (e.g. 10+1 or 5+1 scheme).
 
-STRICT RULE: Leave 'mrp' as an empty string ("").
-Return a JSON array of objects.`;
+Return JSON format:
+[
+  {
+    "name": "Medicine name and strength",
+    "buyRate": 150,
+    "qty": 10,
+    "freeQty": 1
+  }
+]`;
 
 // AI Prescription Scan
 window.handlePrescriptionScan = async function(event) {
@@ -2261,14 +2367,19 @@ window.handlePrescriptionScan = async function(event) {
         if (medList) {
             if (parsed.medicines.length === 0) {
                 medList.innerHTML = `
-                    <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-2">
+                    <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-3">
                         <div class="w-10 h-10 mx-auto rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
                             <i data-lucide="scan" class="w-5 h-5"></i>
                         </div>
                         <strong class="text-xs sm:text-sm font-black text-slate-800 block">Dawai ki tafseelat detect nahi hui</strong>
                         <p class="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
-                            Prescription slip upload karein ya POS Counter par search bar se direct dawai select karein.
+                            Tasveer ko seedha rakh kar dobara scan karein ya POS Counter par search bar se direct dawai select karein.
                         </p>
+                        <div class="pt-2 flex justify-center">
+                            <button type="button" onclick="window.triggerFileInput('dashboard-presc-input')" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-md active:scale-95 transition">
+                                <i data-lucide="camera" class="w-4 h-4"></i> Dobara Scan Karein
+                            </button>
+                        </div>
                     </div>
                 `;
             } else {
@@ -2339,17 +2450,17 @@ window.handlePrescriptionScan = async function(event) {
         const medList = document.getElementById('presc-medicines-list');
         if (medList) {
             medList.innerHTML = `
-                <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-3">
-                    <div class="w-12 h-12 mx-auto rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
-                        <i data-lucide="file-text" class="w-6 h-6"></i>
+                <div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-3">
+                    <div class="w-12 h-12 mx-auto rounded-full bg-rose-100 text-rose-700 flex items-center justify-center">
+                        <i data-lucide="alert-circle" class="w-6 h-6"></i>
                     </div>
-                    <strong class="text-sm font-black text-slate-800 block">Dawai Ki Shanakht / Processing</strong>
-                    <p class="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                        Agar koi dawai is slip par darj hai to list check karein ya POS Counter par search bar se direct dawai select karein.
+                    <strong class="text-sm font-black text-rose-900 block">AI Scan Complete Nahi Ho Saka</strong>
+                    <p class="text-xs text-rose-700 max-w-sm mx-auto leading-relaxed">
+                        ${err?.message || 'Tasveer parhney mein waqt zyada laga ya internet mein masla aya. Barah-e-karam dobara tasveer upload karein.'}
                     </p>
                     <div class="pt-2 flex justify-center gap-2">
                         <button type="button" onclick="window.triggerFileInput('dashboard-presc-input')" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition">
-                            <i data-lucide="camera" class="w-4 h-4"></i> Nuskha Dobara Scan Karein
+                            <i data-lucide="camera" class="w-4 h-4"></i> Dobara Nuskha Scan Karein
                         </button>
                     </div>
                 </div>
@@ -2357,7 +2468,7 @@ window.handlePrescriptionScan = async function(event) {
         }
         safeCreateIcons();
         syncModalScrollLock();
-        showToast('Prescription process ho gaya. Dawai list check karein.', 'info');
+        showToast('Prescription scan mein masla aya. Dobara koshish karein.', 'error');
     } finally {
         if (event?.target) {
             try { event.target.value = ''; } catch(e) {}
@@ -2531,8 +2642,22 @@ window.handleRealInvoiceOcr = async function(event) {
         console.error('Invoice OCR Error:', err);
         loading?.classList.add('hidden');
         content?.classList.remove('hidden');
-        renderAiScannedTable();
-        showToast('Bill scan mukammal hua. Items check karein.', 'info');
+        const tbody = document.getElementById('ai-scanned-table-body');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-rose-600 bg-rose-50 font-bold text-xs">
+                <div class="w-8 h-8 mx-auto mb-1 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                </div>
+                <span>AI Scan mukammal nahi ho saka: ${err?.message || 'Dobara koshish karein'}.</span>
+                <div class="mt-2">
+                    <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1 shadow-xs">
+                        <i data-lucide="camera" class="w-3.5 h-3.5"></i> Dobara Scan Karein
+                    </button>
+                </div>
+            </td></tr>`;
+        }
+        safeCreateIcons();
+        showToast('Bill scan mein masla aya. Dobara koshish karein.', 'error');
     } finally {
         if (event?.target) {
             try { event.target.value = ''; } catch(e) {}
@@ -2544,7 +2669,19 @@ function renderAiScannedTable() {
     const tbody = document.getElementById('ai-scanned-table-body');
     if (!tbody) return;
     if (aiExtractedBuffer.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-slate-400">Koi item nahi mila.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-slate-500 bg-slate-50">
+            <div class="w-8 h-8 mx-auto mb-1 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">
+                <i data-lucide="scan" class="w-4 h-4"></i>
+            </div>
+            <strong class="block text-slate-800 text-xs">Bill se koi item detect nahi hua</strong>
+            <span class="text-[11px] text-slate-400 block mt-0.5">Tasveer ko seedha rakh kar dobara upload karein.</span>
+            <div class="mt-2">
+                <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1 shadow-xs">
+                    <i data-lucide="camera" class="w-3.5 h-3.5"></i> Dobara Scan Karein
+                </button>
+            </div>
+        </td></tr>`;
+        safeCreateIcons();
         return;
     }
     tbody.innerHTML = aiExtractedBuffer.map((item, idx) => `

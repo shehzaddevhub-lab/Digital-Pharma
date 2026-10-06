@@ -214,10 +214,20 @@ function normalizePrescriptionData(parsed: any) {
     meds = parsed.medicines;
   } else if (Array.isArray(parsed.items)) {
     meds = parsed.items;
+  } else if (Array.isArray(parsed.lineItems)) {
+    meds = parsed.lineItems;
   } else if (Array.isArray(parsed.drugs)) {
     meds = parsed.drugs;
   } else if (Array.isArray(parsed.prescription)) {
     meds = parsed.prescription;
+  } else if (Array.isArray(parsed.prescribedMedicines)) {
+    meds = parsed.prescribedMedicines;
+  } else if (Array.isArray(parsed.prescriptions)) {
+    meds = parsed.prescriptions;
+  } else if (Array.isArray(parsed.meds)) {
+    meds = parsed.meds;
+  } else if (Array.isArray(parsed.list)) {
+    meds = parsed.list;
   } else if (parsed.medicines && typeof parsed.medicines === 'object') {
     meds = Object.values(parsed.medicines);
   } else if (parsed.data && typeof parsed.data === 'object') {
@@ -225,22 +235,23 @@ function normalizePrescriptionData(parsed: any) {
   }
 
   const cleanedMeds = meds
-    .filter((m: any) => m && (m.name || m.medicine || m.brand))
+    .filter((m: any) => m && (m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName))
     .filter((m: any) => {
-      const nameStr = String(m.name || m.medicine || m.brand || '');
+      const nameStr = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || '');
       return !isModelRefusal(nameStr);
     })
     .map((m: any) => {
-      const name = String(m.name || m.medicine || m.brand || 'Prescribed Medicine').trim();
-      const formula = String(m.formula || m.generic || m.salt || '').trim();
-      const shortUseHint = String(m.shortUse || m.purpose || m.indication || '').trim() || getMedicineShortUse(name, formula);
+      const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || 'Prescribed Medicine').trim();
+      const formula = String(m.formula || m.generic || m.salt || m.composition || '').trim();
+      const rawUse = String(m.shortUse || m.use || m.purpose || m.indication || m.reason || '').trim();
+      const shortUseHint = rawUse || getMedicineShortUse(name, formula);
       return {
         name,
         formula,
         form: String(m.form || m.type || 'Goli (Tablet)').trim(),
         timing: isModelRefusal(String(m.timing || '')) 
           ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
-          : String(m.timing || m.dosage || m.schedule || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+          : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
         usage: isModelRefusal(String(m.usage || '')) 
           ? 'Taza paani ke sath lein' 
           : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
@@ -259,12 +270,19 @@ function normalizePrescriptionData(parsed: any) {
     rawSummary = 'Nuskha ke mutabiq adviyaat aur ilaj ki mukammal tafseelat darj hain.';
   }
 
-  let rawDoctor = String(parsed.doctor || parsed.doctor_name || parsed.clinic || '');
+  let rawDoctor = '';
+  if (typeof parsed.doctor === 'string') rawDoctor = parsed.doctor;
+  else if (parsed.doctor && typeof parsed.doctor === 'object' && parsed.doctor.name) rawDoctor = parsed.doctor.name;
+  else if (parsed.clinic) rawDoctor = String(parsed.clinic);
+  else if (parsed.doctorName) rawDoctor = String(parsed.doctorName);
   if (!rawDoctor || isModelRefusal(rawDoctor) || /n\/a|not readable|unknown|mojood nahi/i.test(rawDoctor)) {
     rawDoctor = 'Doctor / Clinic Slip';
   }
 
-  let rawPatient = String(parsed.patient || parsed.patient_name || '');
+  let rawPatient = '';
+  if (typeof parsed.patient === 'string') rawPatient = parsed.patient;
+  else if (parsed.patient && typeof parsed.patient === 'object' && parsed.patient.name) rawPatient = parsed.patient.name;
+  else if (parsed.patientName) rawPatient = String(parsed.patientName);
   if (!rawPatient || isModelRefusal(rawPatient) || /n\/a|not readable|unknown|mojood nahi/i.test(rawPatient)) {
     rawPatient = 'General Patient';
   }
@@ -284,36 +302,124 @@ function normalizeInvoiceItems(parsed: any) {
   let list: any[] = [];
   if (Array.isArray(parsed)) {
     list = parsed;
+  } else if (Array.isArray(parsed.lineItems)) {
+    list = parsed.lineItems;
   } else if (Array.isArray(parsed.items)) {
     list = parsed.items;
   } else if (Array.isArray(parsed.medicines)) {
     list = parsed.medicines;
   } else if (Array.isArray(parsed.invoicedItems)) {
     list = parsed.invoicedItems;
+  } else if (Array.isArray(parsed.invoiceItems)) {
+    list = parsed.invoiceItems;
   } else if (Array.isArray(parsed.lines)) {
     list = parsed.lines;
+  } else if (Array.isArray(parsed.products)) {
+    list = parsed.products;
+  } else if (Array.isArray(parsed.rows)) {
+    list = parsed.rows;
+  } else if (Array.isArray(parsed.table)) {
+    list = parsed.table;
+  } else if (Array.isArray(parsed.billItems)) {
+    list = parsed.billItems;
   } else if (parsed.data && typeof parsed.data === 'object') {
     return normalizeInvoiceItems(parsed.data);
   }
-  return list.filter((item: any) => item && (item.name || item.item || item.description) && !isModelRefusal(String(item.name || item.item))).map((item: any) => ({
-    name: String(item.name || item.item || item.description || 'Medicine Item').trim(),
+
+  const detectedDist = String(parsed.distributorName || parsed.distributor || parsed.supplier || parsed.vendor || '').trim();
+
+  return list.filter((item: any) => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusal(String(item.name || item.item))).map((item: any) => ({
+    name: String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim(),
     generic: String(item.generic || item.formula || '').trim(),
-    batch: String(item.batch || item.batch_no || item.batchNumber || 'B-01').trim(),
+    batch: String(item.batch || item.batch_no || item.batchNo || item.batchNumber || 'B-01').trim(),
     expiry: String(item.expiry || item.exp || '2027-12').trim(),
     packSize: String(item.packSize || item.pack_size || item.pack || '20').trim(),
-    qty: Number(item.qty || item.quantity || item.packs || 1) || 1,
-    buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || 0) || 0,
-    distributor: String(item.distributor || item.supplier || parsed.distributor || 'Wholesale Distributor').trim(),
+    qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
+    buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
+    distributor: String(item.distributor || item.supplier || detectedDist || 'Wholesale Distributor').trim(),
     mrp: ''
   }));
+}
+
+// Fallback line parser if model returns formatted text/markdown instead of JSON
+function extractMedicinesFromTextLines(text: string) {
+  if (!text || typeof text !== 'string') return [];
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const meds: any[] = [];
+  for (const line of lines) {
+    const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
+    if (clean.length < 3 || isModelRefusal(clean)) continue;
+    if (/^(rx|doctor|patient|clinic|date|advice|note|diagnosis|sig|treatment|name|instructions|summary|findings):/i.test(clean)) continue;
+    if (/(tab|cap|syp|inj|drop|goli|capsule|mg|ml|gm|sachet|syrup|tablet|ointment|cream)/i.test(clean) || clean.split(/\s+/).length >= 1) {
+      const parts = clean.split(/[-–—:]/);
+      const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+      if (name.length >= 2 && !isModelRefusal(name)) {
+        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
+        const shortUseHint = getMedicineShortUse(name, '');
+        meds.push({
+          name,
+          formula: '',
+          form: /syp|syrup/i.test(name) ? 'Sharbath (Syrup)' : (/cap/i.test(name) ? 'Capsule' : (/inj/i.test(name) ? 'Injection' : (/drop/i.test(name) ? 'Drops' : 'Goli (Tablet)'))),
+          timing,
+          usage: 'Taza paani ke sath lein',
+          purpose: shortUseHint,
+          shortUse: shortUseHint
+        });
+      }
+    }
+  }
+  return meds;
+}
+
+function extractInvoiceItemsFromTextLines(text: string) {
+  if (!text || typeof text !== 'string') return [];
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const items: any[] = [];
+  for (const line of lines) {
+    const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
+    if (clean.length < 3 || isModelRefusal(clean)) continue;
+    if (/^(invoice|bill|date|total|subtotal|distributor|supplier|customer|terms|ntn|strn|discount|gst):/i.test(clean)) continue;
+    const parts = clean.split(/[|,;\t]/).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const name = parts[0].replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+      const rateCandidate = Number(parts.find(p => /^\d+(\.\d+)?$/.test(p))) || 0;
+      if (name.length >= 2) {
+        items.push({
+          name,
+          generic: '',
+          batch: 'B-01',
+          expiry: '2027-12',
+          packSize: '20',
+          qty: 1,
+          buyRate: rateCandidate,
+          distributor: 'Wholesale Distributor',
+          mrp: ''
+        });
+      }
+    } else {
+      const numMatch = clean.match(/^([a-zA-Z0-9\s\+\-\/\.]{3,35})\s*(?:.*?(\d+(?:\.\d+)?))?/);
+      if (numMatch && numMatch[1]) {
+        items.push({
+          name: numMatch[1].trim(),
+          generic: '',
+          batch: 'B-01',
+          expiry: '2027-12',
+          packSize: '20',
+          qty: 1,
+          buyRate: Number(numMatch[2]) || 0,
+          distributor: 'Wholesale Distributor',
+          mrp: ''
+        });
+      }
+    }
+  }
+  return items;
 }
 
 // Initialize Gemini with accurate real vision scanning and multi-model retries
 async function generateWithVisionFallback(
   prompt: string, 
-  imageBase64: string, 
-  responseSchema?: any,
-  systemInstruction?: string
+  imageBase64: string
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -331,31 +437,18 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // Comprehensive Gemini Multimodal Vision Cascade (Flagship & fast models with fresh quota)
+  // Comprehensive Gemini Multimodal Vision Cascade (Official, high-performing multimodal models)
   const models = [
-    'gemini-3.8-flash',
-    'gemini-flash-latest',
     'gemini-3.1-flash-lite',
-    'gemini-3.5-flash-lite',
-    'gemini-3.5-flash',
-    'gemini-3.6-flash'
+    'gemini-flash-latest',
+    'gemini-3.8-flash'
   ];
 
   let bestParsedFallback: string | null = null;
 
   for (const modelName of models) {
     try {
-      const config: any = {
-        responseMimeType: 'application/json'
-      };
-      if (responseSchema) {
-        config.responseSchema = responseSchema;
-      }
-      if (systemInstruction) {
-        config.systemInstruction = systemInstruction;
-      }
-
-      // 22-second timeout per model ensuring high-resolution phone photos finish parsing
+      console.log(`Analyzing document with vision model: ${modelName}...`);
       const apiCall = ai.models.generateContent({
         model: modelName,
         contents: [
@@ -368,73 +461,45 @@ async function generateWithVisionFallback(
           {
             text: prompt
           }
-        ],
-        config
+        ]
       });
 
       const timeoutCall = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 22000)
+        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 25000)
       );
 
       const response: any = await Promise.race([apiCall, timeoutCall]);
 
       if (response && response.text) {
+        console.log(`Received response from ${modelName} (${response.text.length} chars).`);
         const parsed = extractJsonFromText(response.text);
         if (parsed) {
-          // If items/medicines found, return immediately!
           const hasItems = (Array.isArray(parsed) && parsed.length > 0) ||
                            (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) ||
                            (Array.isArray(parsed.items) && parsed.items.length > 0) ||
+                           (Array.isArray(parsed.lineItems) && parsed.lineItems.length > 0) ||
                            (Array.isArray(parsed.lines) && parsed.lines.length > 0) ||
                            (Array.isArray(parsed.drugs) && parsed.drugs.length > 0) ||
+                           (Array.isArray(parsed.products) && parsed.products.length > 0) ||
+                           (Array.isArray(parsed.rows) && parsed.rows.length > 0) ||
+                           (Array.isArray(parsed.table) && parsed.table.length > 0) ||
                            (Array.isArray(parsed.prescription) && parsed.prescription.length > 0);
           if (hasItems) {
+            console.log(`Vision success on model ${modelName} with detected items.`);
             return response.text;
           }
+          if (!bestParsedFallback) {
+            bestParsedFallback = response.text;
+          }
+        } else if (response.text.length > 20) {
           if (!bestParsedFallback) {
             bestParsedFallback = response.text;
           }
         }
       }
     } catch (err: any) {
-      console.warn(`Vision model ${modelName} note:`, err?.message || err);
-      // Lightning fast unconstrained retry without schema restriction
-      try {
-        const retryCall = ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              inlineData: {
-                mimeType: mime || 'image/jpeg',
-                data: clean
-              }
-            },
-            {
-              text: `${prompt}\n\nTranscribe all visible medicines/bill items strictly as JSON format without refusing.`
-            }
-          ]
-        });
-        const retryTimeout = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error(`Retry ${modelName} timeout`)), 15000)
-        );
-        const retryRes: any = await Promise.race([retryCall, retryTimeout]);
-        if (retryRes && retryRes.text) {
-          const parsed = extractJsonFromText(retryRes.text);
-          if (parsed) {
-            const hasItems = (Array.isArray(parsed) && parsed.length > 0) ||
-                             (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) ||
-                             (Array.isArray(parsed.items) && parsed.items.length > 0) ||
-                             (Array.isArray(parsed.lines) && parsed.lines.length > 0) ||
-                             (Array.isArray(parsed.drugs) && parsed.drugs.length > 0);
-            if (hasItems) {
-              return retryRes.text;
-            }
-            if (!bestParsedFallback) {
-              bestParsedFallback = retryRes.text;
-            }
-          }
-        }
-      } catch (errRetry) {}
+      console.warn(`Vision model ${modelName} warning:`, err?.message || err);
+      // Seamlessly advance to next model in cascade
     }
   }
 
@@ -452,37 +517,48 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
       return;
     }
 
-    const prescriptionSystemInstruction = `You are a helpful pharmacy assistant reading prescription slips, clinic pads, hospital notes, and doctor handwriting.
-Read what is written on this paper naturally and extract all visible medicines.
-For each medicine:
-- name: brand or medicine name and strength written on slip
-- formula: generic salt if known
-- form: dosage form e.g. Goli (Tablet), Capsule, Sharbath (Syrup), Drops, Injection, Sachet
-- timing: dosage instructions in Roman Urdu e.g. Subah sham 1 goli (1+0+1)
-- shortUse: clinical use in Roman Urdu strictly ending with "kelye" (e.g. Bukhar aur dard kelye, Ulti kelye, Maiday ki jalan kelye, Infection ke ilaj kelye, Khansi kelye, Allergy kelye)
-Return valid JSON.`;
+    const prompt = `Carefully read this prescription slip, clinic pad, hospital note, or doctor handwriting photo.
+Transcribe every medicine written on the paper: brand or generic name, strength, and dosage instructions.
+For each medicine detected, determine its medical clinical use in Roman Urdu ending with "kelye" (for example: "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
+Also read doctor name, clinic name, and patient name if written.
 
-    const prompt = `Read this prescription slip and extract all medicines written on it.
-Return structured JSON:
+Return JSON format:
 {
-  "doctor": "Doctor name or clinic name if visible, else Doctor / Clinic Slip",
-  "patient": "Patient name if visible, else General Patient",
-  "treatmentSummary": "",
-  "advice": "Precautions in Roman Urdu if written",
+  "doctor": "Doctor / Clinic name",
+  "patient": "Patient name",
+  "treatmentSummary": "Short diagnosis or summary",
+  "advice": "Precautions in Roman Urdu",
   "medicines": [
     {
       "name": "Medicine name and strength",
       "formula": "Generic salt if visible",
-      "form": "Goli/Capsule/Syrup",
-      "timing": "Subah sham 1 goli (1+0+1)",
-      "shortUse": "Medicine use in Roman Urdu ending with kelye (e.g. Bukhar aur dard kelye, Ulti kelye)"
+      "form": "Goli/Capsule/Syrup/Drops/Injection",
+      "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1)",
+      "usage": "Usage instructions e.g. Taza paani ke sath lein",
+      "shortUse": "Purpose in Roman Urdu ending with kelye"
     }
   ]
 }`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, prescriptionSystemInstruction);
+    const text = await generateWithVisionFallback(prompt, imageBase64);
     const parsed = text ? extractJsonFromText(text) : null;
     let normalized = normalizePrescriptionData(parsed);
+
+    // Fallback: extract medicines from lines if JSON parsing didn't find any
+    if (!normalized || !normalized.medicines || normalized.medicines.length === 0) {
+      if (text) {
+        const lineMeds = extractMedicinesFromTextLines(text);
+        if (lineMeds.length > 0) {
+          normalized = {
+            doctor: normalized?.doctor || 'Doctor / Clinic Slip',
+            patient: normalized?.patient || 'General Patient',
+            treatmentSummary: normalized?.treatmentSummary || 'Nuskha ke mutabiq adviyaat darj zail hain.',
+            advice: normalized?.advice || 'Dawai hidayat ke mutabiq waqt par lein.',
+            medicines: lineMeds
+          };
+        }
+      }
+    }
 
     if (normalized && normalized.medicines && normalized.medicines.length > 0) {
       res.json({
@@ -492,28 +568,29 @@ Return structured JSON:
       return;
     }
 
-    // Return genuine empty results without inventing fake medicines
-    res.json({
-      success: true,
-      data: {
-        doctor: normalized?.doctor || 'Doctor / Clinic Slip',
-        patient: normalized?.patient || 'General Patient',
-        treatmentSummary: normalized?.treatmentSummary || '',
-        advice: normalized?.advice || 'Dawai hidayat ke mutabiq waqt par lein.',
-        medicines: []
-      }
+    if (text) {
+      res.json({
+        success: true,
+        data: normalized || {
+          doctor: 'Doctor / Clinic Slip',
+          patient: 'General Patient',
+          treatmentSummary: '',
+          advice: 'Dawai hidayat ke mutabiq waqt par lein.',
+          medicines: []
+        }
+      });
+      return;
+    }
+
+    res.status(502).json({
+      success: false,
+      error: 'AI Scanner connect nahi ho saka. Barah-e-karam internet connection check karein ya dobara koshish karein.'
     });
   } catch (err: any) {
     console.error('Prescription OCR server error:', err);
-    res.json({
-      success: true,
-      data: {
-        doctor: 'Doctor / Clinic Slip',
-        patient: 'General Patient',
-        treatmentSummary: '',
-        advice: 'Dawai hidayat ke mutabiq waqt par lein.',
-        medicines: []
-      }
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Prescription scan mein masla aya.'
     });
   }
 });
@@ -529,51 +606,58 @@ app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const invoiceSystemInstruction = `You are a helpful pharmacy wholesale bill reader.
-Examine this invoice or receipt slip and extract all medicine line items:
-- name: medicine name and strength as printed
-- qty: quantity of packs (number)
-- buyRate: wholesale buy rate TP per pack (number)
+    const prompt = `You are an expert pharmacy wholesale bill and distributor invoice OCR reader.
+Examine this invoice, delivery challan, or receipt slip.
+Transcribe every medicine or item row printed on the bill:
+- name: product name and strength as printed
 - batch: batch number if visible
-- expiry: expiry date if visible
-- packSize: pack size e.g. 20
-- distributor: distributor or supplier name from bill header
-Return valid JSON.`;
+- qty: invoiced quantity of packs (number)
+- buyRate: wholesale buy rate (TP) per pack (number)
+- expiry: expiry date (YYYY-MM) if visible
+- distributor: distributor / supplier name from bill header
 
-    const prompt = `Read this wholesale bill and extract all medicine items.
-Return structured JSON:
+Return JSON format:
 {
-  "distributor": "Distributor name from header if visible",
-  "items": [
+  "distributorName": "Distributor or Supplier name",
+  "lineItems": [
     {
       "name": "Medicine name and strength",
-      "qty": 1,
-      "buyRate": 100,
-      "batch": "B-01",
-      "expiry": "2026-12",
-      "packSize": "20"
+      "batch": "Batch number",
+      "qty": 10,
+      "buyRate": 150.00,
+      "expiry": "YYYY-MM"
     }
   ]
 }`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, invoiceSystemInstruction);
+    const text = await generateWithVisionFallback(prompt, imageBase64);
     const parsed = text ? extractJsonFromText(text) : null;
     let items = normalizeInvoiceItems(parsed);
+
+    // Fallback: extract items from lines if JSON parsing missed them
+    if (items.length === 0 && text) {
+      items = extractInvoiceItemsFromTextLines(text);
+    }
 
     if (items.length > 0) {
       res.json({ success: true, data: items });
       return;
     }
 
-    res.json({
-      success: true,
-      data: []
+    if (text) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    res.status(502).json({
+      success: false,
+      error: 'AI Invoice Scanner connect nahi ho saka. Barah-e-karam dobara koshish karein.'
     });
   } catch (err: any) {
     console.error('Invoice OCR server error:', err);
-    res.json({
-      success: true,
-      data: []
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Invoice scan mein masla aya.'
     });
   }
 });
@@ -589,38 +673,38 @@ app.post('/api/ai/scan-margin', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const marginSystemInstruction = `You are a specialist pharmacy wholesale trade margin and bonus scheme auditor.
-Scan this distributor invoice or scheme slip (even if photographed under mobile phone conditions) to extract items, buy rates, quantities, and free bonus packs (e.g. 10+1, 10+2, 5+1).
-STRICT ZERO-HALLUCINATION RULE:
-Do NOT invent fake items like "Scheme Medicine Item". Extract ONLY real items visibly printed on the bill. If no items can be detected, return an empty array [].`;
-
     const prompt = `Inspect this wholesale bill or scheme slip.
-Extract genuine items, buy rates (TP), invoiced quantities, and free bonus packs.
-DO NOT hallucinate fake medicines. If no rows found, return [].`;
+Read all printed medicine items, invoiced wholesale buy rates (TP), quantities, and any free bonus packs received (e.g. 10+1 or 5+1 scheme).
 
-    const marginSchema = {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING, description: 'Medicine brand name' },
-          buyRate: { type: Type.NUMBER, description: 'Invoiced buy rate TP' },
-          qty: { type: Type.NUMBER, description: 'Billed quantity' },
-          freeQty: { type: Type.NUMBER, description: 'Free / bonus packs received' }
-        },
-        required: ['name']
-      }
-    };
+Return JSON format:
+[
+  {
+    "name": "Medicine name and strength",
+    "buyRate": 150,
+    "qty": 10,
+    "freeQty": 1
+  }
+]`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64, marginSchema, marginSystemInstruction);
+    const text = await generateWithVisionFallback(prompt, imageBase64);
     const parsed = text ? extractJsonFromText(text) : null;
     let items: any[] = [];
     if (Array.isArray(parsed)) items = parsed;
     else if (Array.isArray(parsed?.items)) items = parsed.items;
     else if (Array.isArray(parsed?.medicines)) items = parsed.medicines;
+    else if (Array.isArray(parsed?.lineItems)) items = parsed.lineItems;
 
-    // Filter out any refusal messages or fake items
-    const cleanItems = items.filter(i => i && i.name && !isModelRefusal(String(i.name)) && !/scheme medicine/i.test(String(i.name))).map((item, idx) => ({
+    if (items.length === 0 && text) {
+      const lineItems = extractInvoiceItemsFromTextLines(text);
+      items = lineItems.map(i => ({
+        name: i.name,
+        buyRate: i.buyRate,
+        qty: i.qty,
+        freeQty: 0
+      }));
+    }
+
+    const cleanItems = items.filter(i => i && i.name && !isModelRefusal(String(i.name))).map((item) => ({
       name: String(item.name).trim(),
       buyRate: Number(item.buyRate || item.rate) || 0,
       qty: Number(item.qty || item.quantity) || 1,
@@ -628,15 +712,31 @@ DO NOT hallucinate fake medicines. If no rows found, return [].`;
       mrp: ''
     }));
 
-    res.json({
-      success: true,
-      data: cleanItems
+    if (cleanItems.length > 0) {
+      res.json({
+        success: true,
+        data: cleanItems
+      });
+      return;
+    }
+
+    if (text) {
+      res.json({
+        success: true,
+        data: []
+      });
+      return;
+    }
+
+    res.status(502).json({
+      success: false,
+      error: 'AI Margin Scanner connect nahi ho saka. Barah-e-karam dobara koshish karein.'
     });
   } catch (err: any) {
     console.error('Margin OCR server error:', err);
-    res.json({
-      success: true,
-      data: []
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Margin scan mein masla aya.'
     });
   }
 });
@@ -687,7 +787,7 @@ Never output refusal notes; return valid JSON adhering to schema.`;
       required: ['name']
     };
 
-    const text = await generateWithVisionFallback(prompt, imageBase64, packSchema, packSystemInstruction);
+    const text = await generateWithVisionFallback(prompt, imageBase64);
     const parsed = text ? extractJsonFromText(text) : null;
 
     const targetObj = Array.isArray(parsed) ? parsed[0] : (parsed?.medicine || parsed?.item || parsed?.data || parsed || {});
