@@ -1189,11 +1189,14 @@
                     </div>
                     <div class="ai-laser-bar"></div>
                 </div>
-                <div>
-                    <h4 class="text-xs font-black text-slate-800 tracking-wide flex items-center justify-center gap-1.5">
+                <div class="space-y-1">
+                    <h4 id="presc-status-title" class="text-xs sm:text-sm font-black text-slate-800 tracking-wide flex items-center justify-center gap-1.5">
                         <span class="w-2 h-2 rounded-full bg-brand-600 animate-ping"></span>
-                        Scanning Prescription...
+                        AI Prescription ko ghor se read kar raha hai...
                     </h4>
+                    <p id="presc-status-sub" class="text-[11px] text-slate-500 font-medium">
+                        Doctor ki handwriting aur tamam adviyaat ka mukammal deep analysis jari hai...
+                    </p>
                 </div>
             </div>
 
@@ -1233,14 +1236,11 @@
                     <p id="presc-advice" class="text-xs leading-relaxed font-medium">Dawai waqt par lein aur doctor se rabta karein.</p>
                 </div>
 
-                <div class="flex flex-wrap sm:flex-nowrap gap-2 pt-2 border-t">
-                    <button type="button" onclick="window.addAllPrescriptionToPos()" class="w-full sm:flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition">
-                        <i data-lucide="shopping-cart" class="w-3.5 h-3.5"></i> Add All to Counter Bill
+                <div class="flex items-center gap-2 pt-2 border-t">
+                    <button type="button" onclick="window.copyPrescriptionText()" class="flex-1 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-800 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition border border-brand-200">
+                        <i data-lucide="copy" class="w-4 h-4"></i> Copy Prescription Text
                     </button>
-                    <button type="button" onclick="window.copyPrescriptionText()" class="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1 active:scale-95 transition">
-                        <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Text
-                    </button>
-                    <button type="button" onclick="window.closeAiPrescModal()" class="py-2 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition">
+                    <button type="button" onclick="window.closeAiPrescModal()" class="py-2.5 px-6 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs active:scale-95 transition">
                         Done
                     </button>
                 </div>

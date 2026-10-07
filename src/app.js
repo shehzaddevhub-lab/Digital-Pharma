@@ -1026,35 +1026,45 @@ window.reloadAppLive = async function() {
 function normalizePrescriptionData(parsed) {
     if (!parsed) return null;
     let meds = [];
-    if (Array.isArray(parsed)) {
-        meds = parsed;
-    } else if (Array.isArray(parsed.medicines)) {
-        meds = parsed.medicines;
-    } else if (Array.isArray(parsed.items)) {
-        meds = parsed.items;
-    } else if (Array.isArray(parsed.lineItems)) {
-        meds = parsed.lineItems;
-    } else if (Array.isArray(parsed.drugs)) {
-        meds = parsed.drugs;
-    } else if (Array.isArray(parsed.prescription)) {
-        meds = parsed.prescription;
-    } else if (Array.isArray(parsed.prescribedMedicines)) {
-        meds = parsed.prescribedMedicines;
-    } else if (Array.isArray(parsed.prescriptions)) {
-        meds = parsed.prescriptions;
-    } else if (Array.isArray(parsed.meds)) {
-        meds = parsed.meds;
-    } else if (Array.isArray(parsed.list)) {
-        meds = parsed.list;
-    } else if (parsed.medicines && typeof parsed.medicines === 'object') {
-        meds = Object.values(parsed.medicines);
-    } else if (parsed.data && typeof parsed.data === 'object') {
-        return normalizePrescriptionData(parsed.data);
+    let root = parsed;
+
+    if (Array.isArray(root)) {
+        if (root.length > 0 && root[0] && typeof root[0] === 'object') {
+            if (Array.isArray(root[0].medicines) || Array.isArray(root[0].items) || Array.isArray(root[0].lineItems) || Array.isArray(root[0].drugs)) {
+                root = root[0];
+            }
+        }
+    }
+
+    if (Array.isArray(root)) {
+        meds = root;
+    } else if (Array.isArray(root.medicines)) {
+        meds = root.medicines;
+    } else if (Array.isArray(root.items)) {
+        meds = root.items;
+    } else if (Array.isArray(root.lineItems)) {
+        meds = root.lineItems;
+    } else if (Array.isArray(root.drugs)) {
+        meds = root.drugs;
+    } else if (Array.isArray(root.prescription)) {
+        meds = root.prescription;
+    } else if (Array.isArray(root.prescribedMedicines)) {
+        meds = root.prescribedMedicines;
+    } else if (Array.isArray(root.prescriptions)) {
+        meds = root.prescriptions;
+    } else if (Array.isArray(root.meds)) {
+        meds = root.meds;
+    } else if (Array.isArray(root.list)) {
+        meds = root.list;
+    } else if (root.medicines && typeof root.medicines === 'object') {
+        meds = Object.values(root.medicines);
+    } else if (root.data && typeof root.data === 'object') {
+        return normalizePrescriptionData(root.data);
     }
 
     // Text line fallback parser if model returns formatted lines instead of strict JSON array
-    if (meds.length === 0 && (parsed.rawText || typeof parsed === 'string' || parsed.text)) {
-        const textToParse = parsed.rawText || (typeof parsed === 'string' ? parsed : parsed.text);
+    if (meds.length === 0 && (root.rawText || typeof root === 'string' || root.text)) {
+        const textToParse = root.rawText || (typeof root === 'string' ? root : root.text);
         const lines = String(textToParse).split('\n').map(l => l.trim()).filter(Boolean);
         for (const line of lines) {
             const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
@@ -1073,58 +1083,69 @@ function normalizePrescriptionData(parsed) {
         }
     }
 
-    let rawAdvice = String(parsed.advice || parsed.precautions || parsed.instructions || '');
+    let rawAdvice = String(root.advice || root.precautions || root.instructions || '');
     if (!rawAdvice || isModelRefusalText(rawAdvice)) {
         rawAdvice = 'Dawai hidayat ke mutabiq waqt par lein. Thandi, tali hui aur khatti cheezon se mukammal parhez karein, saaf paani zyada piyen aur aaram karein.';
     }
 
-    let rawSummary = String(parsed.treatmentSummary || parsed.summary || parsed.treatment || '');
+    let rawSummary = String(root.treatmentSummary || root.summary || root.treatment || '');
     if (!rawSummary || isModelRefusalText(rawSummary)) {
         rawSummary = 'Nuskha ke mutabiq adviyaat aur ilaj ki mukammal tafseelat darj hain.';
     }
 
     let rawDoctor = '';
-    if (typeof parsed.doctor === 'string') rawDoctor = parsed.doctor;
-    else if (parsed.doctor && typeof parsed.doctor === 'object' && parsed.doctor.name) rawDoctor = parsed.doctor.name;
-    else if (parsed.clinic) rawDoctor = String(parsed.clinic);
-    else if (parsed.doctorName) rawDoctor = String(parsed.doctorName);
+    if (typeof root.doctor === 'string') rawDoctor = root.doctor;
+    else if (root.doctor && typeof root.doctor === 'object' && root.doctor.name) rawDoctor = root.doctor.name;
+    else if (root.clinic) rawDoctor = String(root.clinic);
+    else if (root.doctorName) rawDoctor = String(root.doctorName);
     if (!rawDoctor || isModelRefusalText(rawDoctor) || /n\/a|not readable|unknown|mojood nahi/i.test(rawDoctor)) {
         rawDoctor = 'Doctor / Clinic Slip';
     }
 
     let rawPatient = '';
-    if (typeof parsed.patient === 'string') rawPatient = parsed.patient;
-    else if (parsed.patient && typeof parsed.patient === 'object' && parsed.patient.name) rawPatient = parsed.patient.name;
-    else if (parsed.patientName) rawPatient = String(parsed.patientName);
+    if (typeof root.patient === 'string') rawPatient = root.patient;
+    else if (root.patient && typeof root.patient === 'object' && root.patient.name) rawPatient = root.patient.name;
+    else if (root.patientName) rawPatient = String(root.patientName);
     if (!rawPatient || isModelRefusalText(rawPatient) || /n\/a|not readable|unknown|mojood nahi/i.test(rawPatient)) {
         rawPatient = 'General Patient';
     }
 
     const cleanedMeds = meds
-        .filter(m => m && (m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName))
-        .filter(m => {
-            const nameStr = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || '');
-            return !isModelRefusalText(nameStr);
-        })
         .map(m => {
-            const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || 'Prescribed Medicine').trim();
+            if (typeof m === 'string') {
+                const clean = m.trim().replace(/^[\*\-\d\.\)\s]+/, '').trim();
+                if (clean.length < 2 || isModelRefusalText(clean)) return null;
+                const parts = clean.split(/[-–—:]/);
+                const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+                const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
+                const shortUse = window.getPrescriptionShortUse(name, '');
+                return {
+                    name,
+                    formula: '',
+                    timing,
+                    usage: 'Taza paani ke sath lein',
+                    shortUse
+                };
+            }
+            if (!m || typeof m !== 'object') return null;
+            const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || m.title || m.label || '').trim();
+            if (!name || isModelRefusalText(name)) return null;
             const formula = String(m.formula || m.generic || m.salt || m.composition || '').trim();
             const rawUse = String(m.shortUse || m.use || m.purpose || m.indication || m.reason || '').trim();
             const shortUseHint = rawUse || window.getMedicineShortUse(name, formula);
             return {
                 name,
                 formula,
-                form: String(m.form || m.type || 'Goli (Tablet)').trim(),
                 timing: isModelRefusalText(String(m.timing || '')) 
                     ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
                     : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
                 usage: isModelRefusalText(String(m.usage || '')) 
                     ? 'Taza paani ke sath lein' 
                     : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
-                purpose: shortUseHint,
                 shortUse: shortUseHint
             };
-        });
+        })
+        .filter(Boolean);
 
     return {
         doctor: rawDoctor,
@@ -1139,30 +1160,40 @@ function normalizePrescriptionData(parsed) {
 function normalizeInvoiceItems(parsed) {
     if (!parsed) return [];
     let list = [];
-    if (Array.isArray(parsed)) {
-        list = parsed;
-    } else if (Array.isArray(parsed.lineItems)) {
-        list = parsed.lineItems;
-    } else if (Array.isArray(parsed.items)) {
-        list = parsed.items;
-    } else if (Array.isArray(parsed.medicines)) {
-        list = parsed.medicines;
-    } else if (Array.isArray(parsed.invoicedItems)) {
-        list = parsed.invoicedItems;
-    } else if (Array.isArray(parsed.invoiceItems)) {
-        list = parsed.invoiceItems;
-    } else if (Array.isArray(parsed.lines)) {
-        list = parsed.lines;
-    } else if (Array.isArray(parsed.products)) {
-        list = parsed.products;
-    } else if (Array.isArray(parsed.rows)) {
-        list = parsed.rows;
-    } else if (Array.isArray(parsed.table)) {
-        list = parsed.table;
-    } else if (Array.isArray(parsed.billItems)) {
-        list = parsed.billItems;
-    } else if (parsed.data && typeof parsed.data === 'object') {
-        return normalizeInvoiceItems(parsed.data);
+    let root = parsed;
+
+    if (Array.isArray(root)) {
+        if (root.length > 0 && root[0] && typeof root[0] === 'object') {
+            if (Array.isArray(root[0].lineItems) || Array.isArray(root[0].items) || Array.isArray(root[0].medicines) || Array.isArray(root[0].products) || Array.isArray(root[0].rows)) {
+                root = root[0];
+            }
+        }
+    }
+
+    if (Array.isArray(root)) {
+        list = root;
+    } else if (Array.isArray(root.lineItems)) {
+        list = root.lineItems;
+    } else if (Array.isArray(root.items)) {
+        list = root.items;
+    } else if (Array.isArray(root.medicines)) {
+        list = root.medicines;
+    } else if (Array.isArray(root.invoicedItems)) {
+        list = root.invoicedItems;
+    } else if (Array.isArray(root.invoiceItems)) {
+        list = root.invoiceItems;
+    } else if (Array.isArray(root.lines)) {
+        list = root.lines;
+    } else if (Array.isArray(root.products)) {
+        list = root.products;
+    } else if (Array.isArray(root.rows)) {
+        list = root.rows;
+    } else if (Array.isArray(root.table)) {
+        list = root.table;
+    } else if (Array.isArray(root.billItems)) {
+        list = root.billItems;
+    } else if (root.data && typeof root.data === 'object') {
+        return normalizeInvoiceItems(root.data);
     }
 
     // Text line fallback for invoices
@@ -1289,6 +1320,7 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
 
     const payload = JSON.stringify({ imageBase64: base64Data });
     let lastError = null;
+    let serverData = null;
 
     // 1. Direct Server Endpoint (Resilient 45-second timeout)
     try {
@@ -1314,7 +1346,7 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
                 if (hasPrescMeds || hasInvItems || !clientPrompt) {
                     return data;
                 }
-                console.log('Server endpoint returned 0 items, verifying via vision fallback...');
+                serverData = data;
             }
             if (data && data.error) {
                 lastError = data.error;
@@ -1344,6 +1376,10 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         } catch (e) {
             console.warn('Direct vision fallback note:', e?.message || e);
         }
+    }
+
+    if (serverData) {
+        return serverData;
     }
 
     throw new Error(lastError || 'AI Scanner server se connect nahi ho saka. Barah-e-karam internet connection check karein.');
@@ -2228,14 +2264,15 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist and handwriting forensic OCR specialist.
+const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist, Master Handwriting Decipherer, and Medical Forensic OCR specialist.
 Scan this entire prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
-CRITICAL INSTRUCTION - READ ALL MEDICINES:
+EXHAUSTIVE EXTRACTION MANDATE:
 Do NOT stop after reading just 1, 2, or 3 items. Carefully transcribe EVERY SINGLE medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
-- Read lines numbered 1., 2., 3., 4., 5., 6., 7., 8., etc., bullet points, and any margin/SOS notes.
-- Decipher doctor cursive handwriting, brand names, active salts, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
+- Read all numbered lines (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, etc.), unnumbered lines, columns, bullet points, and any margin/SOS notes.
+- Use your deep clinical pharmacy intellect to decipher messy doctor cursive handwriting, abbreviations, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
 - For each medicine, determine its medical clinical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi aur balgham kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
 - Also read doctor name, clinic name, and patient name if written.
+- IMPORTANT: Do NOT include any drug category or therapeutic classification in the output.
 
 Return JSON format:
 {
@@ -2245,12 +2282,11 @@ Return JSON format:
   "advice": "Precautions in Roman Urdu",
   "medicines": [
     {
-      "name": "Medicine name and strength",
+      "name": "Exact medicine name and strength",
       "formula": "Generic salt if visible",
-      "form": "Goli/Capsule/Syrup/Drops/Injection",
       "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1)",
-      "usage": "Usage instructions e.g. Taza paani ke sath lein",
-      "shortUse": "Use in Roman Urdu ending with kelye"
+      "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
+      "shortUse": "Purpose in Roman Urdu ending with kelye"
     }
   ]
 }`;
@@ -2366,7 +2402,7 @@ window.handlePrescriptionScan = async function(event) {
                             <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
                             <div class="flex-1 min-w-0">
                                 <strong class="text-slate-900 text-xs sm:text-sm font-black block">${m.name}</strong>
-                                <span class="text-[11px] text-slate-500 block font-medium mt-0.5">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
+                                ${m.formula ? `<span class="text-[11px] text-slate-500 block font-medium mt-0.5">${m.formula}</span>` : ''}
                                 <!-- Medicine Short Use strictly in Roman Urdu ending with "... kelye" -->
                                 <div class="mt-1 flex items-center gap-1.5 flex-wrap">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
