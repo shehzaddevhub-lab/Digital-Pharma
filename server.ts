@@ -1,4 +1,5 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -439,8 +440,8 @@ async function generateWithVisionFallback(
   const { clean, mime } = sanitizeBase64(imageBase64);
   // Comprehensive Gemini Multimodal Vision Cascade (Official, high-performing multimodal models)
   const models = [
-    'gemini-3.1-flash-lite',
     'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
     'gemini-3.8-flash'
   ];
 
@@ -461,7 +462,10 @@ async function generateWithVisionFallback(
           {
             text: prompt
           }
-        ]
+        ],
+        config: {
+          maxOutputTokens: 8192
+        }
       });
 
       const timeoutCall = new Promise<never>((_, reject) => 
@@ -517,10 +521,14 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
       return;
     }
 
-    const prompt = `Carefully read this prescription slip, clinic pad, hospital note, or doctor handwriting photo.
-Transcribe every medicine written on the paper: brand or generic name, strength, and dosage instructions.
-For each medicine detected, determine its medical clinical use in Roman Urdu ending with "kelye" (for example: "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
-Also read doctor name, clinic name, and patient name if written.
+    const prompt = `You are an expert Clinical Pharmacist and handwriting forensic OCR specialist.
+Scan this entire prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
+CRITICAL INSTRUCTION - READ ALL MEDICINES:
+Do NOT stop after reading just 1, 2, or 3 items. Carefully transcribe EVERY SINGLE medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
+- Read lines numbered 1., 2., 3., 4., 5., 6., 7., 8., etc., bullet points, and any margin/SOS notes.
+- Decipher doctor cursive handwriting, brand names, active salts, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
+- For each medicine, determine its medical clinical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi aur balgham kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
+- Also read doctor name, clinic name, and patient name if written.
 
 Return JSON format:
 {

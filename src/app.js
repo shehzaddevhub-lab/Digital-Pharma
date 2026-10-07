@@ -881,8 +881,8 @@ export async function enhanceImageLikeCamScanner(file) {
         const origW = originalW || 1200;
         const origH = originalH || 1600;
 
-        // Preserve full document without fragile auto-crop clipping margins
-        const maxDim = 1600;
+        // Preserve full high-resolution document for complete handwriting detection
+        const maxDim = 2400;
         let targetW = origW;
         let targetH = origH;
         if (targetW > maxDim || targetH > maxDim) {
@@ -908,40 +908,11 @@ export async function enhanceImageLikeCamScanner(file) {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, targetW, targetH);
 
-        // Draw complete full image preserving all headers, margins and doctor notes
+        // Draw complete full image preserving all natural colors, doctor handwriting, inks & stamps
         ctx.drawImage(source, 0, 0, origW, origH, 0, 0, targetW, targetH);
 
-        // Gentle clarity and contrast adjustment (preserves blue ink, doctor ballpoint, printed text & stamps)
-        try {
-            const imgData = ctx.getImageData(0, 0, targetW, targetH);
-            const d = imgData.data;
-            const len = d.length;
-
-            // Sample luminance range
-            let minL = 255, maxL = 0;
-            for (let i = 0; i < len; i += 32) {
-                const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-                if (lum < minL) minL = lum;
-                if (lum > maxL) maxL = lum;
-            }
-
-            const range = Math.max(40, maxL - minL);
-            if (range < 220) {
-                // Mild contrast boost so faint ink is clearly legible
-                const factor = 255 / range;
-                for (let i = 0; i < len; i += 4) {
-                    d[i] = Math.min(255, Math.max(0, Math.round((d[i] - minL) * factor)));
-                    d[i + 1] = Math.min(255, Math.max(0, Math.round((d[i + 1] - minL) * factor)));
-                    d[i + 2] = Math.min(255, Math.max(0, Math.round((d[i + 2] - minL) * factor)));
-                }
-                ctx.putImageData(imgData, 0, 0);
-            }
-        } catch(eFilter) {
-            console.warn("Clarity filter note:", eFilter);
-        }
-
-        // Export as crisp JPEG at 0.88 quality
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        // Export clean crisp JPEG at 0.90 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
         return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
     }
 
@@ -2257,10 +2228,14 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-const PRESCRIPTION_PROMPT = `Carefully examine this prescription slip, clinic pad, hospital note, or doctor handwriting photo.
-Transcribe every medicine written on the paper: brand or generic name, strength, and dosage instructions.
-For each medicine detected, determine its clinical medical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
-Also read doctor name, clinic name, and patient name if written.
+const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist and handwriting forensic OCR specialist.
+Scan this entire prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
+CRITICAL INSTRUCTION - READ ALL MEDICINES:
+Do NOT stop after reading just 1, 2, or 3 items. Carefully transcribe EVERY SINGLE medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
+- Read lines numbered 1., 2., 3., 4., 5., 6., 7., 8., etc., bullet points, and any margin/SOS notes.
+- Decipher doctor cursive handwriting, brand names, active salts, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
+- For each medicine, determine its medical clinical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi aur balgham kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
+- Also read doctor name, clinic name, and patient name if written.
 
 Return JSON format:
 {
@@ -2385,34 +2360,23 @@ window.handlePrescriptionScan = async function(event) {
             } else {
                 medList.innerHTML = (parsed.medicines || []).map((m, idx) => {
                     const shortUse = window.getPrescriptionShortUse(m.name, m.formula, m.shortUse || m.purpose);
-                    const formulaClass = window.getMedicineFormulaClass(m.name, m.formula);
                     return `
                     <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
-                        <div class="flex justify-between items-start gap-2">
-                            <div class="flex items-start gap-2">
-                                <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
-                                <div>
-                                    <strong class="text-slate-900 text-xs sm:text-sm font-black">${m.name}</strong>
-                                    <span class="text-[11px] text-slate-500 block font-medium">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
-                                    <!-- Medicine Short Use strictly in Roman Urdu ending with "... kelye" & Formula Class -->
-                                    <div class="mt-1 flex items-center gap-1.5 flex-wrap">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
-                                            💊 ${shortUse}
-                                        </span>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50/90 text-amber-900 border border-amber-200/80 shadow-2xs">
-                                            🔬 ${formulaClass}
-                                        </span>
-                                    </div>
+                        <div class="flex items-start gap-2.5">
+                            <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
+                            <div class="flex-1 min-w-0">
+                                <strong class="text-slate-900 text-xs sm:text-sm font-black block">${m.name}</strong>
+                                <span class="text-[11px] text-slate-500 block font-medium mt-0.5">${m.formula ? m.formula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.form || 'Dawai'}</span></span>
+                                <!-- Medicine Short Use strictly in Roman Urdu ending with "... kelye" -->
+                                <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                                        💊 ${shortUse}
+                                    </span>
                                 </div>
-                            </div>
-                            <div class="flex flex-col items-end gap-1 shrink-0">
-                                <button type="button" onclick="window.addPrescribedItemToPos('${encodeURIComponent(m.name)}')" class="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 active:scale-95 shadow-xs transition">
-                                    <i data-lucide="plus" class="w-3 h-3"></i> Add to Counter
-                                </button>
                             </div>
                         </div>
                         
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] pt-1">
                             <div class="p-2 bg-emerald-50 border border-emerald-200/70 rounded-lg text-emerald-950 font-semibold flex items-center gap-1.5">
                                 <span class="text-base">⏰</span>
                                 <div>
