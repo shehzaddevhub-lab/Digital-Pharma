@@ -454,9 +454,12 @@ async function generateWithVisionFallback(
   imageBase64: string,
   systemInstruction?: string
 ): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY ||
+                 process.env.GOOGLE_API_KEY ||
+                 process.env.API_KEY ||
+                 process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('GEMINI_API_KEY is missing from environment.');
+    console.warn('GEMINI_API_KEY is missing from environment (checked GEMINI_API_KEY, GOOGLE_API_KEY, API_KEY, VITE_GEMINI_API_KEY).');
     return null;
   }
 
@@ -470,10 +473,10 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // Comprehensive Gemini Multimodal Vision Cascade with gemini-3.1-flash-lite as primary
+  // Comprehensive Gemini Multimodal Vision Cascade with verified active models
   const models = [
+    'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
-    'gemini-flash-latest',
     'gemini-3.8-flash'
   ];
 
@@ -503,7 +506,7 @@ async function generateWithVisionFallback(
       });
 
       const timeoutCall = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 30000)
+        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 18000)
       );
 
       const response: any = await Promise.race([apiCall, timeoutCall]);
@@ -995,15 +998,11 @@ app.get('/api/health', (_req, res) => {
 
 // Setup Vite middleware in dev or static files in production
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.resolve(__dirname, 'dist');
+  const distPath = path.resolve(__dirname, 'dist');
+  const hasDist = fs.existsSync(distPath) && fs.existsSync(path.resolve(distPath, 'index.html'));
+
+  if (hasDist) {
+    console.log('Serving production static build from dist directory.');
     app.use(express.static(distPath, {
       setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
@@ -1015,6 +1014,13 @@ async function startServer() {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
+  } else {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
   }
 
   app.listen(PORT, '0.0.0.0', () => {

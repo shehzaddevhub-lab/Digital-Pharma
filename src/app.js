@@ -881,8 +881,8 @@ export async function enhanceImageLikeCamScanner(file) {
         const origW = originalW || 1200;
         const origH = originalH || 1600;
 
-        // Preserve full high-resolution document for complete handwriting detection
-        const maxDim = 2400;
+        // Optimal document OCR resolution (1600px max dimension ensures crystal clear text without exceeding payload limits)
+        const maxDim = 1600;
         let targetW = origW;
         let targetH = origH;
         if (targetW > maxDim || targetH > maxDim) {
@@ -891,7 +891,7 @@ export async function enhanceImageLikeCamScanner(file) {
                 targetW = maxDim;
             } else {
                 targetW = Math.round((targetW * maxDim) / targetH);
-                targetW = maxDim;
+                targetH = maxDim;
             }
         }
 
@@ -911,8 +911,8 @@ export async function enhanceImageLikeCamScanner(file) {
         // Draw complete full image preserving all natural colors, doctor handwriting, inks & stamps
         ctx.drawImage(source, 0, 0, origW, origH, 0, 0, targetW, targetH);
 
-        // Export clean crisp JPEG at 0.90 quality
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
+        // Export clean crisp JPEG at 0.82 quality (balanced size for fast upload on hosting)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
         return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
     }
 
@@ -1259,8 +1259,8 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
     const models = [
+        'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
-        'gemini-flash-latest',
         'gemini-3.8-flash'
     ];
     let lastError = null;
@@ -1339,17 +1339,22 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         clearTimeout(timeoutId);
 
         if (res.ok) {
-            const data = await res.json();
-            if (data && (data.success !== false)) {
-                const hasPrescMeds = data.data && Array.isArray(data.data.medicines) && data.data.medicines.length > 0;
-                const hasInvItems = Array.isArray(data.data) && data.data.length > 0;
-                if (hasPrescMeds || hasInvItems || !clientPrompt) {
-                    return data;
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await res.json();
+                if (data && (data.success !== false)) {
+                    const hasPrescMeds = data.data && Array.isArray(data.data.medicines) && data.data.medicines.length > 0;
+                    const hasInvItems = Array.isArray(data.data) && data.data.length > 0;
+                    if (hasPrescMeds || hasInvItems || !clientPrompt) {
+                        return data;
+                    }
+                    serverData = data;
                 }
-                serverData = data;
-            }
-            if (data && data.error) {
-                lastError = data.error;
+                if (data && data.error) {
+                    lastError = data.error;
+                }
+            } else {
+                lastError = `Server returned non-JSON response (${res.status})`;
             }
         } else {
             const errJson = await res.json().catch(() => null);
