@@ -26,6 +26,11 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize Firebase App
 export const app = initializeApp(firebaseConfig);
 
+// Expose config globally for fallback AI OCR on static hosting
+if (typeof window !== 'undefined') {
+  window.__FIREBASE_CONFIG__ = firebaseConfig;
+}
+
 // CRITICAL: Initialize Firestore with firestoreDatabaseId
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 

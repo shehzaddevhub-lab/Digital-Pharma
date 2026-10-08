@@ -12,7 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const portArgIndex = process.argv.indexOf('--port');
+const portArg = portArgIndex !== -1 ? Number(process.argv[portArgIndex + 1]) : null;
+const PORT = portArg || 3000;
 
 // Enable CORS for all origins (allowing GitHub Pages and mobile web to call AI endpoints)
 app.use((_req, res, next) => {
@@ -454,12 +456,25 @@ async function generateWithVisionFallback(
   imageBase64: string,
   systemInstruction?: string
 ): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY ||
-                 process.env.GOOGLE_API_KEY ||
-                 process.env.API_KEY ||
-                 process.env.VITE_GEMINI_API_KEY;
+  let apiKey = process.env.GEMINI_API_KEY ||
+               process.env.GOOGLE_API_KEY ||
+               process.env.API_KEY ||
+               process.env.VITE_GEMINI_API_KEY;
+
   if (!apiKey) {
-    console.warn('GEMINI_API_KEY is missing from environment (checked GEMINI_API_KEY, GOOGLE_API_KEY, API_KEY, VITE_GEMINI_API_KEY).');
+    try {
+      const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
+      if (fs.existsSync(cfgPath)) {
+        const rawCfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+        if (rawCfg && rawCfg.apiKey) {
+          apiKey = rawCfg.apiKey;
+        }
+      }
+    } catch(e) {}
+  }
+
+  if (!apiKey) {
+    console.warn('GEMINI_API_KEY is missing from environment (checked GEMINI_API_KEY, GOOGLE_API_KEY, API_KEY, VITE_GEMINI_API_KEY, firebase-applet-config.json).');
     return null;
   }
 
@@ -475,9 +490,10 @@ async function generateWithVisionFallback(
   const { clean, mime } = sanitizeBase64(imageBase64);
   // Comprehensive Gemini Multimodal Vision Cascade with verified active models
   const models = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-3.8-flash'
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-3.1-flash-lite'
   ];
 
   let bestParsedFallback: string | null = null;

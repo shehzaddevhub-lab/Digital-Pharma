@@ -1252,6 +1252,7 @@ function normalizeInvoiceItems(parsed) {
 // Universal client-side Gemini Vision Caller (Works across ANY hosting server, GitHub Pages, Vercel, Firebase & Installed PWA)
 async function callGeminiVisionDirect(prompt, base64Data) {
     const key = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+                (typeof window !== 'undefined' && window.__FIREBASE_CONFIG__?.apiKey) ||
                 localStorage.getItem('gemini_api_key') ||
                 "";
     if (!key) {
@@ -1259,9 +1260,9 @@ async function callGeminiVisionDirect(prompt, base64Data) {
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
     const models = [
-        'gemini-3.5-flash-lite',
-        'gemini-3.1-flash-lite',
-        'gemini-3.8-flash'
+        'gemini-3.8-flash',
+        'gemini-2.5-flash',
+        'gemini-3.1-flash-lite'
     ];
     let lastError = null;
 
@@ -1322,52 +1323,83 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
     let lastError = null;
     let serverData = null;
 
-    // 1. Direct Server Endpoint (Resilient 45-second timeout)
-    try {
+    // Helper to call a specific URL with timeout
+    async function attemptEndpoint(targetUrl) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
+        try {
+            const res = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: payload,
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
 
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: payload,
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                const data = await res.json();
-                if (data && (data.success !== false)) {
-                    const hasPrescMeds = data.data && Array.isArray(data.data.medicines) && data.data.medicines.length > 0;
-                    const hasInvItems = Array.isArray(data.data) && data.data.length > 0;
-                    if (hasPrescMeds || hasInvItems || !clientPrompt) {
-                        return data;
+            if (res.ok) {
+                const contentType = res.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await res.json();
+                    if (data && data.success !== false) {
+                        return { success: true, data };
                     }
-                    serverData = data;
+                    if (data && data.error) {
+                        return { success: false, error: data.error };
+                    }
                 }
-                if (data && data.error) {
-                    lastError = data.error;
-                }
-            } else {
-                lastError = `Server returned non-JSON response (${res.status})`;
+                return { success: false, error: `Non-JSON response from server (${res.status})` };
             }
-        } else {
             const errJson = await res.json().catch(() => null);
-            lastError = errJson?.error || `Server status: ${res.status}`;
+            return { success: false, error: errJson?.error || `Server status: ${res.status}` };
+        } catch (e) {
+            clearTimeout(timeoutId);
+            return { 
+                success: false, 
+                error: e?.name === 'AbortError' ? 'Server timeout ho gaya. Dobara koshish karein.' : (e?.message || 'Server connection error') 
+            };
         }
-    } catch (e) {
-        console.warn(`Local endpoint (${endpoint}) note:`, e?.message || e);
-        lastError = e?.name === 'AbortError'
-            ? 'Server response ka waqt mukammal ho gaya (timeout). Barah-e-karam dobara koshish karein.'
-            : (e?.message || 'Server se rabta nahi ho saka.');
     }
 
-    // 2. Direct client-side Vision fallback (Guarantees scanning works across static hosting, APK, GitHub Pages & offline caches)
+    // 1. Direct Same-Origin Server Endpoint
+    const localAttempt = await attemptEndpoint(endpoint);
+    if (localAttempt.success && localAttempt.data) {
+        const d = localAttempt.data;
+        const hasPrescMeds = d.data && Array.isArray(d.data.medicines) && d.data.medicines.length > 0;
+        const hasInvItems = Array.isArray(d.data) && d.data.length > 0;
+        if (hasPrescMeds || hasInvItems || !clientPrompt) {
+            return d;
+        }
+        serverData = d;
+    } else {
+        lastError = localAttempt.error;
+    }
+
+    // 2. High-speed Cloud Run Backend Proxy (when hosted on static Firebase / GitHub Pages / APK)
+    const CLOUD_RUN_ORIGIN = 'https://ais-pre-ou6bjzs2n66zp6bxp5s7gm-731749917388.asia-east1.run.app';
+    if (typeof window !== 'undefined' && !window.location.origin.includes('731749917388.asia-east1.run.app')) {
+        try {
+            const remoteUrl = `${CLOUD_RUN_ORIGIN}${endpoint}`;
+            const remoteAttempt = await attemptEndpoint(remoteUrl);
+            if (remoteAttempt.success && remoteAttempt.data) {
+                const d = remoteAttempt.data;
+                const hasPrescMeds = d.data && Array.isArray(d.data.medicines) && d.data.medicines.length > 0;
+                const hasInvItems = Array.isArray(d.data) && d.data.length > 0;
+                if (hasPrescMeds || hasInvItems || !clientPrompt) {
+                    return d;
+                }
+                if (!serverData) serverData = d;
+            } else if (remoteAttempt.error) {
+                lastError = remoteAttempt.error;
+            }
+        } catch (eRemote) {
+            console.warn('Remote backend proxy note:', eRemote);
+        }
+    }
+
+    // 3. Direct client-side Vision fallback (Guarantees scanning works across static hosting, APK, GitHub Pages & offline caches)
     if (clientPrompt) {
         try {
             const rawText = await callGeminiVisionDirect(clientPrompt, base64Data);
