@@ -462,19 +462,7 @@ async function generateWithVisionFallback(
                process.env.VITE_GEMINI_API_KEY;
 
   if (!apiKey) {
-    try {
-      const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
-      if (fs.existsSync(cfgPath)) {
-        const rawCfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-        if (rawCfg && rawCfg.apiKey) {
-          apiKey = rawCfg.apiKey;
-        }
-      }
-    } catch(e) {}
-  }
-
-  if (!apiKey) {
-    console.warn('GEMINI_API_KEY is missing from environment (checked GEMINI_API_KEY, GOOGLE_API_KEY, API_KEY, VITE_GEMINI_API_KEY, firebase-applet-config.json).');
+    console.warn('GEMINI_API_KEY is missing from environment (checked GEMINI_API_KEY, GOOGLE_API_KEY, API_KEY, VITE_GEMINI_API_KEY).');
     return null;
   }
 
@@ -490,10 +478,9 @@ async function generateWithVisionFallback(
   const { clean, mime } = sanitizeBase64(imageBase64);
   // Comprehensive Gemini Multimodal Vision Cascade with verified active models
   const models = [
-    'gemini-3.8-flash',
     'gemini-flash-latest',
-    'gemini-2.5-flash',
-    'gemini-3.1-flash-lite'
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash'
   ];
 
   let bestParsedFallback: string | null = null;
