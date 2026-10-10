@@ -2794,18 +2794,20 @@ window.handleRealInvoiceOcr = async function(event) {
         const detectedDist = items.find(i => i.distributor)?.distributor || '';
         const distInput = document.getElementById('ai-bill-distributor');
         if (distInput) distInput.value = detectedDist;
+        if (detectedDist) window.rememberDistributor(detectedDist);
 
         aiExtractedBuffer = items.map((item, idx) => ({
             id: 'ai_' + Date.now() + '_' + idx,
             name: item.name || 'Item ' + (idx + 1),
-            generic: item.generic || '',
+            type: item.type || detectMedicineTypeFromName(item.name || ''),
+            generic: item.generic || item.formula || '',
             batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
             expiry: item.expiry || '',
             packSize: item.packSize || '20',
             qty: Number(item.qty) || 1,
             buyRate: Number(item.buyRate) || 0,
-            mrp: '',
-            distributor: detectedDist || 'Distributor'
+            mrp: item.mrp || '',
+            distributor: item.distributor || detectedDist || 'Distributor'
         }));
 
         renderAiScannedTable();
@@ -2887,18 +2889,20 @@ window.retryInvoiceScanWithBase64 = async function(base64Data) {
         const detectedDist = items.find(i => i.distributor)?.distributor || '';
         const distInput = document.getElementById('ai-bill-distributor');
         if (distInput) distInput.value = detectedDist;
+        if (detectedDist) window.rememberDistributor(detectedDist);
 
         aiExtractedBuffer = items.map((item, idx) => ({
             id: 'ai_' + Date.now() + '_' + idx,
             name: item.name || 'Item ' + (idx + 1),
-            generic: item.generic || '',
+            type: item.type || detectMedicineTypeFromName(item.name || ''),
+            generic: item.generic || item.formula || '',
             batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
             expiry: item.expiry || '',
             packSize: item.packSize || '20',
             qty: Number(item.qty) || 1,
             buyRate: Number(item.buyRate) || 0,
-            mrp: '',
-            distributor: detectedDist || 'Distributor'
+            mrp: item.mrp || '',
+            distributor: item.distributor || detectedDist || 'Distributor'
         }));
 
         renderAiScannedTable();
@@ -2932,6 +2936,138 @@ window.saveAndRetryInvoiceScan = function() {
     }
 };
 
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+
+function detectMedicineTypeFromName(name) {
+    if (!name) return 'tab';
+    const n = String(name).toLowerCase();
+    if (/\b(cap|capsule|caps)\b/i.test(n)) return 'cap';
+    if (/\b(syp|syrup|susp|suspension|elixir)\b/i.test(n)) return 'syp';
+    if (/\b(drop|drops|eye drop|ear drop)\b/i.test(n)) return 'drop';
+    if (/\b(inj|injection|infusion|iv|im)\b/i.test(n)) return 'inj';
+    if (/\b(sachet|scht|powder|granules)\b/i.test(n)) return 'scht';
+    if (/\b(cream|gel|ointment|oint|lotion)\b/i.test(n)) return 'cream';
+    if (/\b(surgical|bandage|cannula|syringe|cotton)\b/i.test(n)) return 'surgical';
+    return 'tab';
+}
+
+function cleanNoEmoji(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '')
+        .replace(/[📦💊🧾⚡✨🔥⭐⚠️📍]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Global Distributor Memory & Autocomplete Suggestions
+window.getAllExistingDistributors = function() {
+    const set = new Set();
+    if (typeof medicines !== 'undefined' && Array.isArray(medicines)) {
+        medicines.forEach(m => {
+            if (m.distributor && typeof m.distributor === 'string') {
+                const trimmed = m.distributor.trim();
+                if (trimmed && !['general', 'distributor', 'unknown'].includes(trimmed.toLowerCase())) {
+                    set.add(trimmed);
+                }
+            }
+        });
+    }
+    try {
+        const saved = JSON.parse(localStorage.getItem('pharmacy_distributors') || '[]');
+        if (Array.isArray(saved)) {
+            saved.forEach(s => {
+                if (s && typeof s === 'string') {
+                    const trimmed = s.trim();
+                    if (trimmed && !['general', 'distributor', 'unknown'].includes(trimmed.toLowerCase())) {
+                        set.add(trimmed);
+                    }
+                }
+            });
+        }
+    } catch(e) {}
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+};
+
+window.rememberDistributor = function(name) {
+    if (!name || typeof name !== 'string') return;
+    const clean = name.trim();
+    if (!clean || ['general', 'distributor', 'unknown'].includes(clean.toLowerCase())) return;
+    try {
+        const saved = JSON.parse(localStorage.getItem('pharmacy_distributors') || '[]');
+        const list = Array.isArray(saved) ? saved : [];
+        if (!list.some(d => d.toLowerCase() === clean.toLowerCase())) {
+            list.push(clean);
+            localStorage.setItem('pharmacy_distributors', JSON.stringify(list));
+        }
+        window.populateDistributorsDatalist();
+    } catch(e) {}
+};
+
+window.populateDistributorsDatalist = function() {
+    const dl = document.getElementById('distributors-datalist');
+    if (!dl) return;
+    const list = window.getAllExistingDistributors();
+    dl.innerHTML = list.map(d => `<option value="${escapeHtml(d)}">`).join('');
+};
+
+window.handleDistributorInput = function(inputEl) {
+    if (!inputEl) inputEl = document.getElementById('ai-bill-distributor');
+    if (!inputEl) return;
+    const val = (inputEl.value || '').trim().toLowerCase();
+    const suggestionsEl = document.getElementById('ai-distributor-suggestions');
+    if (!suggestionsEl) return;
+
+    const all = window.getAllExistingDistributors();
+    if (all.length === 0) {
+        suggestionsEl.classList.add('hidden');
+        return;
+    }
+
+    const matches = all.filter(d => !val || d.toLowerCase().includes(val));
+    if (matches.length === 0) {
+        suggestionsEl.classList.add('hidden');
+        return;
+    }
+
+    suggestionsEl.innerHTML = matches.slice(0, 10).map(d => {
+        const safeD = escapeHtml(d).replace(/'/g, "\\'");
+        return `<div onclick="window.selectDistributorSuggestion('${safeD}')" class="px-3 py-1.5 hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 font-bold text-xs cursor-pointer rounded-lg flex items-center justify-between transition">
+            <span>${escapeHtml(d)}</span>
+            <span class="text-[9px] text-slate-400 font-normal">Existing</span>
+        </div>`;
+    }).join('');
+    suggestionsEl.classList.remove('hidden');
+};
+
+window.selectDistributorSuggestion = function(distName) {
+    const input = document.getElementById('ai-bill-distributor');
+    if (input) input.value = distName;
+    const suggestionsEl = document.getElementById('ai-distributor-suggestions');
+    if (suggestionsEl) suggestionsEl.classList.add('hidden');
+    window.applyDistributorToAllScanned();
+};
+
+// Close distributor suggestions when clicking outside
+if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => {
+        const distInput = document.getElementById('ai-bill-distributor');
+        const suggestionsEl = document.getElementById('ai-distributor-suggestions');
+        if (suggestionsEl && !suggestionsEl.contains(e.target) && e.target !== distInput) {
+            suggestionsEl.classList.add('hidden');
+        }
+    });
+}
+
 function renderAiScannedTable() {
     const tbody = document.getElementById('ai-scanned-table-body');
     if (!tbody) return;
@@ -2943,7 +3079,7 @@ function renderAiScannedTable() {
             <strong class="block text-slate-800 text-xs">Bill se koi item detect nahi hua</strong>
             <span class="text-[11px] text-slate-400 block mt-0.5">Tasveer ko seedha rakh kar dobara upload karein.</span>
             <div class="mt-2">
-                <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1 shadow-xs">
+                <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1 shadow-xs cursor-pointer">
                     <i data-lucide="camera" class="w-3.5 h-3.5"></i> Dobara Scan Karein
                 </button>
             </div>
@@ -2952,12 +3088,19 @@ function renderAiScannedTable() {
         return;
     }
     tbody.innerHTML = aiExtractedBuffer.map((item, idx) => `
-        <tr class="border-b border-slate-100">
+        <tr class="border-b border-slate-100 hover:bg-slate-50/50 transition">
             <td class="p-2 min-w-[190px] sm:min-w-[210px] max-w-[230px]">
-                <input type="text" value="${item.name}" title="${item.name}" placeholder="Medicine Name" onchange="window.updateScannedItem(${idx}, 'name', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <input type="text" value="${escapeHtml(item.name)}" title="${escapeHtml(item.name)}" placeholder="Medicine Name" onchange="window.updateScannedItem(${idx}, 'name', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                ${(item.generic || item.type || item.expiry) ? `
+                    <div class="text-[10px] text-slate-500 truncate mt-0.5 font-medium px-0.5" title="${escapeHtml(item.generic || '')}">
+                        ${item.generic ? `<span class="text-brand-700 font-bold">${escapeHtml(item.generic)}</span> ` : ''}
+                        ${item.type ? `• <span class="uppercase text-slate-600 font-bold">${escapeHtml(item.type)}</span> ` : ''}
+                        ${item.expiry ? `• <span class="text-amber-700 font-mono">Exp: ${escapeHtml(item.expiry)}</span>` : ''}
+                    </div>
+                ` : ''}
             </td>
             <td class="p-2 min-w-[90px]">
-                <input type="text" value="${item.batch}" placeholder="Batch" onchange="window.updateScannedItem(${idx}, 'batch', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 bg-white">
+                <input type="text" value="${escapeHtml(item.batch || '')}" placeholder="Batch" onchange="window.updateScannedItem(${idx}, 'batch', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 bg-white">
             </td>
             <td class="p-2 text-center min-w-[70px]">
                 <input type="number" min="1" value="${item.qty}" onchange="window.updateScannedItem(${idx}, 'qty', this.value)" class="w-16 px-1.5 py-1.5 border border-slate-300 rounded-lg text-xs text-center font-bold text-slate-900 bg-white">
@@ -2968,15 +3111,114 @@ function renderAiScannedTable() {
             <td class="p-2 text-right bg-amber-50/70 min-w-[105px]">
                 <input type="number" step="0.01" placeholder="Box MRP" value="${item.mrp || ''}" onchange="window.updateScannedItem(${idx}, 'mrp', this.value)" class="w-24 px-1.5 py-1.5 border border-amber-300 rounded-lg text-xs text-right font-black text-emerald-700 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
             </td>
-            <td class="p-2 text-center">
-                <button onclick="window.removeAiScannedRow(${idx})" class="p-1 text-slate-400 hover:text-red-600 rounded-lg" title="Delete Row">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                </button>
+            <td class="p-2 text-center whitespace-nowrap min-w-[75px]">
+                <div class="flex items-center justify-center gap-1">
+                    <button type="button" onclick="window.openEditScannedItemModal(${idx})" class="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition active:scale-95 cursor-pointer" title="Dawai Details Edit / Manual Update (Formula, Type, Expiry, Batch)">
+                        <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button type="button" onclick="window.removeAiScannedRow(${idx})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition active:scale-95 cursor-pointer" title="Delete Row">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
             </td>
         </tr>
     `).join('');
     safeCreateIcons();
 }
+
+window.openEditScannedItemModal = function(idx) {
+    const item = aiExtractedBuffer[idx];
+    if (!item) return;
+
+    const idxEl = document.getElementById('edit-scanned-idx');
+    if (idxEl) idxEl.value = idx;
+
+    const nameEl = document.getElementById('edit-scanned-name');
+    if (nameEl) nameEl.value = item.name || '';
+
+    const typeEl = document.getElementById('edit-scanned-type');
+    if (typeEl) {
+        let t = (item.type || '').toLowerCase();
+        if (t.includes('cap')) typeEl.value = 'cap';
+        else if (t.includes('syp') || t.includes('syrup')) typeEl.value = 'syp';
+        else if (t.includes('drop')) typeEl.value = 'drop';
+        else if (t.includes('inj')) typeEl.value = 'inj';
+        else if (t.includes('scht') || t.includes('sachet')) typeEl.value = 'scht';
+        else if (t.includes('cream') || t.includes('oint') || t.includes('gel')) typeEl.value = 'cream';
+        else if (t.includes('surg')) typeEl.value = 'surgical';
+        else typeEl.value = 'tab';
+    }
+
+    const genEl = document.getElementById('edit-scanned-generic');
+    if (genEl) genEl.value = item.generic || '';
+
+    const distEl = document.getElementById('edit-scanned-distributor');
+    const headerDist = document.getElementById('ai-bill-distributor')?.value.trim() || '';
+    if (distEl) distEl.value = item.distributor || headerDist || '';
+
+    const packEl = document.getElementById('edit-scanned-pack');
+    if (packEl) packEl.value = item.packSize || '20';
+
+    const batchEl = document.getElementById('edit-scanned-batch');
+    if (batchEl) batchEl.value = item.batch || '';
+
+    const expEl = document.getElementById('edit-scanned-expiry');
+    if (expEl) expEl.value = item.expiry || '';
+
+    const qtyEl = document.getElementById('edit-scanned-qty');
+    if (qtyEl) qtyEl.value = item.qty || 1;
+
+    const buyEl = document.getElementById('edit-scanned-buy');
+    if (buyEl) buyEl.value = item.buyRate || 0;
+
+    const mrpEl = document.getElementById('edit-scanned-mrp');
+    if (mrpEl) mrpEl.value = item.mrp || '';
+
+    document.getElementById('ai-edit-scanned-item-modal')?.classList.remove('hidden');
+    safeCreateIcons();
+};
+
+window.closeEditScannedItemModal = function() {
+    document.getElementById('ai-edit-scanned-item-modal')?.classList.add('hidden');
+    syncModalScrollLock();
+};
+
+window.saveEditedScannedItem = function(event) {
+    if (event) event.preventDefault();
+    const idx = parseInt(document.getElementById('edit-scanned-idx')?.value, 10);
+    if (isNaN(idx) || !aiExtractedBuffer[idx]) return;
+
+    const name = document.getElementById('edit-scanned-name')?.value.trim() || aiExtractedBuffer[idx].name;
+    const type = document.getElementById('edit-scanned-type')?.value || 'tab';
+    const generic = document.getElementById('edit-scanned-generic')?.value.trim() || '';
+    const distributor = document.getElementById('edit-scanned-distributor')?.value.trim() || '';
+    const packSize = document.getElementById('edit-scanned-pack')?.value.trim() || '20';
+    const batch = document.getElementById('edit-scanned-batch')?.value.trim() || 'B-' + Math.floor(100 + Math.random() * 900);
+    const expiry = document.getElementById('edit-scanned-expiry')?.value.trim() || '';
+    const qty = Number(document.getElementById('edit-scanned-qty')?.value) || 1;
+    const buyRate = Number(document.getElementById('edit-scanned-buy')?.value) || 0;
+    const mrp = Number(document.getElementById('edit-scanned-mrp')?.value) || '';
+
+    aiExtractedBuffer[idx] = {
+        ...aiExtractedBuffer[idx],
+        name,
+        type,
+        generic,
+        distributor: distributor || aiExtractedBuffer[idx].distributor,
+        packSize,
+        batch,
+        expiry,
+        qty,
+        buyRate,
+        mrp
+    };
+
+    if (distributor) window.rememberDistributor(distributor);
+
+    renderAiScannedTable();
+    window.closeEditScannedItemModal();
+    showToast(`"${name}" details update ho gayin!`, 'success');
+};
 
 window.updateScannedItem = function(idx, field, value) {
     if (aiExtractedBuffer[idx]) {
@@ -2992,6 +3234,8 @@ window.removeAiScannedRow = function(idx) {
 window.applyDistributorToAllScanned = function() {
     const dist = document.getElementById('ai-bill-distributor')?.value.trim() || 'Distributor';
     aiExtractedBuffer.forEach(item => { item.distributor = dist; });
+    if (dist && dist.toLowerCase() !== 'distributor') window.rememberDistributor(dist);
+    renderAiScannedTable();
     showToast(`Distributor "${dist}" sab par lag gaya!`, 'info');
 };
 
@@ -3009,6 +3253,7 @@ window.closeAiPrescModal = function() {
 window.saveAiScannedItemsToInventory = async function() {
     if (aiExtractedBuffer.length === 0) return;
     const dist = document.getElementById('ai-bill-distributor')?.value.trim() || 'Distributor';
+    if (dist && dist.toLowerCase() !== 'distributor') window.rememberDistributor(dist);
 
     const missingMrp = aiExtractedBuffer.filter(i => !i.mrp || Number(i.mrp) <= 0);
     if (missingMrp.length > 0) {
@@ -3017,19 +3262,27 @@ window.saveAiScannedItemsToInventory = async function() {
     }
 
     for (const item of aiExtractedBuffer) {
+        const itemDist = item.distributor || dist;
+        if (itemDist && itemDist.toLowerCase() !== 'distributor') window.rememberDistributor(itemDist);
+
         const existing = medicines.find(m => m.name.toLowerCase() === item.name.toLowerCase() && m.batch === item.batch);
         if (existing) {
             existing.stock += item.qty;
             existing.buyRate = item.buyRate;
             existing.mrp = item.mrp;
-            existing.distributor = dist;
+            existing.distributor = itemDist;
+            if (item.generic) existing.generic = item.generic;
+            if (item.type) existing.type = item.type;
+            if (item.expiry) existing.expiry = item.expiry;
+            if (item.packSize) existing.packSize = item.packSize;
             await saveMedicineToStore(existing);
         } else {
             const newMed = {
                 id: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                 name: item.name,
                 generic: item.generic || '',
-                distributor: dist,
+                type: item.type || 'tab',
+                distributor: itemDist,
                 packSize: item.packSize || '20',
                 batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
                 expiry: item.expiry || '',
@@ -3622,8 +3875,7 @@ function populateReceipt(sale) {
         tbody.innerHTML = sale.items.map(item => `
             <tr class="py-1">
                 <td class="py-1 font-bold">
-                    <div>${item.name}</div>
-                    <span class="text-[8px] text-slate-600 block">${item.displayUnit}</span>
+                    <div class="text-[11px] leading-snug text-slate-900">${cleanNoEmoji(item.name)}</div>
                 </td>
                 <td class="py-1 text-center font-black">${item.qty}</td>
                 <td class="py-1 text-right">${Number(item.price).toFixed(2)}</td>
@@ -3679,7 +3931,7 @@ window.shareReceiptOnWhatsApp = function() {
     text += `*Date:* ${new Date(s.timestamp).toLocaleDateString()}\n`;
     text += `--------------------------------\n`;
     s.items.forEach(i => {
-        text += `• ${i.name} (${i.qty} ${i.displayUnit}) = Rs. ${i.total.toFixed(2)}\n`;
+        text += `• ${cleanNoEmoji(i.name)} (${i.qty}) = Rs. ${i.total.toFixed(2)}\n`;
     });
     text += `--------------------------------\n`;
     text += `*Gross Subtotal:* Rs. ${s.subtotal.toFixed(2)}\n`;
@@ -3999,6 +4251,7 @@ window.handleMedTypeChange = function(el) {
 
 // Inventory Table
 function renderInventoryTable() {
+    window.populateDistributorsDatalist?.();
     const tbody = document.getElementById('inventory-table-body');
     const mobileCards = document.getElementById('inventory-mobile-cards');
     const searchVal = document.getElementById('inv-search')?.value.toLowerCase().trim() || '';
@@ -5936,7 +6189,7 @@ window.openSaleEditModal = function(saleId) {
     if (itemsList) {
         itemsList.innerHTML = sale.items.map(i => `
             <div class="flex justify-between text-[11px]">
-                <span>${i.name} (${i.qty} ${i.displayUnit})</span>
+                <span>${cleanNoEmoji(i.name)} (${i.qty})</span>
                 <strong class="text-slate-700">Rs. ${i.total.toFixed(2)}</strong>
             </div>
         `).join('');

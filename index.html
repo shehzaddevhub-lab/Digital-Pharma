@@ -21,7 +21,7 @@
     <!-- Fonts for Authentic Digital Calculator LCD Display -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;0,800;1,700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;0,800;1,700&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dseg@0.46.0/css/dseg.css">
 
     <!-- Tailwind CSS CDN -->
@@ -66,19 +66,22 @@
         .font-techno {
             font-family: 'Chakra Petch', 'Share Tech Mono', sans-serif !important;
         }
-        /* High-Legibility Premium Modern Light Calculator Display */
+        /* Authentic Commercial Yellowish Vintage Calculator LCD Screen with Digital Font */
         .calc-lcd-box {
-            background: #ffffff !important;
-            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03) !important;
-            border: 1.5px solid #cbd5e1 !important;
+            background: linear-gradient(180deg, #dce4bf 0%, #d3dda9 45%, #c7d29a 100%) !important;
+            box-shadow: inset 0 2px 7px rgba(0,0,0,0.25), inset 0 0 4px rgba(0,0,0,0.08), 0 1px 1px rgba(255,255,255,0.7) !important;
+            border: 2px solid #a2b47d !important;
+            animation: none !important;
         }
         .calc-lcd-digits {
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-            font-feature-settings: "tnum" 1;
+            font-family: 'DSEG7-Classic', 'VT323', 'Chakra Petch', 'Share Tech Mono', 'Courier New', monospace !important;
+            color: #14230e !important;
+            text-shadow: 1px 1px 0 rgba(255,255,255,0.4) !important;
+            letter-spacing: 0.07em !important;
             font-variant-numeric: tabular-nums;
-            color: #0f172a !important;
-            text-shadow: none !important;
-            letter-spacing: -0.02em !important;
+            animation: none !important;
+            caret-color: transparent !important;
+            user-select: none !important;
         }
         .calc-btn-press {
             transition: all 0.08s cubic-bezier(0.4, 0, 0.2, 1);
@@ -760,24 +763,22 @@
                             <span class="w-1.5 h-3 bg-amber-900/80 rounded-[1px] border-r border-amber-950"></span>
                             <span class="w-1.5 h-3 bg-amber-900/80 rounded-[1px]"></span>
                         </div>
-                        <div class="flex items-center gap-1 font-sans font-bold text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <div class="flex items-center gap-1 font-sans font-bold text-[9px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             <span>DUAL POWER</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Modern Light Crystal-Clear Display Screen (Sharp, Legible, High-Contrast Digits) -->
+                <!-- Authentic Commercial Yellowish Calculator LCD Screen (Digital Numbers - No Blinking Dot) -->
                 <div class="calc-lcd-box rounded-2xl p-3 sm:p-3.5 shadow-inner shrink-0 min-h-[96px] sm:min-h-[104px] flex flex-col justify-between select-none">
-                    <div class="flex items-center justify-between text-xs font-sans border-b border-slate-200 pb-1">
+                    <div class="flex items-center justify-between text-xs border-b border-[#9eb07a]/40 pb-1 font-mono">
                         <div class="flex items-center gap-1.5">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                            <span id="simple-calc-mem-indicator" class="hidden px-1.5 py-0.2 bg-slate-800/10 text-slate-800 border border-slate-300 rounded text-[9px] font-sans font-bold uppercase">M</span>
-                            <span id="simple-calc-op-indicator" class="text-slate-900 font-sans font-black text-sm min-w-[14px]"></span>
+                            <span id="simple-calc-mem-indicator" class="hidden px-1.5 py-0.2 bg-[#25361a]/15 text-[#1b2b13] border border-[#25361a]/30 rounded text-[9px] font-bold uppercase">M</span>
+                            <span id="simple-calc-op-indicator" class="text-[#14220e] font-black text-sm min-w-[14px]"></span>
                         </div>
-                        <div id="simple-calc-history" class="text-xs text-slate-500 font-sans font-medium truncate max-w-[220px] tracking-wide text-right"></div>
+                        <div id="simple-calc-history" class="text-xs text-[#283818] font-medium truncate max-w-[220px] tracking-wide text-right font-mono"></div>
                     </div>
-                    <div id="simple-calc-display" class="calc-lcd-digits text-3xl sm:text-4xl font-sans font-black tracking-tight text-slate-900 text-right overflow-x-auto no-scrollbar select-all leading-none py-1">0</div>
+                    <div id="simple-calc-display" class="calc-lcd-digits text-3xl sm:text-4xl font-bold tracking-wider text-right overflow-x-auto no-scrollbar select-none pointer-events-none leading-none py-1.5">0</div>
                 </div>
 
                 <!-- Calculator Keypad (Uniform 6 Rows x 4 Cols: Every Single Digit Key 100% Equal Size and Spacing) -->
@@ -1347,10 +1348,13 @@
 
             <div id="ai-scan-content" class="hidden space-y-3">
                 <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 relative">
                         <span class="text-xs font-bold text-slate-600">Distributor / Supplier:</span>
-                        <input type="text" id="ai-bill-distributor" placeholder="Distributor Name" class="px-2 py-1 text-xs border border-slate-300 rounded-lg font-bold text-slate-900 bg-white">
-                        <button onclick="window.applyDistributorToAllScanned()" class="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-800 px-2 py-1 rounded font-bold">Apply All</button>
+                        <div class="relative">
+                            <input type="text" id="ai-bill-distributor" list="distributors-datalist" autocomplete="off" oninput="window.handleDistributorInput(this)" onfocus="window.handleDistributorInput(this)" placeholder="Search or Enter Distributor" class="px-2.5 py-1 text-xs border border-slate-300 rounded-lg font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44 sm:w-56">
+                            <div id="ai-distributor-suggestions" class="hidden absolute left-0 top-full mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100 p-1"></div>
+                        </div>
+                        <button onclick="window.applyDistributorToAllScanned()" class="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-800 px-2 py-1 rounded font-bold cursor-pointer transition active:scale-95">Apply All</button>
                     </div>
                     <span class="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">Dabba dekh kar Retail MRP darj karein</span>
                 </div>
@@ -1364,7 +1368,7 @@
                                 <th class="p-2 text-center min-w-[70px]">Qty (Packs)</th>
                                 <th class="p-2 text-right min-w-[95px]">Buy Rate (Rs)</th>
                                 <th class="p-2 text-right text-amber-900 bg-amber-50 min-w-[105px]">Retail MRP (Rs)</th>
-                                <th class="p-2 text-center min-w-[60px]">Action</th>
+                                <th class="p-2 text-center min-w-[75px]">Action</th>
                             </tr>
                         </thead>
                         <tbody id="ai-scanned-table-body" class="divide-y divide-slate-100"></tbody>
@@ -1380,6 +1384,100 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- EDIT SCANNED BILL ITEM MODAL (Personal Manual Edit / Add to Inventory Details) -->
+    <div id="ai-edit-scanned-item-modal" onclick="if(event.target===this) window.closeEditScannedItemModal()" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-3 max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b pb-2">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-blue-100 text-blue-700 rounded-xl">
+                        <i data-lucide="edit-3" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Scanned Medicine Edit & Manual Update</h3>
+                        <p class="text-[10px] text-slate-500">Scan se ayi details verify karein ya missing formula, batch, expiry fill karein.</p>
+                    </div>
+                </div>
+                <button type="button" onclick="window.closeEditScannedItemModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <form id="ai-edit-scanned-item-form" onsubmit="window.saveEditedScannedItem(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="edit-scanned-idx">
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Dawai Ka Name (Brand) *:</label>
+                        <input type="text" id="edit-scanned-name" required placeholder="e.g. Panadol 500mg" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Medicine Type / Form *:</label>
+                        <select id="edit-scanned-type" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            <option value="tab">Tablet (Tab)</option>
+                            <option value="cap">Capsule (Cap)</option>
+                            <option value="syp">Syrup (Syp)</option>
+                            <option value="drop">Drops (Drop)</option>
+                            <option value="inj">Injection (Inj)</option>
+                            <option value="scht">Sachet (Scht)</option>
+                            <option value="cream">Cream / Ointment</option>
+                            <option value="surgical">Surgical / Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Generic / Formula:</label>
+                        <input type="text" id="edit-scanned-generic" placeholder="e.g. Paracetamol" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Distributor / Supplier:</label>
+                        <input type="text" id="edit-scanned-distributor" list="distributors-datalist" placeholder="e.g. GSK / Ali Pharma" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Pack Size (Units):</label>
+                        <input type="text" id="edit-scanned-pack" placeholder="e.g. 20 ya 2x10" class="w-full px-2 py-1.5 border border-slate-300 rounded-xl font-bold text-center text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Batch Number:</label>
+                        <input type="text" id="edit-scanned-batch" placeholder="e.g. B-102" class="w-full px-2 py-1.5 border border-slate-300 rounded-xl font-mono text-center text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Expiry (MM/YY):</label>
+                        <input type="text" id="edit-scanned-expiry" placeholder="MM/YY e.g. 12/28" class="w-full px-2 py-1.5 border border-slate-300 rounded-xl font-mono text-center text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 items-center">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Stock / Qty (Packs):</label>
+                        <input type="number" id="edit-scanned-qty" min="1" required placeholder="1" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl font-bold text-center text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Buy Rate TP (Rs):</label>
+                        <input type="number" id="edit-scanned-buy" step="0.01" required placeholder="0.00" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-xl font-bold text-right text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div class="p-1 rounded-xl bg-amber-50 border-2 border-amber-300 shadow-xs">
+                        <label class="block font-black text-amber-950 text-[10px] mb-0.5">Retail Box MRP (Rs) *:</label>
+                        <input type="number" id="edit-scanned-mrp" step="0.01" required placeholder="0.00" class="w-full px-2 py-1 border border-amber-400 rounded-lg font-black text-right text-emerald-800 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2 border-t">
+                    <button type="button" onclick="window.closeEditScannedItemModal()" class="flex-1 py-2 border rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer">
+                        <i data-lucide="check" class="w-4 h-4"></i> Update Item
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1428,7 +1526,8 @@
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Distributor / Supplier:</label>
-                        <input type="text" id="med-distributor" placeholder="e.g. GSK / Ali Pharma" class="w-full px-2.5 py-1.5 border rounded-xl text-slate-900 bg-white">
+                        <input type="text" id="med-distributor" list="distributors-datalist" placeholder="e.g. GSK / Ali Pharma" class="w-full px-2.5 py-1.5 border rounded-xl text-slate-900 bg-white">
+                        <datalist id="distributors-datalist"></datalist>
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2">
