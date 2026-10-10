@@ -12,18 +12,6 @@ let authUser = null;
 let deferredPrompt = null;
 let activePosSearchIndex = -1;
 
-// Global HTML sanitization helper
-export function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-window.escapeHtml = escapeHtml;
-
 // Real Firebase Services via Bundled SDK
 import { 
     app, 
@@ -1279,18 +1267,14 @@ async function callGeminiVisionDirect(prompt, base64Data) {
         throw new Error('Live Host / PWA par AI Scanner chalane kelye Google Gemini API Key darkaar hai.');
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-    // Fast, ultra-responsive vision models
     const models = [
+        'gemini-flash-latest',
         'gemini-3.1-flash-lite',
-        'gemini-3.5-flash-lite',
-        'gemini-flash-lite-latest',
         'gemini-3.8-flash'
     ];
     let lastError = null;
 
     for (const modelName of models) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 7500);
         try {
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;
             const payload = {
@@ -1301,19 +1285,15 @@ async function callGeminiVisionDirect(prompt, base64Data) {
                     ]
                 }],
                 generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.1,
-                    maxOutputTokens: 4096
+                    responseMimeType: "application/json"
                 }
             };
 
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                signal: controller.signal
+                body: JSON.stringify(payload)
             });
-            clearTimeout(timeoutId);
 
             if (response.ok) {
                 const result = await response.json();
@@ -1324,8 +1304,7 @@ async function callGeminiVisionDirect(prompt, base64Data) {
                 lastError = errJson?.error?.message || `API error (${response.status})`;
             }
         } catch(e) {
-            clearTimeout(timeoutId);
-            lastError = e?.name === 'AbortError' ? `Model ${modelName} timeout` : (e?.message || lastError);
+            lastError = e?.message || lastError;
         }
     }
 
@@ -1348,25 +1327,20 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         throw new Error('Image data mojood nahi hai.');
     }
 
-    const clientKey = getValidGeminiKey();
-    const payload = JSON.stringify({ 
-        imageBase64: base64Data,
-        apiKey: clientKey || ''
-    });
+    const payload = JSON.stringify({ imageBase64: base64Data });
     let lastError = null;
     let serverData = null;
 
-    // Helper to call a specific URL with responsive timeout
+    // Helper to call a specific URL with timeout
     async function attemptEndpoint(targetUrl) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 16000);
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
         try {
             const res = await fetch(targetUrl, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    ...(clientKey ? { 'x-gemini-key': clientKey } : {})
+                    'Accept': 'application/json'
                 },
                 body: payload,
                 signal: controller.signal
@@ -2565,50 +2539,6 @@ Return JSON format:
   }
 ]`;
 
-// Helper to render individual prescription medicine card
-function renderPrescriptionMedicineItem(m, idx) {
-    const shortUse = window.getPrescriptionShortUse(m.name, m.formula, m.shortUse || m.purpose);
-    const encName = encodeURIComponent(m.name || '');
-    return `
-    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
-        <div class="flex items-start justify-between gap-2.5">
-            <div class="flex items-start gap-2.5 min-w-0 flex-1">
-                <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
-                <div class="flex-1 min-w-0">
-                    <strong class="text-slate-900 text-xs sm:text-sm font-black block truncate">${escapeHtml(m.name)}</strong>
-                    ${m.formula ? `<span class="text-[11px] text-slate-500 block font-medium mt-0.5">${escapeHtml(m.formula)}</span>` : ''}
-                    <!-- Medicine Short Use strictly in Roman Urdu ending with "... kelye" -->
-                    <div class="mt-1 flex items-center gap-1.5 flex-wrap">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
-                            💊 ${escapeHtml(shortUse)}
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <button type="button" onclick="window.addPrescribedItemToPos('${encName}')" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shrink-0 shadow-xs active:scale-95 transition flex items-center gap-1 cursor-pointer">
-                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Bill
-            </button>
-        </div>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] pt-1">
-            <div class="p-2 bg-emerald-50 border border-emerald-200/70 rounded-lg text-emerald-950 font-semibold flex items-center gap-1.5">
-                <span class="text-base">⏰</span>
-                <div>
-                    <span class="text-[9px] uppercase font-bold text-emerald-700 block">Khooraq / Timing:</span>
-                    <span>${escapeHtml(m.timing || 'Subah sham khane ke baad')}</span>
-                </div>
-            </div>
-            <div class="p-2 bg-blue-50 border border-blue-200/70 rounded-lg text-blue-950 font-semibold flex items-center gap-1.5">
-                <span class="text-base">📋</span>
-                <div>
-                    <span class="text-[9px] uppercase font-bold text-blue-700 block">Tareeqa-e-Istemal (Usage):</span>
-                    <span>${escapeHtml(m.usage || 'Taza paani ke sath lein')}</span>
-                </div>
-            </div>
-        </div>
-    </div>`;
-}
-
 // AI Prescription Scan
 window.handlePrescriptionScan = async function(event) {
     const file = event.target.files?.[0];
@@ -2676,7 +2606,43 @@ window.handlePrescriptionScan = async function(event) {
                     </div>
                 `;
             } else {
-                medList.innerHTML = (parsed.medicines || []).map((m, idx) => renderPrescriptionMedicineItem(m, idx)).join('');
+                medList.innerHTML = (parsed.medicines || []).map((m, idx) => {
+                    const shortUse = window.getPrescriptionShortUse(m.name, m.formula, m.shortUse || m.purpose);
+                    return `
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
+                        <div class="flex items-start gap-2.5">
+                            <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
+                            <div class="flex-1 min-w-0">
+                                <strong class="text-slate-900 text-xs sm:text-sm font-black block">${m.name}</strong>
+                                ${m.formula ? `<span class="text-[11px] text-slate-500 block font-medium mt-0.5">${m.formula}</span>` : ''}
+                                <!-- Medicine Short Use strictly in Roman Urdu ending with "... kelye" -->
+                                <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                                        💊 ${shortUse}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] pt-1">
+                            <div class="p-2 bg-emerald-50 border border-emerald-200/70 rounded-lg text-emerald-950 font-semibold flex items-center gap-1.5">
+                                <span class="text-base">⏰</span>
+                                <div>
+                                    <span class="text-[9px] uppercase font-bold text-emerald-700 block">Khooraq / Timing:</span>
+                                    <span>${m.timing || 'Subah sham khane ke baad'}</span>
+                                </div>
+                            </div>
+                            <div class="p-2 bg-blue-50 border border-blue-200/70 rounded-lg text-blue-950 font-semibold flex items-center gap-1.5">
+                                <span class="text-base">📋</span>
+                                <div>
+                                    <span class="text-[9px] uppercase font-bold text-blue-700 block">Tareeqa-e-Istemal (Usage):</span>
+                                    <span>${m.usage || 'Taza paani ke sath lein'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                }).join('');
             }
         }
 
@@ -2788,7 +2754,40 @@ window.retryPrescriptionScanWithBase64 = async function(base64Data) {
                         </div>
                     </div>`;
             } else {
-                medList.innerHTML = (parsed.medicines || []).map((m, idx) => renderPrescriptionMedicineItem(m, idx)).join('');
+                medList.innerHTML = (parsed.medicines || []).map((m, idx) => {
+                    const shortUse = window.getPrescriptionShortUse(m.name, m.formula, m.shortUse || m.purpose);
+                    return `
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 hover:border-brand-300 transition">
+                        <div class="flex items-start gap-2.5">
+                            <span class="w-5 h-5 rounded-full bg-brand-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
+                            <div class="flex-1 min-w-0">
+                                <strong class="text-slate-900 text-xs sm:text-sm font-black block">${m.name}</strong>
+                                ${m.formula ? `<span class="text-[11px] text-slate-500 block font-medium mt-0.5">${m.formula}</span>` : ''}
+                                <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                                        💊 ${shortUse}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] pt-1">
+                            <div class="p-2 bg-emerald-50 border border-emerald-200/70 rounded-lg text-emerald-950 font-semibold flex items-center gap-1.5">
+                                <span class="text-base">⏰</span>
+                                <div>
+                                    <span class="text-[9px] uppercase font-bold text-emerald-700 block">Khooraq / Timing:</span>
+                                    <span>${m.timing || 'Subah sham khane ke baad'}</span>
+                                </div>
+                            </div>
+                            <div class="p-2 bg-blue-50 border border-blue-200/70 rounded-lg text-blue-950 font-semibold flex items-center gap-1.5">
+                                <span class="text-base">📋</span>
+                                <div>
+                                    <span class="text-[9px] uppercase font-bold text-blue-700 block">Tareeqa-e-Istemal (Usage):</span>
+                                    <span>${m.usage || 'Taza paani ke sath lein'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
             }
         }
         loading?.classList.add('hidden');
@@ -2844,22 +2843,13 @@ window.addPrescribedItemToPos = function(encodedName) {
         window.selectMedForPos(matched.id);
         showToast(`${matched.name} POS Counter par select ho gayi!`, 'success');
     } else {
-        // Add as quick unstocked item to cart with rate 0 so user can immediately bill it
-        cart.push({
-            id: 'presc_' + Date.now(),
-            name: medName,
-            unitType: 'pack',
-            displayUnit: 'Pack',
-            qty: 1,
-            price: 0,
-            buyRate: 0,
-            cost: 0,
-            total: 0,
-            stockDeduct: 0
-        });
-        renderCartTable();
-        window.calculateCartTotals();
-        showToast(`${medName} Counter Bill mein shamil kar di gayi! Rate enter karein.`, 'info');
+        const searchInput = document.getElementById('pos-search');
+        if (searchInput) {
+            searchInput.value = medName;
+            window.searchMedicineForPos();
+            searchInput.focus();
+        }
+        showToast(`${medName} search list mein open ho gayi!`, 'info');
     }
 };
 
@@ -2871,7 +2861,7 @@ window.addAllPrescriptionToPos = function() {
     const list = window.lastPrescriptionParsed.medicines;
     let addedCount = 0;
 
-    list.forEach((item, idx) => {
+    list.forEach(item => {
         const medName = (item.name || '').trim();
         if (!medName) return;
         const query = medName.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
@@ -2899,20 +2889,6 @@ window.addAllPrescriptionToPos = function() {
                 cost: itemBuyRate,
                 total: pricePerUnit,
                 stockDeduct: 1
-            });
-            addedCount++;
-        } else {
-            cart.push({
-                id: 'presc_' + Date.now() + '_' + idx,
-                name: medName,
-                unitType: 'pack',
-                displayUnit: 'Pack',
-                qty: 1,
-                price: 0,
-                buyRate: 0,
-                cost: 0,
-                total: 0,
-                stockDeduct: 0
             });
             addedCount++;
         }
@@ -3126,6 +3102,17 @@ window.saveAndRetryInvoiceScan = function() {
         window.triggerFileInput('inv-bill-file');
     }
 };
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
 
 function detectMedicineTypeFromName(name) {
     if (!name) return 'tab';
