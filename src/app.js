@@ -881,8 +881,8 @@ export async function enhanceImageLikeCamScanner(file) {
         const origW = originalW || 1200;
         const origH = originalH || 1600;
 
-        // Optimal document OCR resolution (1600px max dimension ensures crystal clear text without exceeding payload limits)
-        const maxDim = 1600;
+        // Optimal document OCR resolution (1280px max dimension ensures high speed upload & fast processing)
+        const maxDim = 1280;
         let targetW = origW;
         let targetH = origH;
         if (targetW > maxDim || targetH > maxDim) {
@@ -902,7 +902,7 @@ export async function enhanceImageLikeCamScanner(file) {
         if (!ctx) return null;
 
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingQuality = 'medium';
 
         // Clean white background
         ctx.fillStyle = '#ffffff';
@@ -911,8 +911,8 @@ export async function enhanceImageLikeCamScanner(file) {
         // Draw complete full image preserving all natural colors, doctor handwriting, inks & stamps
         ctx.drawImage(source, 0, 0, origW, origH, 0, 0, targetW, targetH);
 
-        // Export clean crisp JPEG at 0.82 quality (balanced size for fast upload on hosting)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        // Export clean crisp JPEG at 0.78 quality for rapid transmission without losing OCR clarity
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
         return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
     }
 
@@ -2012,6 +2012,7 @@ let simpleCalcState = {
     operation: null,
     waitingForOperand: false,
     history: '',
+    tokens: [], // Stores sequence of operands and operators: [{ type: 'num', val: 5 }, { type: 'op', val: '+' }, ...]
     lastOp: null,
     lastOperand: null,
     memory: 0
@@ -2027,7 +2028,10 @@ window.updateSimpleCalcDisplay = function() {
         dispEl.innerText = formatShopDisplay(simpleCalcState.display);
     }
     if (histEl) {
-        histEl.innerText = simpleCalcState.history || '';
+        // Display full chain expression e.g. 5 + 5 + 10 ...
+        const displayText = simpleCalcState.history || (simpleCalcState.tokens && simpleCalcState.tokens.length > 0 ? buildExpressionFromTokens(simpleCalcState.tokens) : '');
+        histEl.innerText = displayText || '';
+        histEl.title = displayText ? `Click to edit: ${displayText}` : 'Click to edit calculation';
     }
     if (opEl) {
         opEl.innerText = simpleCalcState.operation || '';
@@ -2038,6 +2042,132 @@ window.updateSimpleCalcDisplay = function() {
         } else {
             memEl.classList.add('hidden');
         }
+    }
+};
+
+function buildExpressionFromTokens(tokens) {
+    if (!tokens || !tokens.length) return '';
+    return tokens.map(t => {
+        if (t.type === 'num') return formatShopDisplay(String(t.val));
+        return t.val;
+    }).join(' ');
+}
+
+window.openSimpleCalcEditModal = function() {
+    const modal = document.getElementById('simple-calc-edit-modal');
+    const input = document.getElementById('simple-calc-edit-input');
+    if (!modal || !input) return;
+
+    let expr = '';
+    if (simpleCalcState.tokens && simpleCalcState.tokens.length > 0) {
+        expr = simpleCalcState.tokens.map(t => t.val).join(' ');
+    } else if (simpleCalcState.history) {
+        expr = simpleCalcState.history.replace(/\s*=\s*$/, '');
+    } else {
+        expr = simpleCalcState.display || '0';
+    }
+
+    input.value = expr;
+    modal.classList.remove('hidden');
+    safeCreateIcons();
+    setTimeout(() => {
+        input.focus();
+        input.select();
+    }, 50);
+};
+window.editSimpleCalcHistory = window.openSimpleCalcEditModal;
+
+window.closeSimpleCalcEditModal = function() {
+    const modal = document.getElementById('simple-calc-edit-modal');
+    if (modal) modal.classList.add('hidden');
+};
+
+// Evaluates a sanitized mathematical expression string safely e.g. "5 + 5 * 2"
+window.evaluateMathExpression = function(expr) {
+    if (!expr || typeof expr !== 'string') return 0;
+    // Normalize symbols
+    const clean = expr
+        .replace(/×/g, '*')
+        .replace(/÷/g, '/')
+        .replace(/,/g, '')
+        .trim();
+
+    // Check for valid math characters only
+    if (!/^[0-9\.\+\-\*\/\%\s\(\)]+$/.test(clean)) {
+        throw new Error('Expression mein ghalat characters hain');
+    }
+
+    // Tokenize into numbers and operators sequentially
+    const tokens = [];
+    const regex = /(\d+\.?\d*)|([\+\-\*\/\%])/g;
+    let match;
+    while ((match = regex.exec(clean)) !== null) {
+        if (match[1]) {
+            tokens.push({ type: 'num', val: parseFloat(match[1]) });
+        } else if (match[2]) {
+            tokens.push({ type: 'op', val: match[2] });
+        }
+    }
+
+    if (tokens.length === 0) return 0;
+
+    // Sequential evaluation matching desktop commercial calculators (left-to-right)
+    let total = tokens[0].type === 'num' ? tokens[0].val : 0;
+    let currentOp = '+';
+    let i = tokens[0].type === 'num' ? 1 : 0;
+
+    while (i < tokens.length) {
+        const t = tokens[i];
+        if (t.type === 'op') {
+            currentOp = t.val;
+            i++;
+        } else if (t.type === 'num') {
+            const nextVal = t.val;
+            if (currentOp === '+') total += nextVal;
+            else if (currentOp === '-') total -= nextVal;
+            else if (currentOp === '*') total *= nextVal;
+            else if (currentOp === '/') {
+                if (nextVal === 0) throw new Error('Zero divide nahi ho sakta');
+                total /= nextVal;
+            } else if (currentOp === '%') {
+                total = (total * nextVal) / 100;
+            }
+            i++;
+        } else {
+            i++;
+        }
+    }
+
+    return { total: cleanFloat(total), parsedTokens: tokens };
+};
+
+window.saveSimpleCalcEditedExpr = function(event) {
+    if (event) event.preventDefault();
+    const input = document.getElementById('simple-calc-edit-input');
+    const val = (input?.value || '').trim();
+    if (!val) {
+        showToast('Calculation expression darj karein', 'warning');
+        return;
+    }
+
+    try {
+        const evalResult = window.evaluateMathExpression(val);
+        const resultVal = evalResult.total;
+        simpleCalcState.display = String(resultVal);
+        simpleCalcState.tokens = evalResult.parsedTokens.map(t => ({
+            type: t.type,
+            val: t.type === 'op' ? (t.val === '*' ? '×' : (t.val === '/' ? '÷' : t.val)) : t.val
+        }));
+        simpleCalcState.history = `${buildExpressionFromTokens(simpleCalcState.tokens)} =`;
+        simpleCalcState.storedVal = resultVal;
+        simpleCalcState.operation = null;
+        simpleCalcState.waitingForOperand = true;
+
+        window.updateSimpleCalcDisplay();
+        window.closeSimpleCalcEditModal();
+        showToast(`Calculation update ho gayi! Answer: ${resultVal}`, 'success');
+    } catch(err) {
+        showToast(err?.message || 'Math expression sahi nahi hai', 'error');
     }
 };
 
@@ -2100,11 +2230,30 @@ window.simpleCalcOp = function(nextOp) {
     const currentNum = parseFloat(simpleCalcState.display);
     if (isNaN(currentNum)) return;
 
+    if (!simpleCalcState.tokens) simpleCalcState.tokens = [];
+
+    if (simpleCalcState.waitingForOperand && simpleCalcState.tokens.length > 0 && simpleCalcState.tokens[simpleCalcState.tokens.length - 1].type === 'op') {
+        // Operator switch
+        simpleCalcState.tokens[simpleCalcState.tokens.length - 1].val = nextOp;
+        simpleCalcState.operation = nextOp;
+        simpleCalcState.history = buildExpressionFromTokens(simpleCalcState.tokens);
+        window.updateSimpleCalcDisplay();
+        return;
+    }
+
+    if (simpleCalcState.tokens.length === 0) {
+        simpleCalcState.tokens.push({ type: 'num', val: currentNum });
+    } else if (!simpleCalcState.waitingForOperand) {
+        simpleCalcState.tokens.push({ type: 'num', val: currentNum });
+    }
+    simpleCalcState.tokens.push({ type: 'op', val: nextOp });
+
     if (simpleCalcState.operation && !simpleCalcState.waitingForOperand && simpleCalcState.storedVal !== null) {
         const intermediate = executeMathOp(simpleCalcState.storedVal, simpleCalcState.operation, currentNum);
         if (intermediate === 'Error') {
             simpleCalcState.display = 'Error';
             simpleCalcState.history = 'Zero divide nahi ho sakta';
+            simpleCalcState.tokens = [];
             simpleCalcState.storedVal = null;
             simpleCalcState.operation = null;
             simpleCalcState.waitingForOperand = true;
@@ -2119,13 +2268,15 @@ window.simpleCalcOp = function(nextOp) {
 
     simpleCalcState.operation = nextOp;
     simpleCalcState.waitingForOperand = true;
-    simpleCalcState.history = `${formatShopDisplay(String(simpleCalcState.storedVal))} ${nextOp}`;
+    simpleCalcState.history = buildExpressionFromTokens(simpleCalcState.tokens);
     window.updateSimpleCalcDisplay();
 };
 
 window.simpleCalcPercent = function() {
     const currentNum = parseFloat(simpleCalcState.display);
     if (isNaN(currentNum)) return;
+
+    if (!simpleCalcState.tokens) simpleCalcState.tokens = [];
 
     // Commercial shop % logic (Markup, Discount, or standard percentage)
     if (simpleCalcState.storedVal !== null && simpleCalcState.operation) {
@@ -2135,14 +2286,18 @@ window.simpleCalcPercent = function() {
             const delta = cleanFloat((base * currentNum) / 100);
             const res = op === '+' ? cleanFloat(base + delta) : cleanFloat(base - delta);
             simpleCalcState.display = String(res);
-            simpleCalcState.history = `${formatShopDisplay(String(base))} ${op} ${currentNum}% (${formatShopDisplay(String(delta))}) =`;
+            simpleCalcState.tokens.push({ type: 'num', val: currentNum });
+            simpleCalcState.tokens.push({ type: 'op', val: '%' });
+            simpleCalcState.history = `${buildExpressionFromTokens(simpleCalcState.tokens)} =`;
             simpleCalcState.storedVal = null;
             simpleCalcState.operation = null;
             simpleCalcState.waitingForOperand = true;
         } else if (op === '×' || op === '*') {
             const res = cleanFloat((base * currentNum) / 100);
             simpleCalcState.display = String(res);
-            simpleCalcState.history = `${formatShopDisplay(String(base))} × ${currentNum}% =`;
+            simpleCalcState.tokens.push({ type: 'num', val: currentNum });
+            simpleCalcState.tokens.push({ type: 'op', val: '%' });
+            simpleCalcState.history = `${buildExpressionFromTokens(simpleCalcState.tokens)} =`;
             simpleCalcState.storedVal = null;
             simpleCalcState.operation = null;
             simpleCalcState.waitingForOperand = true;
@@ -2154,7 +2309,9 @@ window.simpleCalcPercent = function() {
             }
             const res = cleanFloat((base / currentNum) * 100);
             simpleCalcState.display = String(res);
-            simpleCalcState.history = `${formatShopDisplay(String(base))} ÷ ${currentNum}% =`;
+            simpleCalcState.tokens.push({ type: 'num', val: currentNum });
+            simpleCalcState.tokens.push({ type: 'op', val: '%' });
+            simpleCalcState.history = `${buildExpressionFromTokens(simpleCalcState.tokens)} =`;
             simpleCalcState.storedVal = null;
             simpleCalcState.operation = null;
             simpleCalcState.waitingForOperand = true;
@@ -2163,6 +2320,7 @@ window.simpleCalcPercent = function() {
         const res = cleanFloat(currentNum / 100);
         simpleCalcState.display = String(res);
         simpleCalcState.history = `${currentNum}% =`;
+        simpleCalcState.tokens = [{ type: 'num', val: currentNum }, { type: 'op', val: '%' }];
         simpleCalcState.waitingForOperand = true;
     }
     window.updateSimpleCalcDisplay();
@@ -2172,6 +2330,8 @@ window.simpleCalcEquals = function() {
     const currentNum = parseFloat(simpleCalcState.display);
     if (isNaN(currentNum)) return;
 
+    if (!simpleCalcState.tokens) simpleCalcState.tokens = [];
+
     if (simpleCalcState.operation && simpleCalcState.storedVal !== null) {
         const op = simpleCalcState.operation;
         const prev = simpleCalcState.storedVal;
@@ -2180,6 +2340,7 @@ window.simpleCalcEquals = function() {
         if (res === 'Error') {
             simpleCalcState.display = 'Error';
             simpleCalcState.history = 'Zero divide nahi ho sakta';
+            simpleCalcState.tokens = [];
             simpleCalcState.storedVal = null;
             simpleCalcState.operation = null;
             simpleCalcState.waitingForOperand = true;
@@ -2187,8 +2348,12 @@ window.simpleCalcEquals = function() {
             return;
         }
 
+        if (!simpleCalcState.waitingForOperand) {
+            simpleCalcState.tokens.push({ type: 'num', val: currentNum });
+        }
+
         simpleCalcState.display = String(res);
-        simpleCalcState.history = `${formatShopDisplay(String(prev))} ${op} ${formatShopDisplay(String(currentNum))} =`;
+        simpleCalcState.history = `${buildExpressionFromTokens(simpleCalcState.tokens)} =`;
         simpleCalcState.lastOp = op;
         simpleCalcState.lastOperand = currentNum;
         simpleCalcState.storedVal = null;
@@ -2202,6 +2367,7 @@ window.simpleCalcEquals = function() {
         if (res !== 'Error') {
             simpleCalcState.display = String(res);
             simpleCalcState.history = `${formatShopDisplay(String(currentNum))} ${op} ${formatShopDisplay(String(operand))} =`;
+            simpleCalcState.tokens = [{ type: 'num', val: currentNum }, { type: 'op', val: op }, { type: 'num', val: operand }];
             simpleCalcState.waitingForOperand = true;
         }
     }
@@ -2219,6 +2385,7 @@ window.simpleCalcClear = function() {
     simpleCalcState.operation = null;
     simpleCalcState.waitingForOperand = false;
     simpleCalcState.history = '';
+    simpleCalcState.tokens = [];
     simpleCalcState.lastOp = null;
     simpleCalcState.lastOperand = null;
     window.updateSimpleCalcDisplay();
@@ -3938,7 +4105,10 @@ window.shareReceiptOnWhatsApp = function() {
     if (s.discountAmount > 0) text += `*Discount:* -Rs. ${s.discountAmount.toFixed(2)}\n`;
     text += `*NET PAYABLE:* Rs. ${s.netTotal.toFixed(2)}\n`;
     text += `*Payment:* ${s.paymentMode}\n\n`;
-    text += `_Shukriya / Get Well Soon!_\n`;
+    text += `*Note:*\n`;
+    text += `1. Items will be return with cash memo within 16 days.\n`;
+    text += `2. Inhaler / loose tablets/lotion/fridge items/cosmetic items will not be returned.\n`;
+    text += `3. Without sign and stamp bill will not be valid\n\n`;
     text += `_DIGITAL PHARMA - SMART PHARMACY SYSTEM_`;
 
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
