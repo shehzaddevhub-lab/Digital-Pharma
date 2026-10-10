@@ -378,17 +378,24 @@ function normalizeInvoiceItems(parsed: any) {
 // Fallback line parser if model returns formatted text/markdown instead of JSON
 function extractMedicinesFromTextLines(text: string) {
   if (!text || typeof text !== 'string') return [];
+  const trimmed = text.trim();
+  // Do NOT parse raw JSON blocks as plain text lines
+  if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.includes('"medicines":')) {
+    return [];
+  }
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const meds: any[] = [];
   for (const line of lines) {
-    const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
+    if (/^[\[\]\{\}\"]+$/.test(line)) continue;
+    if (/^["']?(doctor|patient|treatmentSummary|advice|medicines|name|formula|timing|usage|shortUse)["']?\s*:/i.test(line)) continue;
+    const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').replace(/["',:]+$/g, '').trim();
     if (clean.length < 3 || isModelRefusal(clean)) continue;
     if (/^(rx|doctor|patient|clinic|date|advice|note|diagnosis|sig|treatment|name|instructions|summary|findings):/i.test(clean)) continue;
     if (/(tab|cap|syp|inj|drop|goli|capsule|mg|ml|gm|sachet|syrup|tablet|ointment|cream)/i.test(clean) || clean.split(/\s+/).length >= 1) {
       const parts = clean.split(/[-–—:]/);
-      const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
-      if (name.length >= 2 && !isModelRefusal(name)) {
-        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
+      const name = parts[0].trim().replace(/^[\*\#_"]+|[\*\#_"]+$/g, '');
+      if (name.length >= 2 && !isModelRefusal(name) && !/^(doctor|patient|advice|medicines|treatmentSummary)$/i.test(name)) {
+        const timing = parts[1]?.trim().replace(/^[\*\#_"]+|[\*\#_"]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
         const shortUseHint = getMedicineShortUse(name, '');
         meds.push({
           name,
@@ -407,17 +414,24 @@ function extractMedicinesFromTextLines(text: string) {
 
 function extractInvoiceItemsFromTextLines(text: string) {
   if (!text || typeof text !== 'string') return [];
+  const trimmed = text.trim();
+  // Do NOT parse raw JSON blocks as plain text lines
+  if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.includes('"lineItems":')) {
+    return [];
+  }
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const items: any[] = [];
   for (const line of lines) {
-    const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
+    if (/^[\[\]\{\}\"]+$/.test(line)) continue;
+    if (/^["']?(distributorName|lineItems|name|batch|qty|buyRate|expiry)["']?\s*:/i.test(line)) continue;
+    const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').replace(/["',:]+$/g, '').trim();
     if (clean.length < 3 || isModelRefusal(clean)) continue;
     if (/^(invoice|bill|date|total|subtotal|distributor|supplier|customer|terms|ntn|strn|discount|gst):/i.test(clean)) continue;
     const parts = clean.split(/[|,;\t]/).map(p => p.trim()).filter(Boolean);
     if (parts.length >= 2) {
-      const name = parts[0].replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+      const name = parts[0].replace(/^[\*\#_"]+|[\*\#_"]+$/g, '');
       const rateCandidate = Number(parts.find(p => /^\d+(\.\d+)?$/.test(p))) || 0;
-      if (name.length >= 2) {
+      if (name.length >= 2 && !/^(lineItems|distributorName)$/i.test(name)) {
         items.push({
           name,
           generic: '',
@@ -433,30 +447,35 @@ function extractInvoiceItemsFromTextLines(text: string) {
     } else {
       const numMatch = clean.match(/^([a-zA-Z0-9\s\+\-\/\.]{3,35})\s*(?:.*?(\d+(?:\.\d+)?))?/);
       if (numMatch && numMatch[1]) {
-        items.push({
-          name: numMatch[1].trim(),
-          generic: '',
-          batch: 'B-01',
-          expiry: '2027-12',
-          packSize: '20',
-          qty: 1,
-          buyRate: Number(numMatch[2]) || 0,
-          distributor: 'Wholesale Distributor',
-          mrp: ''
-        });
+        const name = numMatch[1].trim();
+        if (!/^(lineItems|distributorName)$/i.test(name)) {
+          items.push({
+            name,
+            generic: '',
+            batch: 'B-01',
+            expiry: '2027-12',
+            packSize: '20',
+            qty: 1,
+            buyRate: Number(numMatch[2]) || 0,
+            distributor: 'Wholesale Distributor',
+            mrp: ''
+          });
+        }
       }
     }
   }
   return items;
 }
 
-// Initialize Gemini with accurate real vision scanning and multi-model retries
+// Initialize Gemini with accurate real vision scanning and high-speed multi-model retries
 async function generateWithVisionFallback(
   prompt: string, 
   imageBase64: string,
-  systemInstruction?: string
+  systemInstruction?: string,
+  clientApiKey?: string
 ): Promise<string | null> {
-  let apiKey = process.env.GEMINI_API_KEY ||
+  let apiKey = clientApiKey ||
+               process.env.GEMINI_API_KEY ||
                process.env.GOOGLE_API_KEY ||
                process.env.API_KEY ||
                process.env.VITE_GEMINI_API_KEY;
@@ -476,10 +495,11 @@ async function generateWithVisionFallback(
   });
 
   const { clean, mime } = sanitizeBase64(imageBase64);
-  // Comprehensive Gemini Multimodal Vision Cascade with verified active models
+  // High-speed, high-accuracy vision models prioritized for rapid response (~1.5s)
   const models = [
-    'gemini-flash-latest',
     'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
     'gemini-3.8-flash'
   ];
 
@@ -504,12 +524,13 @@ async function generateWithVisionFallback(
         config: {
           systemInstruction: systemInstruction || "You are an expert Clinical Pharmacist, Master Handwriting Decipherer, and Medical Forensic OCR specialist. Your sole duty is to thoroughly and deeply read EVERY medical prescription slip, hospital discharge slip, clinic note, or doctor handwriting without skipping any item. Carefully analyze all numbered items (1, 2, 3...), unnumbered lines, columns, dosage frequencies, brand names, and active salts. Always return structured JSON strictly conforming to the requested schema with all medicines transcribed.",
           responseMimeType: "application/json",
-          maxOutputTokens: 8192
+          maxOutputTokens: 4096,
+          temperature: 0.1
         }
       });
 
       const timeoutCall = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 18000)
+        setTimeout(() => reject(new Error(`Model ${modelName} timeout`)), 7500)
       );
 
       const response: any = await Promise.race([apiCall, timeoutCall]);
@@ -549,7 +570,7 @@ async function generateWithVisionFallback(
       }
     } catch (err: any) {
       console.warn(`Vision model ${modelName} warning:`, err?.message || err);
-      // Advance to next model in cascade
+      // Fast failover to next model in cascade
     }
   }
 
@@ -561,7 +582,8 @@ async function generateWithVisionFallback(
 // -------------------------------------------------------------
 app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { imageBase64 } = req.body;
+    const { imageBase64, apiKey } = req.body;
+    const clientKey = apiKey || (req.headers['x-gemini-key'] as string) || '';
     if (!imageBase64) {
       res.status(400).json({ success: false, error: 'Image data darkar hai.' });
       return;
@@ -594,23 +616,21 @@ Return JSON format:
   ]
 }`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, clientKey);
     const parsed = text ? extractJsonFromText(text) : null;
     let normalized = normalizePrescriptionData(parsed);
 
-    // Fallback: extract medicines from lines if JSON parsing didn't find any
-    if (!normalized || !normalized.medicines || normalized.medicines.length === 0) {
-      if (text) {
-        const lineMeds = extractMedicinesFromTextLines(text);
-        if (lineMeds.length > 0) {
-          normalized = {
-            doctor: normalized?.doctor || 'Doctor / Clinic Slip',
-            patient: normalized?.patient || 'General Patient',
-            treatmentSummary: normalized?.treatmentSummary || 'Nuskha ke mutabiq adviyaat darj zail hain.',
-            advice: normalized?.advice || 'Dawai hidayat ke mutabiq waqt par lein.',
-            medicines: lineMeds
-          };
-        }
+    // Fallback: extract medicines from lines ONLY if JSON parsing completely failed
+    if (!parsed && text) {
+      const lineMeds = extractMedicinesFromTextLines(text);
+      if (lineMeds.length > 0) {
+        normalized = {
+          doctor: 'Doctor / Clinic Slip',
+          patient: 'General Patient',
+          treatmentSummary: 'Nuskha ke mutabiq adviyaat darj zail hain.',
+          advice: 'Dawai hidayat ke mutabiq waqt par lein.',
+          medicines: lineMeds
+        };
       }
     }
 
@@ -654,7 +674,8 @@ Return JSON format:
 // -------------------------------------------------------------
 app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { imageBase64 } = req.body;
+    const { imageBase64, apiKey } = req.body;
+    const clientKey = apiKey || (req.headers['x-gemini-key'] as string) || '';
     if (!imageBase64) {
       res.status(400).json({ success: false, error: 'Image data darkar hai.' });
       return;
@@ -684,12 +705,12 @@ Return JSON format:
   ]
 }`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, clientKey);
     const parsed = text ? extractJsonFromText(text) : null;
     let items = normalizeInvoiceItems(parsed);
 
-    // Fallback: extract items from lines if JSON parsing missed them
-    if (items.length === 0 && text) {
+    // Fallback: extract items from lines ONLY if JSON parsing completely missed them
+    if (!parsed && text) {
       items = extractInvoiceItemsFromTextLines(text);
     }
 
@@ -721,7 +742,8 @@ Return JSON format:
 // -------------------------------------------------------------
 app.post('/api/ai/scan-margin', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { imageBase64 } = req.body;
+    const { imageBase64, apiKey } = req.body;
+    const clientKey = apiKey || (req.headers['x-gemini-key'] as string) || '';
     if (!imageBase64) {
       res.status(400).json({ success: false, error: 'Image data darkar hai.' });
       return;
@@ -740,7 +762,7 @@ Return JSON format:
   }
 ]`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const text = await generateWithVisionFallback(prompt, imageBase64, undefined, clientKey);
     const parsed = text ? extractJsonFromText(text) : null;
     let items: any[] = [];
     if (Array.isArray(parsed)) items = parsed;
