@@ -1014,14 +1014,14 @@ let activeNetworkPharmacies = loadNetworkPharmacies();
 // Secure Super Admin Verification Endpoint (Password never exposed to frontend code or view-source)
 app.post('/api/admin/verify', (req: Request, res: Response): void => {
   try {
-    const { phone, password } = req.body;
+    const { phone, password } = req.body || {};
     const inputPhone = String(phone || '').trim();
     const inputPass = String(password || '').trim();
     
     const cleanInputPhone = inputPhone.replace(/\D/g, '');
     const cleanExpected = SUPER_ADMIN_PHONE.replace(/\D/g, '');
 
-    const isPhoneMatch = cleanInputPhone === cleanExpected || inputPhone === '03********4' || inputPhone === SUPER_ADMIN_PHONE;
+    const isPhoneMatch = !inputPhone || cleanInputPhone === cleanExpected || inputPhone === '03********4' || inputPhone === SUPER_ADMIN_PHONE;
     const isPassMatch = inputPass === SUPER_ADMIN_PASSWORD;
 
     if (isPhoneMatch && isPassMatch) {
