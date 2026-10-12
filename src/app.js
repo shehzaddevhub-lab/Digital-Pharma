@@ -127,11 +127,10 @@ function initFirebase() {
         unsubscribePharmacies = onSnapshot(pharmColRef, (snapshot) => {
             const list = [];
             snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
-            if (list.length > 0) {
-                localStorage.setItem('sm_network_stores', JSON.stringify(list));
-                if (typeof window.refreshNetworkList === 'function') {
-                    window.refreshNetworkList();
-                }
+            // Always reflect current cloud state (including empty list if records were cleared)
+            localStorage.setItem('sm_network_stores', JSON.stringify(list));
+            if (typeof window.refreshNetworkList === 'function') {
+                window.refreshNetworkList();
             }
         }, (err) => handleFirestoreError(err, 'get', 'pharmacies'));
     } catch(e) {}
@@ -2134,9 +2133,11 @@ window.switchCalculatorTab = function(type) {
     secBonus?.classList.add('hidden');
 
     const appFooter = document.getElementById('app-main-footer');
+    const saleBar = document.getElementById('calc-simple-sale-bar');
     if (type === 'simple') {
         marginBanner?.classList.add('hidden');
         secSimple?.classList.remove('hidden');
+        saleBar?.classList.remove('hidden');
         setActive(btnSimple);
         window.updateSimpleCalcDisplay();
         window.scrollTo({ top: 0, behavior: 'instant' });
@@ -2144,6 +2145,7 @@ window.switchCalculatorTab = function(type) {
     } else if (type === 'bonus') {
         marginBanner?.classList.remove('hidden');
         secBonus?.classList.remove('hidden');
+        saleBar?.classList.add('hidden');
         setActive(btnBonus);
         window.runMarginCalc();
         if (appFooter) appFooter.classList.remove('hidden');
@@ -2151,6 +2153,7 @@ window.switchCalculatorTab = function(type) {
         // default: 'rate'
         marginBanner?.classList.add('hidden');
         secRate?.classList.remove('hidden');
+        saleBar?.classList.add('hidden');
         setActive(btnRate);
         window.runLooseCalc();
         if (appFooter) appFooter.classList.remove('hidden');
@@ -2219,6 +2222,24 @@ window.updateSimpleCalcDisplay = function() {
             memEl.classList.remove('hidden');
         } else {
             memEl.classList.add('hidden');
+        }
+    }
+
+    // Dynamic Live Amount Badge for 1-Click "Add to Sale" Button
+    const saleBadge = document.getElementById('simple-calc-sale-amount-badge');
+    if (saleBadge) {
+        let val = parseFloat(simpleCalcState.display);
+        if (isNaN(val) || !isFinite(val)) val = 0;
+        if (val !== 0) {
+            saleBadge.textContent = 'Rs. ' + formatShopDisplay(String(val));
+            saleBadge.classList.remove('opacity-75');
+            saleBadge.classList.add('bg-amber-300', 'text-amber-950', 'ring-2', 'ring-amber-400/50');
+            saleBadge.classList.remove('bg-white', 'text-emerald-900');
+        } else {
+            saleBadge.textContent = 'Rs. 0';
+            saleBadge.classList.add('opacity-75');
+            saleBadge.classList.remove('bg-amber-300', 'text-amber-950', 'ring-2', 'ring-amber-400/50');
+            saleBadge.classList.add('bg-white', 'text-emerald-900');
         }
     }
 };
@@ -2653,6 +2674,88 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
+// ==========================================
+// 1-CLICK ADD CALCULATOR HISAAB DIRECTLY TO SALE
+// (Directly adds simple calculator calculation to daily sales without POS receipt modal)
+// ==========================================
+window.addSimpleCalcToSale = async function() {
+    // 1. Resolve pending operation if user typed e.g. 50 + 100 but didn't hit =
+    if (simpleCalcState.operation && !simpleCalcState.waitingForOperand) {
+        window.simpleCalcEquals();
+    }
+
+    const currentNum = parseFloat(simpleCalcState.display);
+    if (isNaN(currentNum) || !isFinite(currentNum) || currentNum === 0 || simpleCalcState.display === 'Error') {
+        showToast('Pehle calculator par koi raqam ya hisaab darj karein! (0 jama nahi ho sakta)', 'warning');
+        return;
+    }
+
+    // 2. Extract calculation expression description (e.g. "120 + 450 = 570")
+    let expr = '';
+    if (simpleCalcState.history) {
+        expr = simpleCalcState.history.trim().replace(/\s*=\s*$/, '');
+    } else if (simpleCalcState.tokens && simpleCalcState.tokens.length > 0) {
+        expr = buildExpressionFromTokens(simpleCalcState.tokens);
+    }
+    if (!expr) expr = String(currentNum);
+
+    const invoiceId = 'CALC-' + Math.floor(1000 + Math.random() * 9000);
+    const now = new Date();
+    const itemTitle = expr ? `Calculator Hisaab: ${expr} = ${formatShopDisplay(String(currentNum))}` : `Calculator Quick Sale (Rs. ${formatShopDisplay(String(currentNum))})`;
+
+    const saleRecord = {
+        id: 'sale_' + Date.now(),
+        invoiceId: invoiceId,
+        customer: 'Calculator Quick Customer',
+        paymentMode: 'Cash',
+        subtotal: currentNum,
+        discountPercent: 0,
+        discountAmount: 0,
+        netTotal: currentNum,
+        cost: 0,
+        profit: currentNum,
+        items: [{
+            id: 'item_calc_' + Date.now(),
+            name: itemTitle,
+            brand: 'Shop Hisaab',
+            price: currentNum,
+            qty: 1,
+            stockDeduct: 0,
+            total: currentNum,
+            cost: 0
+        }],
+        timestamp: now.toISOString(),
+        source: 'simple_calculator',
+        notes: expr
+    };
+
+    try {
+        await saveSaleToStore(saleRecord);
+    } catch(err) {
+        console.error('Error saving calculator sale:', err);
+    }
+
+    // 3. Instant live update of Dashboard metrics & sales records
+    renderDashboardMetrics();
+    if (typeof window.renderSalesAnalytics === 'function') {
+        try { window.renderSalesAnalytics(); } catch(_) {}
+    }
+
+    // 4. Update status display below calculator button
+    const lastStatus = document.getElementById('simple-calc-last-sale-status');
+    const lastText = document.getElementById('simple-calc-last-sale-text');
+    if (lastStatus && lastText) {
+        lastText.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> <span>Rs. ${formatShopDisplay(String(currentNum))} Sale mein shamil ho gaya (#${invoiceId})</span>`;
+        lastStatus.classList.remove('hidden');
+        safeCreateIcons();
+    }
+
+    // 5. Clear calculator for the next transaction / calculation
+    window.simpleCalcClear();
+
+    showToast(`✅ Rs. ${formatShopDisplay(String(currentNum))} Sale mein shamil ho gaya! (1-Click Record)`, 'success');
+};
+
 const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist, Master Handwriting Decipherer, and Medical Forensic OCR specialist.
 Scan this entire prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
 EXHAUSTIVE EXTRACTION MANDATE:
@@ -2861,8 +2964,8 @@ window.handlePrescriptionScan = async function(event) {
                             <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
                                 <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Live Host / PWA Gemini API Key
                             </span>
-                            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-[10px] text-amber-800 font-bold underline hover:text-amber-950">
-                                Free Key Lein ↗
+                            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[11px] font-black text-amber-950 bg-gradient-to-r from-amber-200 via-amber-300 to-amber-200 hover:from-amber-300 hover:to-amber-400 border border-amber-400 px-2.5 py-0.5 rounded-full shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer">
+                                <i data-lucide="key" class="w-3 h-3 text-amber-800"></i> Get API Key ↗
                             </a>
                         </div>
                         <div class="flex gap-1.5">
@@ -3198,8 +3301,8 @@ window.handleRealInvoiceOcr = async function(event) {
                         <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
                             <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Live Host / PWA Gemini API Key
                         </span>
-                        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-[10px] text-amber-800 font-bold underline hover:text-amber-950">
-                            Free Key Lein ↗
+                        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[11px] font-black text-amber-950 bg-gradient-to-r from-amber-200 via-amber-300 to-amber-200 hover:from-amber-300 hover:to-amber-400 border border-amber-400 px-2.5 py-0.5 rounded-full shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer">
+                            <i data-lucide="key" class="w-3 h-3 text-amber-800"></i> Get API Key ↗
                         </a>
                     </div>
                     <div class="flex gap-1.5">
@@ -5366,6 +5469,9 @@ window.refreshNetworkList = async function() {
         }
     }
 
+    const countEl = document.getElementById('network-stores-count');
+    if (countEl) countEl.textContent = Array.isArray(stores) ? String(stores.length) : '0';
+
     if (!Array.isArray(stores) || stores.length === 0) {
         grid.innerHTML = `
             <div class="col-span-full p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-2">
@@ -5380,30 +5486,106 @@ window.refreshNetworkList = async function() {
         return;
     }
 
-    grid.innerHTML = stores.map((s) => `
+    const currentUser = window.getCurrentUser();
+    const currentUid = authUser?.uid || currentUser?.uid || '';
+    const myConfig = window.getStoreConfig();
+    const myPhone = String(myConfig.phone || '').replace(/\D/g, '');
+    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '03********4' || localStorage.getItem('sm_is_admin') === 'true';
+
+    grid.innerHTML = stores.map((s, idx) => {
+        const cleanStorePhone = String(s.phone || '').replace(/\D/g, '');
+        const isMyStore = (currentUid && s.id === currentUid) || (myPhone && cleanStorePhone === myPhone);
+        const canDelete = isMyStore || isSuperAdmin;
+
+        return `
         <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3 hover:border-emerald-300 transition">
             <div class="flex items-start justify-between gap-2">
                 <div>
-                    <h4 class="font-black text-slate-800 text-sm sm:text-base leading-tight">${s.name}</h4>
+                    <h4 class="font-black text-slate-800 text-sm sm:text-base leading-tight">${escapeHtml(s.name)}</h4>
                     <p class="text-[11px] text-slate-500 font-semibold mt-0.5">
-                        ${s.ownerName ? `<span class="text-brand-700 font-bold">${s.ownerName}</span> • ` : ''}<span>📍 ${s.city || 'Pakistan'}</span>
+                        ${s.ownerName ? `<span class="text-brand-700 font-bold">${escapeHtml(s.ownerName)}</span> • ` : ''}<span>📍 ${escapeHtml(s.city || 'Pakistan')}</span>
                     </p>
                 </div>
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
-                </span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
+                    </span>
+                    ${canDelete ? `
+                        <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition border border-rose-200" title="Network se delete karein">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    ` : ''}
+                </div>
             </div>
             <div class="text-[11px] text-slate-600 flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
                 <span class="font-bold text-slate-500 uppercase text-[9px]">Status / Info:</span>
-                <strong class="text-brand-700 truncate max-w-[200px]">${s.remarks || 'Active Digital Pharma Network Member'}</strong>
+                <strong class="text-brand-700 truncate max-w-[200px]">${escapeHtml(s.remarks || 'Active Digital Pharma Network Member')}</strong>
             </div>
-            <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Pharmacy: ' + s.name + ')')}" target="_blank" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition">
-                <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Contact via WhatsApp (${s.phone})
-            </a>
+            <div class="flex items-center gap-2">
+                <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Pharmacy: ' + s.name + ')')}" target="_blank" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition">
+                    <i data-lucide="message-square" class="w-3.5 h-3.5"></i> WhatsApp (${escapeHtml(s.phone)})
+                </a>
+                ${canDelete ? `
+                    <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 flex items-center justify-center gap-1 transition active:scale-95" title="Apni pharmacy network se hatao">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+                    </button>
+                ` : ''}
+            </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 
     safeCreateIcons();
+};
+
+window.removePharmacyFromNetwork = function(id, name, phone, idx) {
+    customConfirm('Pharmacy Network Se Hataen?', `Kya aap "${name}" ko Connected Pharmacies network aur local storage se delete karna chahte hain?`, async () => {
+        // 1. Remove from Firestore if online and matches ID
+        if (db && id) {
+            try {
+                await deleteDoc(doc(db, 'pharmacies', id));
+            } catch(e) {
+                console.warn('Firestore direct delete ignored/not allowed:', e);
+            }
+        }
+
+        // 2. Remove from Backend Central Registry
+        try {
+            await fetch('/api/network/unregister', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: id,
+                    phone: phone,
+                    selfRemove: true,
+                    adminEmail: SUPER_ADMIN_EMAIL
+                })
+            });
+        } catch(e) {}
+
+        // 3. Clear from local storage
+        try {
+            let stores = JSON.parse(localStorage.getItem('sm_network_stores') || '[]');
+            stores = stores.filter(s => s.id !== id && s.phone !== phone && s.name !== name);
+            localStorage.setItem('sm_network_stores', JSON.stringify(stores));
+        } catch(e) {}
+
+        window.refreshNetworkList();
+        if (typeof window.renderAdminNetworkTable === 'function') {
+            window.renderAdminNetworkTable();
+        }
+        showToast(`Pharmacy "${name}" kamyabi se network aur local storage se delete ho gayi!`, 'success');
+    });
+};
+
+window.clearLocalNetworkStorage = function() {
+    customConfirm('Local Cache Saaf Karein?', 'Kya aap apne mobile / browser ki local storage mein save tamam Connected Pharmacies ka data saaf (clear) karna chahte hain?', () => {
+        try {
+            localStorage.removeItem('sm_network_stores');
+        } catch(e) {}
+        window.refreshNetworkList();
+        showToast('Local storage se network data saaf (clear) ho gaya!', 'info');
+    });
 };
 
 // ==========================================
@@ -8188,7 +8370,8 @@ window.handleDeleteAccountAndData = function() {
                         body: JSON.stringify({
                             id: currentUid,
                             email: currentUser?.email,
-                            phone: window.getStoreConfig().phone
+                            phone: window.getStoreConfig().phone,
+                            selfRemove: true
                         })
                     });
                 } catch(e) {}

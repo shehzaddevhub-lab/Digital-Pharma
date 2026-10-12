@@ -1182,10 +1182,12 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
 
 app.post('/api/network/unregister', (req: Request, res: Response): void => {
   try {
-    const { id, email, phone, adminEmail, adminPhone } = req.body;
+    const { id, email, phone, adminEmail, adminPhone, selfRemove } = req.body;
     const isAuthAdmin = (adminEmail && adminEmail.toLowerCase() === 'shzdkhkh01@gmail.com') || isPhoneAdmin(adminPhone);
-    if (!isAuthAdmin) {
-      res.status(403).json({ success: false, error: 'Sirf Super Admin ko delete karne ka ikhtiyar hai.' });
+    
+    // Allow either Super Admin authorization OR legitimate self-removal of user's own pharmacy
+    if (!isAuthAdmin && !selfRemove) {
+      res.status(403).json({ success: false, error: 'Sirf Super Admin ya apni pharmacy ke owner ko remove karne ki ijazat hai.' });
       return;
     }
 

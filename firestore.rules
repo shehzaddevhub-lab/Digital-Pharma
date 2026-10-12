@@ -35,7 +35,7 @@ service cloud.firestore {
       allow create, update: if isValidId(pharmacyId) && (
         request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isOwner(pharmacyId);
     }
 
     // User Account Root Document (for direct auth & sync profile)

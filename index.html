@@ -825,6 +825,33 @@
                 <button type="button" onclick="window.simpleCalcEquals()" class="w-full h-13 sm:h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white border border-emerald-600 shadow-md shadow-emerald-600/25 font-sans font-black text-2xl sm:text-3xl calc-btn-press flex items-center justify-center cursor-pointer select-none tracking-widest shrink-0" title="Equals (=)">=</button>
             </div>
 
+            <!-- QUICK ADD TO SALE (Calculator se alag / 1-Click Direct Sale Entry) -->
+            <div id="calc-simple-sale-bar" class="w-full max-w-[390px] sm:max-w-[420px] mt-3 sm:mt-3.5 select-none shrink-0">
+                <button type="button" onclick="window.addSimpleCalcToSale()" id="simple-calc-add-sale-btn" class="w-full p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] text-white shadow-lg shadow-emerald-700/25 border border-emerald-500/40 transition flex items-center justify-between cursor-pointer group">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition">
+                            <i data-lucide="badge-plus" class="w-5 h-5 text-white"></i>
+                        </div>
+                        <div class="text-left">
+                            <span class="block text-xs sm:text-sm font-black tracking-wide text-white flex items-center gap-1.5">
+                                Add to Sale (1-Click)
+                                <span class="text-[9px] px-1.5 py-0.5 bg-emerald-500/60 rounded text-emerald-100 font-bold uppercase tracking-wider">Direct Sale</span>
+                            </span>
+                            <span class="block text-[10px] sm:text-[11px] text-emerald-100 font-medium leading-tight">Bina POS receipt banaye direct apni sale mein jama karein</span>
+                        </div>
+                    </div>
+                    <div class="text-right pl-2">
+                        <span id="simple-calc-sale-amount-badge" class="px-2.5 py-1 rounded-xl bg-white text-emerald-900 font-mono font-black text-xs sm:text-sm shadow-sm inline-block opacity-75 transition-all">Rs. 0</span>
+                    </div>
+                </button>
+                <div id="simple-calc-last-sale-status" class="hidden mt-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[11px] text-emerald-800 font-medium flex items-center justify-between">
+                    <span id="simple-calc-last-sale-text" class="flex items-center gap-1.5 font-bold"></span>
+                    <button type="button" onclick="window.openSalesAnalyticsModal('today', 'data')" class="text-emerald-700 hover:text-emerald-900 underline font-black text-[10px] cursor-pointer">
+                        View Sale ↗
+                    </button>
+                </div>
+            </div>
+
             <!-- CALCULATOR 2: Rate & Pack Calculator -->
             <div id="calc-section-rate" class="hidden bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <div class="border-b border-slate-100 pb-2.5 flex items-center justify-between gap-2">
@@ -1034,18 +1061,21 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="window.refreshNetworkList()" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer">
+                    <button type="button" onclick="window.clearLocalNetworkStorage()" class="bg-red-500/20 hover:bg-red-500/30 text-rose-200 border border-rose-400/30 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer" title="Mobile ya local storage ka purana network data saaf karein">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-300"></i> Clear Local Cache
+                    </button>
+                    <button type="button" onclick="window.refreshNetworkList()" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh Network
                     </button>
                 </div>
             </div>
 
-            <div class="flex items-center justify-between px-1">
-                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <i data-lucide="store" class="w-4 h-4 text-emerald-600"></i>
-                    Connected Member Medical Stores (<span id="network-stores-count">0</span>):
-                </span>
-                <span class="text-[10px] text-slate-400">Verified live sync pharmacies</span>
+            <div class="flex items-center justify-between px-1 flex-wrap gap-2">
+                <div class="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                    <i data-lucide="store" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                    <span>Connected Member Medical Stores <span class="whitespace-nowrap inline-block">(<span id="network-stores-count">0</span>):</span></span>
+                </div>
+                <span class="text-[10px] text-slate-400 shrink-0">Verified live sync pharmacies</span>
             </div>
 
             <div id="network-stores-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
