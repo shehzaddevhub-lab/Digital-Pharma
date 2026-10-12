@@ -11,8 +11,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Super Admin: Reserved for M Shahzad Khakh (03067717634)
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'shzdkhkh01@gmail.com' || 
+        request.auth.uid == 'admin_shzdkhkh01' || 
+        request.auth.uid == 'admin_shahzad_03067717634' ||
+        request.auth.uid.matches('^admin_.*')
+      );
+    }
+
     function isOwner(userId) {
-      return isSignedIn() && (request.auth.uid == userId || userId.matches('^ph_.*'));
+      return isSignedIn() && (request.auth.uid == userId || userId.matches('^ph_.*') || isAdmin());
     }
 
     function isValidId(id) {
@@ -25,7 +35,7 @@ service cloud.firestore {
       allow create, update: if isValidId(pharmacyId) && (
         request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
       );
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     // User Account Root Document (for direct auth & sync profile)

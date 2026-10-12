@@ -322,7 +322,7 @@ function normalizePrescriptionData(parsed: any) {
 
 // Normalizes any wholesale invoice items output so bill OCR never fails
 function normalizeInvoiceItems(parsed: any) {
-  if (!parsed) return [];
+  if (!parsed) return { items: [], summary: null };
   let list: any[] = [];
   let root = parsed;
 
@@ -362,17 +362,77 @@ function normalizeInvoiceItems(parsed: any) {
 
   const detectedDist = String(root.distributorName || root.distributor || root.supplier || root.vendor || '').trim();
 
-  return list.filter((item: any) => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusal(String(item.name || item.item))).map((item: any) => ({
-    name: String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim(),
-    generic: String(item.generic || item.formula || '').trim(),
-    batch: String(item.batch || item.batch_no || item.batchNo || item.batchNumber || 'B-01').trim(),
-    expiry: String(item.expiry || item.exp || '2027-12').trim(),
-    packSize: String(item.packSize || item.pack_size || item.pack || '20').trim(),
-    qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
-    buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
-    distributor: String(item.distributor || item.supplier || detectedDist || 'Wholesale Distributor').trim(),
-    mrp: ''
-  }));
+  // Summary and discount extractions from bill
+  const totalBillAmount = Number(root.totalBillAmount || root.netTotal || root.totalAmount || root.grandTotal || root.netPayable || root.billTotal || 0) || 0;
+  const subtotalAmount = Number(root.subtotal || root.grossTotal || root.total || 0) || 0;
+  const discountPercent = Number(root.discountPercent || root.discountPct || root.discPercent || root.overallDiscountPercent || root.discount || 0) || 0;
+  const extraDiscountPercent = Number(root.extraDiscountPercent || root.extraDiscPercent || root.specialDiscountPercent || 0) || 0;
+  const discountAmount = Number(root.discountAmount || root.discountAmt || root.discAmount || 0) || 0;
+
+  function cleanExpiryField(rawExp: any): string {
+    if (!rawExp) return '';
+    const str = String(rawExp).trim();
+    if (!str || /null|undefined|none|n\/a|not printed|na|nil/i.test(str)) return '';
+    return str;
+  }
+
+  function detectTypeFromFullName(name: string): string {
+    const n = String(name || '').toLowerCase();
+    // 1. Syrups & Suspensions (syp, surup, syrup, srup, syr, susp, suspension, elixir, solution, sol)
+    if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|sol)\b/i.test(n) || /syp\.|syrup\.|surup\./i.test(n)) return 'syp';
+    // 2. Capsules (cap, capsule, capsules, softgel, cap.)
+    if (/\b(cap|capsule|caps|softgel)\b/i.test(n) || /cap\./i.test(n)) return 'cap';
+    // 3. Drops (drop, drops, eye drop, ear drop, nasal drop)
+    if (/\b(drop|drops|drp|drps)\b/i.test(n) || /drop\./i.test(n)) return 'drop';
+    // 4. Injections & Infusions (inj, injection, infusion, amp, ampoule, vial, iv, im)
+    if (/\b(inj|injection|infusion|inf|amp|ampoule|vial|iv|im)\b/i.test(n) || /inj\./i.test(n)) return 'inj';
+    // 5. Sachets (sachet, sachets, scht, sct, powder, granules)
+    if (/\b(sachet|sachets|scht|sct|powder|granules)\b/i.test(n) || /scht\./i.test(n)) return 'scht';
+    // 6. Creams & Ointments (cream, oint, ointment, gel, lotion, emulgel)
+    if (/\b(cream|gel|ointment|oint|lotion|emulgel)\b/i.test(n) || /oint\.|crm\./i.test(n)) return 'cream';
+    // 7. Surgical & Disposables (surgical, syringe, cannula, bandage, cotton, gloves, tape)
+    if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape)\b/i.test(n)) return 'surgical';
+    // 8. Tablets (tab, tablet, tablets, tabs, tab.)
+    if (/\b(tab|tablet|tablets|tabs)\b/i.test(n) || /tab\./i.test(n)) return 'tab';
+    return 'tab';
+  }
+
+  const cleanedItems = list.filter((item: any) => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusal(String(item.name || item.item))).map((item: any) => {
+    const rawName = String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim();
+    // Prioritize detecting type directly from complete medicine name to avoid OCR hallucinating random types
+    const detectedFromFull = detectTypeFromFullName(rawName);
+    const itemType = detectedFromFull || (item.type ? detectTypeFromFullName(String(item.type)) : 'tab');
+    const itemDisc = Number(item.discountPercent || item.discount || item.discPct || 0) || 0;
+    const itemExtraDisc = Number(item.extraDiscountPercent || item.extraDiscount || item.bonusPercent || 0) || 0;
+
+    return {
+      name: rawName,
+      type: itemType,
+      generic: String(item.generic || item.formula || '').trim(),
+      batch: String(item.batch || item.batch_no || item.batchNo || item.batchNumber || '').trim(),
+      // STRICT: ONLY use expiry if physically printed on the bill, never fabricate a future expiry
+      expiry: cleanExpiryField(item.expiry || item.exp),
+      packSize: String(item.packSize || item.pack_size || item.pack || '20').trim(),
+      qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
+      buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
+      discountPercent: itemDisc,
+      extraDiscountPercent: itemExtraDisc,
+      distributor: String(item.distributor || item.supplier || detectedDist || 'Wholesale Distributor').trim(),
+      mrp: ''
+    };
+  });
+
+  return {
+    items: cleanedItems,
+    summary: {
+      distributorName: detectedDist,
+      totalBillAmount,
+      subtotalAmount,
+      discountPercent,
+      extraDiscountPercent,
+      discountAmount
+    }
+  };
 }
 
 // Fallback line parser if model returns formatted text/markdown instead of JSON
@@ -420,12 +480,15 @@ function extractInvoiceItemsFromTextLines(text: string) {
       if (name.length >= 2) {
         items.push({
           name,
+          type: /syp|syrup|surup/i.test(name) ? 'syp' : (/cap|capsule/i.test(name) ? 'cap' : (/drop/i.test(name) ? 'drop' : (/inj/i.test(name) ? 'inj' : 'tab'))),
           generic: '',
-          batch: 'B-01',
-          expiry: '2027-12',
+          batch: '',
+          expiry: '', // Never fabricate fake expiry
           packSize: '20',
           qty: 1,
           buyRate: rateCandidate,
+          discountPercent: 0,
+          extraDiscountPercent: 0,
           distributor: 'Wholesale Distributor',
           mrp: ''
         });
@@ -433,14 +496,18 @@ function extractInvoiceItemsFromTextLines(text: string) {
     } else {
       const numMatch = clean.match(/^([a-zA-Z0-9\s\+\-\/\.]{3,35})\s*(?:.*?(\d+(?:\.\d+)?))?/);
       if (numMatch && numMatch[1]) {
+        const matchedName = numMatch[1].trim();
         items.push({
-          name: numMatch[1].trim(),
+          name: matchedName,
+          type: /syp|syrup|surup/i.test(matchedName) ? 'syp' : (/cap|capsule/i.test(matchedName) ? 'cap' : (/drop/i.test(matchedName) ? 'drop' : (/inj/i.test(matchedName) ? 'inj' : 'tab'))),
           generic: '',
-          batch: 'B-01',
-          expiry: '2027-12',
+          batch: '',
+          expiry: '', // Never fabricate fake expiry
           packSize: '20',
           qty: 1,
           buyRate: Number(numMatch[2]) || 0,
+          discountPercent: 0,
+          extraDiscountPercent: 0,
           distributor: 'Wholesale Distributor',
           mrp: ''
         });
@@ -661,45 +728,56 @@ app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<vo
     }
 
     const prompt = `You are an expert pharmacy wholesale bill and distributor invoice OCR reader.
-Examine this invoice, delivery challan, or receipt slip.
-Transcribe every medicine or item row printed on the bill:
-- name: product name and strength as printed
-- batch: batch number if visible
-- qty: invoiced quantity of packs (number)
-- buyRate: wholesale buy rate (TP) per pack (number)
-- expiry: expiry date (YYYY-MM) if visible
-- distributor: distributor / supplier name from bill header
+Examine this invoice, delivery challan, or receipt slip thoroughly.
+CRITICAL MANDATES:
+1. EXPIRY INTEGRITY: ONLY transcribe the expiry date if it is PHYSICALLY PRINTED on the bill paper. If no expiry date is printed for an item row, leave expiry as "" (empty string). DO NOT guess or fabricate any fake or default future expiry date!
+2. COMPLETE MEDICINE NAME & TYPE: Transcribe the full product name, strength, and identify form/type (e.g. syp, syrup, surup, tab, tablet, cap, capsule, drop, inj, injection, scht, sachet, cream, ointment, surgical).
+3. BILL TOTALS & DISCOUNTS: Read the total bill net amount, subtotal, overall discount percentage, and any extra / special discount percentage printed on the bill.
+4. LINE ITEM DISCOUNTS: Transcribe any trade discount % or extra scheme discount % printed for individual items.
 
 Return JSON format:
 {
   "distributorName": "Distributor or Supplier name",
+  "totalBillAmount": 12500.00,
+  "subtotalAmount": 13800.00,
+  "discountPercent": 10.0,
+  "extraDiscountPercent": 2.5,
+  "discountAmount": 1300.00,
   "lineItems": [
     {
-      "name": "Medicine name and strength",
-      "batch": "Batch number",
+      "name": "Full medicine name and strength as printed",
+      "type": "tab / cap / syp / drop / inj / scht / cream / surgical",
+      "batch": "Batch number if printed",
       "qty": 10,
       "buyRate": 150.00,
-      "expiry": "YYYY-MM"
+      "discountPercent": 10.0,
+      "extraDiscountPercent": 2.5,
+      "expiry": "Exact printed expiry or empty string if not printed"
     }
   ]
 }`;
 
     const text = await generateWithVisionFallback(prompt, imageBase64);
     const parsed = text ? extractJsonFromText(text) : null;
-    let items = normalizeInvoiceItems(parsed);
+    let result = normalizeInvoiceItems(parsed);
 
     // Fallback: extract items from lines if JSON parsing missed them
-    if (items.length === 0 && text) {
-      items = extractInvoiceItemsFromTextLines(text);
+    if (result.items.length === 0 && text) {
+      const fallbackItems = extractInvoiceItemsFromTextLines(text);
+      result.items = fallbackItems;
     }
 
-    if (items.length > 0) {
-      res.json({ success: true, data: items });
+    if (result.items.length > 0) {
+      res.json({ 
+        success: true, 
+        data: result.items,
+        summary: result.summary 
+      });
       return;
     }
 
     if (text) {
-      res.json({ success: true, data: [] });
+      res.json({ success: true, data: [], summary: result.summary });
       return;
     }
 
@@ -890,6 +968,15 @@ interface NetworkPharmacy {
   updatedAt: string;
 }
 
+const SUPER_ADMIN_PHONE = '03067717634';
+const SUPER_ADMIN_PASSWORD = 'medical@shehzad634';
+
+function isPhoneAdmin(phone?: string): boolean {
+  if (!phone) return false;
+  const digits = String(phone).replace(/\D/g, '');
+  return digits === '03067717634' || phone === '03********4';
+}
+
 const NETWORK_FILE = path.resolve(__dirname, 'network_pharmacies.json');
 
 function loadNetworkPharmacies(): NetworkPharmacy[] {
@@ -898,8 +985,13 @@ function loadNetworkPharmacies(): NetworkPharmacy[] {
       const data = fs.readFileSync(NETWORK_FILE, 'utf-8');
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        // Filter out any stale mock entries if they exist
-        return parsed.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical & General Store'].includes(p.name));
+        // Filter out any stale mock entries and admin entries
+        return parsed.filter(p => 
+          !['net_1', 'net_2', 'net_3'].includes(p.id) && 
+          !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical & General Store'].includes(p.name) &&
+          !isPhoneAdmin(p.phone) &&
+          !p.name?.includes('Super Admin')
+        );
       }
     }
   } catch (e) {
@@ -910,7 +1002,8 @@ function loadNetworkPharmacies(): NetworkPharmacy[] {
 
 function saveNetworkPharmacies(list: NetworkPharmacy[]) {
   try {
-    fs.writeFileSync(NETWORK_FILE, JSON.stringify(list, null, 2), 'utf-8');
+    const cleanList = list.filter(p => !isPhoneAdmin(p.phone) && !p.name?.includes('Super Admin'));
+    fs.writeFileSync(NETWORK_FILE, JSON.stringify(cleanList, null, 2), 'utf-8');
   } catch (e) {
     console.error('Error saving network pharmacies file:', e);
   }
@@ -918,11 +1011,113 @@ function saveNetworkPharmacies(list: NetworkPharmacy[]) {
 
 let activeNetworkPharmacies = loadNetworkPharmacies();
 
-app.get('/api/network/pharmacies', (_req: Request, res: Response) => {
+// Secure Super Admin Verification Endpoint (Password never exposed to frontend code or view-source)
+app.post('/api/admin/verify', (req: Request, res: Response): void => {
+  try {
+    const { phone, password } = req.body;
+    const inputPhone = String(phone || '').trim();
+    const inputPass = String(password || '').trim();
+    
+    const cleanInputPhone = inputPhone.replace(/\D/g, '');
+    const cleanExpected = SUPER_ADMIN_PHONE.replace(/\D/g, '');
+
+    const isPhoneMatch = cleanInputPhone === cleanExpected || inputPhone === '03********4' || inputPhone === SUPER_ADMIN_PHONE;
+    const isPassMatch = inputPass === SUPER_ADMIN_PASSWORD;
+
+    if (isPhoneMatch && isPassMatch) {
+      res.json({
+        success: true,
+        message: 'Super Admin login kamyab!',
+        admin: {
+          name: 'Super Admin',
+          phone: SUPER_ADMIN_PHONE,
+          maskedPhone: '03********4',
+          email: 'shzdkhkh01@gmail.com',
+          role: 'super_admin',
+          isSuperAdmin: true,
+          token: 'adm_sec_' + Buffer.from('03067717634:' + Date.now()).toString('base64')
+        }
+      });
+      return;
+    }
+
+    res.status(401).json({
+      success: false,
+      error: 'Ghalat Admin password! Sirf authorized admin access kar sakta hai.'
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Admin authentication failed' });
+  }
+});
+
+// Shared Network Medicine Stock for cross-pharmacy availability inquiry
+interface SharedMedicineStock {
+  storeId: string;
+  storeName: string;
+  city: string;
+  phone: string;
+  medicineName: string;
+  type: string;
+  stockQty: number;
+  lastUpdated: string;
+}
+let networkMedicineStocks: SharedMedicineStock[] = [];
+
+app.post('/api/network/sync-stock', (req: Request, res: Response): void => {
+  try {
+    const { storeId, storeName, city, phone, medicines } = req.body;
+    if (!phone || !Array.isArray(medicines)) {
+      res.status(400).json({ success: false, error: 'Invalid stock sync data' });
+      return;
+    }
+    if (isPhoneAdmin(phone)) {
+      res.json({ success: true, message: 'Admin stock excluded' });
+      return;
+    }
+    networkMedicineStocks = networkMedicineStocks.filter(s => s.phone !== phone);
+    medicines.forEach((m: any) => {
+      if (m && m.name && Number(m.stock) > 0) {
+        networkMedicineStocks.push({
+          storeId: storeId || phone,
+          storeName: storeName || 'Partner Pharmacy',
+          city: city || 'Pakistan',
+          phone: phone,
+          medicineName: String(m.name).trim(),
+          type: String(m.type || 'tab').toLowerCase(),
+          stockQty: Number(m.stock),
+          lastUpdated: new Date().toISOString()
+        });
+      }
+    });
+    res.json({ success: true, synced: medicines.length });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Stock sync failed' });
+  }
+});
+
+app.get('/api/network/medicine-lookup', (req: Request, res: Response): void => {
+  const query = String(req.query.q || '').trim().toLowerCase();
+  if (!query) {
+    res.json({ success: true, results: [] });
+    return;
+  }
+  const matches = networkMedicineStocks.filter(s => 
+    s.medicineName.toLowerCase().includes(query) && !isPhoneAdmin(s.phone)
+  ).slice(0, 30);
   res.json({
     success: true,
-    count: activeNetworkPharmacies.length,
-    pharmacies: activeNetworkPharmacies
+    query,
+    count: matches.length,
+    results: matches
+  });
+});
+
+app.get('/api/network/pharmacies', (_req: Request, res: Response) => {
+  const publicList = activeNetworkPharmacies.filter(p => !isPhoneAdmin(p.phone) && !p.name?.includes('Super Admin'));
+  res.json({
+    success: true,
+    count: publicList.length,
+    pharmacies: publicList
   });
 });
 
@@ -935,6 +1130,11 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
     }
 
     const cleanPhone = String(phone).trim();
+    if (isPhoneAdmin(cleanPhone)) {
+      res.status(400).json({ success: false, error: 'Super Admin phone number network stores list mein shamil nahi ho sakta.' });
+      return;
+    }
+
     const cleanName = String(name).trim();
     const cleanCity = String(city).trim();
     const cleanEmail = email ? String(email).trim().toLowerCase() : '';
@@ -966,11 +1166,13 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
 
     saveNetworkPharmacies(activeNetworkPharmacies);
 
+    const publicList = activeNetworkPharmacies.filter(p => !isPhoneAdmin(p.phone) && !p.name?.includes('Super Admin'));
+
     res.json({
       success: true,
       message: `${cleanName} successfully registered in Digital Pharma Network!`,
       pharmacy: record,
-      totalConnected: activeNetworkPharmacies.length
+      totalConnected: publicList.length
     });
   } catch (err: any) {
     console.error('Network registration error:', err);
@@ -980,7 +1182,13 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
 
 app.post('/api/network/unregister', (req: Request, res: Response): void => {
   try {
-    const { id, email, phone } = req.body;
+    const { id, email, phone, adminEmail, adminPhone } = req.body;
+    const isAuthAdmin = (adminEmail && adminEmail.toLowerCase() === 'shzdkhkh01@gmail.com') || isPhoneAdmin(adminPhone);
+    if (!isAuthAdmin) {
+      res.status(403).json({ success: false, error: 'Sirf Super Admin ko delete karne ka ikhtiyar hai.' });
+      return;
+    }
+
     activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
       if (id && p.id === id) return false;
       if (email && p.email && p.email.toLowerCase() === String(email).toLowerCase()) return false;
@@ -988,7 +1196,7 @@ app.post('/api/network/unregister', (req: Request, res: Response): void => {
       return true;
     });
     saveNetworkPharmacies(activeNetworkPharmacies);
-    res.json({ success: true, count: activeNetworkPharmacies.length });
+    res.json({ success: true, count: activeNetworkPharmacies.length, message: 'Pharmacy network se kamyabi se hata di gayi.' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Unregister failed' });
   }

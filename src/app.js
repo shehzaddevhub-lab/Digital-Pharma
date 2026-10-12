@@ -1211,11 +1211,13 @@ function normalizeInvoiceItems(parsed) {
                 if (name.length >= 2) {
                     list.push({
                         name,
-                        batch: 'B-01',
-                        expiry: '2027-12',
+                        batch: '',
+                        expiry: '',
                         packSize: '20',
                         qty: 1,
-                        buyRate: rateCandidate
+                        buyRate: rateCandidate,
+                        discountPercent: 0,
+                        extraDiscountPercent: 0
                     });
                 }
             } else {
@@ -1223,30 +1225,65 @@ function normalizeInvoiceItems(parsed) {
                 if (numMatch && numMatch[1]) {
                     list.push({
                         name: numMatch[1].trim(),
-                        batch: 'B-01',
-                        expiry: '2027-12',
+                        batch: '',
+                        expiry: '',
                         packSize: '20',
                         qty: 1,
-                        buyRate: Number(numMatch[2]) || 0
+                        buyRate: Number(numMatch[2]) || 0,
+                        discountPercent: 0,
+                        extraDiscountPercent: 0
                     });
                 }
             }
         }
     }
 
-    const detectedDist = String(parsed.distributorName || parsed.distributor || parsed.supplier || parsed.vendor || '').trim();
+    const detectedDist = String(root.distributorName || root.distributor || root.supplier || root.vendor || '').trim();
+    const totalBillAmount = Number(root.totalBillAmount || root.netTotal || root.totalAmount || root.grandTotal || root.netPayable || root.billTotal || 0) || 0;
+    const subtotalAmount = Number(root.subtotal || root.grossTotal || root.total || 0) || 0;
+    const discountPercent = Number(root.discountPercent || root.discountPct || root.discPercent || root.overallDiscountPercent || root.discount || 0) || 0;
+    const extraDiscountPercent = Number(root.extraDiscountPercent || root.extraDiscPercent || root.specialDiscountPercent || 0) || 0;
+    const discountAmount = Number(root.discountAmount || root.discountAmt || root.discAmount || 0) || 0;
 
-    return list.filter(item => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusalText(String(item.name || item.item))).map(item => ({
-        name: String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim(),
-        generic: item.generic || item.formula || '',
-        batch: item.batch || item.batch_no || item.batchNo || item.batchNumber || 'B-01',
-        expiry: item.expiry || item.exp || '2027-12',
-        packSize: String(item.packSize || item.pack_size || item.pack || '20'),
-        qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
-        buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
-        distributor: item.distributor || item.supplier || detectedDist || '',
-        mrp: ''
-    }));
+    function cleanExp(val) {
+        if (!val) return '';
+        const str = String(val).trim();
+        if (!str || /null|undefined|none|n\/a|not printed|na|nil/i.test(str)) return '';
+        return str;
+    }
+
+    const cleanedItems = list.filter(item => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusalText(String(item.name || item.item))).map(item => {
+        const rawName = String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim();
+        // Detect type directly from complete medicine name keywords like syp, surup, tab, tablet, cap, capsule, drop, inj
+        const detectedType = detectMedicineTypeFromName(rawName);
+        const type = detectedType || (item.type ? detectMedicineTypeFromName(String(item.type)) : 'tab');
+        return {
+            name: rawName,
+            type: type,
+            generic: item.generic || item.formula || '',
+            batch: item.batch || item.batch_no || item.batchNo || item.batchNumber || '',
+            expiry: cleanExp(item.expiry || item.exp), // Only true printed expiry, never default fake date
+            packSize: String(item.packSize || item.pack_size || item.pack || '20'),
+            qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
+            buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
+            discountPercent: Number(item.discountPercent || item.discount || item.discPct || 0) || 0,
+            extraDiscountPercent: Number(item.extraDiscountPercent || item.extraDiscount || item.bonusPercent || 0) || 0,
+            distributor: item.distributor || item.supplier || detectedDist || '',
+            mrp: ''
+        };
+    });
+
+    return {
+        items: cleanedItems,
+        summary: {
+            distributorName: detectedDist,
+            totalBillAmount,
+            subtotalAmount,
+            discountPercent,
+            extraDiscountPercent,
+            discountAmount
+        }
+    };
 }
 
 // Universal client-side Gemini Vision Caller (Works across ANY hosting server, GitHub Pages, Vercel, Firebase & Installed PWA)
@@ -1319,6 +1356,145 @@ window.triggerFileInput = function(id) {
         el.value = '';
     } catch(e) {}
     el.click();
+};
+
+// Unified 1-Click Media Scanner: Opens native system selector (Camera or Gallery/Files in 1 click)
+let currentMediaContext = 'presc'; // 'presc' | 'bill' | 'margin' | 'pack'
+window.currentMediaContext = 'presc';
+let liveCameraStream = null;
+let currentFacingMode = 'environment'; // 'environment' | 'user'
+
+window.triggerUnifiedMediaScan = function(context) {
+    currentMediaContext = context || 'presc';
+    window.currentMediaContext = currentMediaContext;
+
+    if (currentMediaContext === 'bill') {
+        window.triggerFileInput('inv-bill-file');
+    } else if (currentMediaContext === 'margin') {
+        window.triggerFileInput('margin-bill-file');
+    } else if (currentMediaContext === 'pack') {
+        window.triggerFileInput('pack-scan-input');
+    } else {
+        window.triggerFileInput('dashboard-presc-input');
+    }
+};
+
+// Aliases for compatibility
+window.openMediaSourcePicker = window.triggerUnifiedMediaScan;
+window.closeMediaSourcePicker = function() {};
+window.triggerSelectedMediaSource = function() {
+    window.triggerUnifiedMediaScan(window.currentMediaContext);
+};
+
+window.startLiveCameraCapture = async function(context) {
+    currentMediaContext = context || currentMediaContext;
+    window.currentMediaContext = currentMediaContext;
+
+    const modal = document.getElementById('live-camera-modal');
+    const video = document.getElementById('live-camera-video');
+    const titleEl = document.getElementById('live-camera-context-title');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return false;
+    }
+
+    if (titleEl) {
+        if (currentMediaContext === 'bill') titleEl.innerText = 'Wholesale Bill Live Camera Scanner';
+        else if (currentMediaContext === 'margin') titleEl.innerText = 'Scheme Slip Live Camera';
+        else if (currentMediaContext === 'pack') titleEl.innerText = 'Medicine Packaging Live Camera';
+        else titleEl.innerText = 'Prescription Nuskha Live Camera';
+    }
+
+    try {
+        if (liveCameraStream) {
+            liveCameraStream.getTracks().forEach(t => t.stop());
+            liveCameraStream = null;
+        }
+
+        const constraints = {
+            video: {
+                facingMode: { ideal: currentFacingMode },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            },
+            audio: false
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        liveCameraStream = stream;
+        if (video) {
+            video.srcObject = stream;
+            await video.play().catch(() => {});
+        }
+        modal?.classList.remove('hidden');
+        safeCreateIcons();
+        return true;
+    } catch (err) {
+        console.warn('getUserMedia camera stream could not be started:', err);
+        return false;
+    }
+};
+
+window.flipLiveCamera = async function() {
+    currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+    await window.startLiveCameraCapture(currentMediaContext);
+};
+
+window.closeLiveCameraModal = function() {
+    if (liveCameraStream) {
+        liveCameraStream.getTracks().forEach(t => t.stop());
+        liveCameraStream = null;
+    }
+    const video = document.getElementById('live-camera-video');
+    if (video) video.srcObject = null;
+    document.getElementById('live-camera-modal')?.classList.add('hidden');
+};
+
+window.fallbackToUploadPhotos = function() {
+    window.closeLiveCameraModal();
+    window.triggerSelectedMediaSource('gallery');
+};
+
+window.captureLiveCameraPhoto = async function() {
+    const video = document.getElementById('live-camera-video');
+    const canvas = document.getElementById('live-camera-canvas');
+    if (!video || !canvas || !video.videoWidth) {
+        showToast('Camera active nahi hai.', 'error');
+        return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const base64Data = canvas.toDataURL('image/jpeg', 0.90);
+    window.closeLiveCameraModal();
+
+    // Route to appropriate scanner handler with captured image
+    const mediaCtx = currentMediaContext;
+    if (mediaCtx === 'bill') {
+        window.retryInvoiceScanWithBase64(base64Data);
+    } else if (mediaCtx === 'margin') {
+        try {
+            const res = await fetch(base64Data);
+            const blob = await res.blob();
+            const dummyFile = new File([blob], 'margin_cam.jpg', { type: 'image/jpeg' });
+            window.handleAiMarginBillScan({ target: { files: [dummyFile] } });
+        } catch(e) {
+            window.retryInvoiceScanWithBase64(base64Data);
+        }
+    } else if (mediaCtx === 'pack') {
+        try {
+            const res = await fetch(base64Data);
+            const blob = await res.blob();
+            const dummyFile = new File([blob], 'pack_cam.jpg', { type: 'image/jpeg' });
+            window.handleMedicinePackagingScan({ target: { files: [dummyFile] } });
+        } catch(e) {}
+    } else {
+        // Prescription
+        window.retryPrescriptionScanWithBase64(base64Data);
+    }
 };
 
 // Unified AI Caller: Seamlessly supports full-stack Node backends, GitHub Pages, Firebase Hosting, Vercel, and installed mobile PWA
@@ -1490,7 +1666,17 @@ window.applyStoreIdentity = function() {
     const statusDot = document.getElementById('hub-status-dot');
     const statusText = document.getElementById('hub-status-text');
 
-    if (mode === 'authenticated' && user) {
+    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03067717634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+
+    if (isSuperAdmin) {
+        if (hubName) hubName.innerText = '👑 Super Admin';
+        if (hubStatus) hubStatus.innerText = '03********4';
+        if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse';
+        if (statusText) {
+            statusText.innerText = 'Super Admin (03********4 Master Control)';
+            statusText.className = 'text-amber-800 font-bold';
+        }
+    } else if (mode === 'authenticated' && user) {
         if (hubName) hubName.innerText = user.name || config.name || 'My Store';
         if (hubStatus) hubStatus.innerText = 'Online Active';
         if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse';
@@ -1498,21 +1684,13 @@ window.applyStoreIdentity = function() {
             statusText.innerText = `Logged In (${user.email || user.name})`;
             statusText.className = 'text-emerald-700 font-bold';
         }
-    } else if (mode === 'guest') {
-        if (hubName) hubName.innerText = config.name || 'Guest Mode';
-        if (hubStatus) hubStatus.innerText = 'Anonymous';
-        if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block';
-        if (statusText) {
-            statusText.innerText = 'Guest Mode (Anonymous)';
-            statusText.className = 'text-slate-600 font-semibold';
-        }
     } else {
-        if (hubName) hubName.innerText = 'Guest Mode';
-        if (hubStatus) hubStatus.innerText = 'Not Selected';
+        if (hubName) hubName.innerText = 'Pharmacy Portal';
+        if (hubStatus) hubStatus.innerText = 'Admin / Staff';
         if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-slate-400 inline-block';
         if (statusText) {
-            statusText.innerText = 'Profile Not Selected';
-            statusText.className = 'text-slate-500 font-semibold';
+            statusText.innerText = 'Staff Login / Admin Portal';
+            statusText.className = 'text-slate-600 font-semibold';
         }
     }
 
@@ -2503,25 +2681,30 @@ Return JSON format:
 }`;
 
 const INVOICE_PROMPT = `Examine this wholesale invoice, distributor bill, or delivery challan.
-Read all table rows and medicine line items printed on the paper.
-For each item row, extract:
-- name: brand or item name and strength
-- batch: batch number if visible
-- qty: quantity of packs (number)
-- buyRate: wholesale buy rate (TP) per pack (number)
-- expiry: expiry date (YYYY-MM) if visible
-- distributor: distributor / supplier name from bill header
+CRITICAL RULES:
+1. EXPIRY INTEGRITY: ONLY extract the expiry date if it is PHYSICALLY PRINTED on the bill paper. If no expiry date is printed, leave expiry as "" (empty string). DO NOT guess or add any fake or default future expiry date!
+2. COMPLETE MEDICINE NAME & TYPE: Transcribe full product name and identify form/type (e.g. syp, syrup, surup, tab, tablet, cap, capsule, drop, inj, scht, cream, ointment, surgical).
+3. BILL TOTALS & SCHEMES: Extract the total bill net amount, subtotal, overall discount %, and any extra scheme / bonus percentage.
+4. LINE ITEM DISCOUNTS: Extract any trade discount % or extra scheme discount % printed for individual items.
 
 Return JSON format:
 {
   "distributorName": "Distributor name",
+  "totalBillAmount": 12500.00,
+  "subtotalAmount": 13800.00,
+  "discountPercent": 10.0,
+  "extraDiscountPercent": 2.5,
+  "discountAmount": 1300.00,
   "lineItems": [
     {
-      "name": "Medicine name",
-      "batch": "B-01",
+      "name": "Medicine name and strength",
+      "type": "tab / cap / syp / drop / inj / scht / cream / surgical",
+      "batch": "Batch number if visible",
       "qty": 10,
       "buyRate": 150.00,
-      "expiry": "2027-12"
+      "discountPercent": 10.0,
+      "extraDiscountPercent": 2.5,
+      "expiry": "Exact printed expiry or empty string if not printed"
     }
   ]
 }`;
@@ -2952,13 +3135,18 @@ window.handleRealInvoiceOcr = async function(event) {
         const base64Data = await enhanceImageLikeCamScanner(file);
         window.lastInvoiceImageBase64 = base64Data;
         const resData = await callAiBackend('/api/ai/scan-invoice', base64Data, INVOICE_PROMPT);
-        let items = normalizeInvoiceItems(resData?.data);
+        let normalized = normalizeInvoiceItems(resData?.data || resData);
+        let items = normalized.items || [];
+        let summary = normalized.summary || resData?.summary || null;
 
         if (!items || !Array.isArray(items)) {
             items = [];
         }
 
-        const detectedDist = items.find(i => i.distributor)?.distributor || '';
+        window.lastInvoiceSummary = summary;
+        window.updateScannedBillSummaryDisplay(summary, items);
+
+        const detectedDist = summary?.distributorName || items.find(i => i.distributor)?.distributor || '';
         const distInput = document.getElementById('ai-bill-distributor');
         if (distInput) distInput.value = detectedDist;
         if (detectedDist) window.rememberDistributor(detectedDist);
@@ -2968,11 +3156,13 @@ window.handleRealInvoiceOcr = async function(event) {
             name: item.name || 'Item ' + (idx + 1),
             type: item.type || detectMedicineTypeFromName(item.name || ''),
             generic: item.generic || item.formula || '',
-            batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
-            expiry: item.expiry || '',
+            batch: item.batch || '',
+            expiry: item.expiry || '', // Strict: Only printed expiry
             packSize: item.packSize || '20',
             qty: Number(item.qty) || 1,
             buyRate: Number(item.buyRate) || 0,
+            discountPercent: Number(item.discountPercent) || 0,
+            extraDiscountPercent: Number(item.extraDiscountPercent) || 0,
             mrp: item.mrp || '',
             distributor: item.distributor || detectedDist || 'Distributor'
         }));
@@ -2982,7 +3172,7 @@ window.handleRealInvoiceOcr = async function(event) {
         content?.classList.remove('hidden');
         safeCreateIcons();
         if (items.length > 0) {
-            showToast(`${items.length} bill items detect ho gaye! MRP check karein.`, 'success');
+            showToast(`${items.length} bill items aur Total Amount detect ho gaye!`, 'success');
         } else {
             showToast('Bill se koi item detect nahi hua.', 'info');
         }
@@ -2993,7 +3183,7 @@ window.handleRealInvoiceOcr = async function(event) {
         const tbody = document.getElementById('ai-scanned-table-body');
         if (tbody) {
             const savedKey = (typeof localStorage !== 'undefined' && localStorage.getItem('gemini_api_key')) || '';
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 px-4 text-rose-700 bg-rose-50 font-bold text-xs space-y-2">
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 px-4 text-rose-700 bg-rose-50 font-bold text-xs space-y-2">
                 <div class="w-10 h-10 mx-auto mb-1 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
                     <i data-lucide="alert-circle" class="w-5 h-5"></i>
                 </div>
@@ -3022,8 +3212,8 @@ window.handleRealInvoiceOcr = async function(event) {
                 </div>
 
                 <div class="mt-2 flex justify-center gap-2">
-                    <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition">
-                        <i data-lucide="camera" class="w-4 h-4"></i> Dobara Bill Upload Karein
+                    <button type="button" onclick="window.openMediaSourcePicker('bill')" class="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition">
+                        <i data-lucide="camera" class="w-4 h-4"></i> Dobara Bill Upload / Scan Karein
                     </button>
                 </div>
             </td></tr>`;
@@ -3039,7 +3229,7 @@ window.handleRealInvoiceOcr = async function(event) {
 
 window.retryInvoiceScanWithBase64 = async function(base64Data) {
     if (!base64Data) {
-        window.triggerFileInput('inv-bill-file');
+        window.openMediaSourcePicker('bill');
         return;
     }
     const modal = document.getElementById('ai-scan-modal');
@@ -3052,8 +3242,14 @@ window.retryInvoiceScanWithBase64 = async function(base64Data) {
 
     try {
         const resData = await callAiBackend('/api/ai/scan-invoice', base64Data, INVOICE_PROMPT);
-        let items = normalizeInvoiceItems(resData?.data) || [];
-        const detectedDist = items.find(i => i.distributor)?.distributor || '';
+        let normalized = normalizeInvoiceItems(resData?.data || resData);
+        let items = normalized.items || [];
+        let summary = normalized.summary || resData?.summary || null;
+
+        window.lastInvoiceSummary = summary;
+        window.updateScannedBillSummaryDisplay(summary, items);
+
+        const detectedDist = summary?.distributorName || items.find(i => i.distributor)?.distributor || '';
         const distInput = document.getElementById('ai-bill-distributor');
         if (distInput) distInput.value = detectedDist;
         if (detectedDist) window.rememberDistributor(detectedDist);
@@ -3063,11 +3259,13 @@ window.retryInvoiceScanWithBase64 = async function(base64Data) {
             name: item.name || 'Item ' + (idx + 1),
             type: item.type || detectMedicineTypeFromName(item.name || ''),
             generic: item.generic || item.formula || '',
-            batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
+            batch: item.batch || '',
             expiry: item.expiry || '',
             packSize: item.packSize || '20',
             qty: Number(item.qty) || 1,
             buyRate: Number(item.buyRate) || 0,
+            discountPercent: Number(item.discountPercent) || 0,
+            extraDiscountPercent: Number(item.extraDiscountPercent) || 0,
             mrp: item.mrp || '',
             distributor: item.distributor || detectedDist || 'Distributor'
         }));
@@ -3085,6 +3283,56 @@ window.retryInvoiceScanWithBase64 = async function(base64Data) {
         content?.classList.remove('hidden');
         showToast(err?.message || 'Bill scan nahi ho saka.', 'error');
     }
+};
+
+window.updateScannedBillSummaryDisplay = function(summary, items) {
+    const subtotalEl = document.getElementById('ai-bill-subtotal');
+    const discEl = document.getElementById('ai-bill-disc-percent');
+    const extraDiscEl = document.getElementById('ai-bill-extra-disc');
+    const netTotalEl = document.getElementById('ai-bill-net-total');
+    const badgeEl = document.getElementById('ai-bill-dist-badge');
+    const footerCountEl = document.getElementById('ai-bill-footer-items-count');
+    const footerSchemeEl = document.getElementById('ai-bill-footer-scheme-badges');
+    const footerGrandEl = document.getElementById('ai-bill-footer-grand-total');
+
+    let totalPacks = 0;
+    let calculatedGross = 0;
+    let calculatedNet = 0;
+    const targetItems = Array.isArray(items) ? items : (aiExtractedBuffer || []);
+
+    targetItems.forEach(it => {
+        const q = Number(it.qty) || 1;
+        const rate = Number(it.buyRate) || 0;
+        const lineGross = q * rate;
+        const dPct = Number(it.discountPercent) || 0;
+        const exPct = Number(it.extraDiscountPercent) || 0;
+        const combinedDiscountFactor = 1 - (dPct / 100) - (exPct / 100);
+        totalPacks += q;
+        calculatedGross += lineGross;
+        calculatedNet += (lineGross * Math.max(0, combinedDiscountFactor));
+    });
+
+    const netAmount = summary?.totalBillAmount > 0 ? summary.totalBillAmount : (calculatedNet > 0 ? calculatedNet : calculatedGross);
+    const grossAmount = summary?.subtotalAmount > 0 ? summary.subtotalAmount : (calculatedGross > 0 ? calculatedGross : netAmount);
+    const discPct = summary?.discountPercent || 0;
+    const extraDiscPct = summary?.extraDiscountPercent || 0;
+
+    if (subtotalEl) subtotalEl.innerText = `Rs. ${grossAmount.toFixed(2)}`;
+    if (discEl) discEl.innerText = discPct > 0 ? `${discPct}%` : (extraDiscPct > 0 ? '0%' : '0%');
+    if (extraDiscEl) extraDiscEl.innerText = extraDiscPct > 0 ? `+${extraDiscPct}% Extra` : '0%';
+    if (netTotalEl) netTotalEl.innerText = `Rs. ${netAmount.toFixed(2)}`;
+    if (badgeEl) {
+        badgeEl.innerText = summary?.distributorName ? `Supplier: ${summary.distributorName}` : 'Wholesale Invoice';
+    }
+
+    if (footerCountEl) footerCountEl.innerText = `${targetItems.length} Items (${totalPacks} Packs)`;
+    if (footerSchemeEl) {
+        let schemeText = '';
+        if (discPct > 0) schemeText += `${discPct}% Disc `;
+        if (extraDiscPct > 0) schemeText += `+ ${extraDiscPct}% Extra Scheme`;
+        footerSchemeEl.innerText = schemeText || 'Standard Rates';
+    }
+    if (footerGrandEl) footerGrandEl.innerText = `Rs. ${netAmount.toFixed(2)}`;
 };
 
 window.saveAndRetryInvoiceScan = function() {
@@ -3117,13 +3365,22 @@ window.escapeHtml = escapeHtml;
 function detectMedicineTypeFromName(name) {
     if (!name) return 'tab';
     const n = String(name).toLowerCase();
-    if (/\b(cap|capsule|caps)\b/i.test(n)) return 'cap';
-    if (/\b(syp|syrup|susp|suspension|elixir)\b/i.test(n)) return 'syp';
-    if (/\b(drop|drops|eye drop|ear drop)\b/i.test(n)) return 'drop';
-    if (/\b(inj|injection|infusion|iv|im)\b/i.test(n)) return 'inj';
-    if (/\b(sachet|scht|powder|granules)\b/i.test(n)) return 'scht';
-    if (/\b(cream|gel|ointment|oint|lotion)\b/i.test(n)) return 'cream';
-    if (/\b(surgical|bandage|cannula|syringe|cotton)\b/i.test(n)) return 'surgical';
+    // 1. Syrups & Suspensions (syp, surup, syrup, srup, syr, susp, suspension, elixir, solution, sol, ped syp)
+    if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|sol)\b/i.test(n) || /syp\.|syrup\.|surup\./i.test(n)) return 'syp';
+    // 2. Capsules (cap, capsule, capsules, softgel, cap.)
+    if (/\b(cap|capsule|caps|softgel)\b/i.test(n) || /cap\./i.test(n)) return 'cap';
+    // 3. Drops (drop, drops, eye drop, ear drop, nasal drop)
+    if (/\b(drop|drops|drp|drps)\b/i.test(n) || /drop\./i.test(n)) return 'drop';
+    // 4. Injections & Infusions (inj, injection, infusion, amp, ampoule, vial, iv, im)
+    if (/\b(inj|injection|infusion|inf|amp|ampoule|vial|iv|im)\b/i.test(n) || /inj\./i.test(n)) return 'inj';
+    // 5. Sachets (sachet, sachets, scht, sct, powder, granules)
+    if (/\b(sachet|sachets|scht|sct|powder|granules)\b/i.test(n) || /scht\./i.test(n)) return 'scht';
+    // 6. Creams & Ointments (cream, oint, ointment, gel, lotion, emulgel)
+    if (/\b(cream|gel|ointment|oint|lotion|emulgel)\b/i.test(n) || /oint\.|crm\./i.test(n)) return 'cream';
+    // 7. Surgical & Disposables (surgical, syringe, cannula, bandage, cotton, gloves, blade, tape)
+    if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape)\b/i.test(n)) return 'surgical';
+    // 8. Tablets (tab, tablet, tablets, tabs, tab.)
+    if (/\b(tab|tablet|tablets|tabs)\b/i.test(n) || /tab\./i.test(n)) return 'tab';
     return 'tab';
 }
 
@@ -3237,50 +3494,77 @@ if (typeof document !== 'undefined') {
 
 function renderAiScannedTable() {
     const tbody = document.getElementById('ai-scanned-table-body');
+    const tfoot = document.getElementById('ai-scanned-table-foot');
     if (!tbody) return;
     if (aiExtractedBuffer.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-slate-500 bg-slate-50">
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-500 bg-slate-50">
             <div class="w-8 h-8 mx-auto mb-1 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">
                 <i data-lucide="scan" class="w-4 h-4"></i>
             </div>
             <strong class="block text-slate-800 text-xs">Bill se koi item detect nahi hua</strong>
             <span class="text-[11px] text-slate-400 block mt-0.5">Tasveer ko seedha rakh kar dobara upload karein.</span>
             <div class="mt-2">
-                <button type="button" onclick="window.triggerFileInput('inv-bill-file')" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1 shadow-xs cursor-pointer">
+                <button type="button" onclick="window.openMediaSourcePicker('bill')" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 inline-flex items-center gap-1 shadow-xs cursor-pointer">
                     <i data-lucide="camera" class="w-3.5 h-3.5"></i> Dobara Scan Karein
                 </button>
             </div>
         </td></tr>`;
+        if (tfoot) tfoot.innerHTML = '';
         safeCreateIcons();
         return;
     }
-    tbody.innerHTML = aiExtractedBuffer.map((item, idx) => `
+
+    let totalPacks = 0;
+    let totalGross = 0;
+    let totalNet = 0;
+    let discWeightedSum = 0;
+    let extraWeightedSum = 0;
+
+    tbody.innerHTML = aiExtractedBuffer.map((item, idx) => {
+        const q = Number(item.qty) || 1;
+        const rate = Number(item.buyRate) || 0;
+        const lineGross = q * rate;
+        const dPct = Number(item.discountPercent) || 0;
+        const exPct = Number(item.extraDiscountPercent) || 0;
+        const lineNet = lineGross * Math.max(0, 1 - (dPct / 100) - (exPct / 100));
+
+        totalPacks += q;
+        totalGross += lineGross;
+        totalNet += lineNet;
+        discWeightedSum += (lineGross * dPct);
+        extraWeightedSum += (lineGross * exPct);
+
+        return `
         <tr class="border-b border-slate-100 hover:bg-slate-50/50 transition">
             <td class="p-2 min-w-[190px] sm:min-w-[210px] max-w-[230px]">
                 <input type="text" value="${escapeHtml(item.name)}" title="${escapeHtml(item.name)}" placeholder="Medicine Name" onchange="window.updateScannedItem(${idx}, 'name', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                ${(item.generic || item.type || item.expiry) ? `
-                    <div class="text-[10px] text-slate-500 truncate mt-0.5 font-medium px-0.5" title="${escapeHtml(item.generic || '')}">
-                        ${item.generic ? `<span class="text-brand-700 font-bold">${escapeHtml(item.generic)}</span> ` : ''}
-                        ${item.type ? `• <span class="uppercase text-slate-600 font-bold">${escapeHtml(item.type)}</span> ` : ''}
-                        ${item.expiry ? `• <span class="text-amber-700 font-mono">Exp: ${escapeHtml(item.expiry)}</span>` : ''}
-                    </div>
-                ` : ''}
+                <div class="text-[10px] text-slate-500 truncate mt-0.5 font-medium px-0.5 flex flex-wrap items-center gap-1">
+                    <span class="uppercase text-slate-700 font-bold bg-slate-100 px-1 py-0.2 rounded">${escapeHtml(item.type || 'tab')}</span>
+                    ${item.generic ? `<span class="text-brand-700 font-bold">• ${escapeHtml(item.generic)}</span>` : ''}
+                    ${item.expiry ? `<span class="text-amber-800 font-mono font-bold bg-amber-50 px-1 py-0.2 rounded border border-amber-200">Exp: ${escapeHtml(item.expiry)}</span>` : '<span class="text-slate-400 italic">(Bill pe expiry nahi)</span>'}
+                </div>
             </td>
-            <td class="p-2 min-w-[90px]">
-                <input type="text" value="${escapeHtml(item.batch || '')}" placeholder="Batch" onchange="window.updateScannedItem(${idx}, 'batch', this.value)" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 bg-white">
+            <td class="p-2 min-w-[70px]">
+                <input type="text" value="${escapeHtml(item.batch || '')}" placeholder="Batch" onchange="window.updateScannedItem(${idx}, 'batch', this.value)" class="w-16 sm:w-20 px-1.5 py-1 border border-slate-300 rounded-md text-xs font-mono text-slate-900 bg-white">
             </td>
-            <td class="p-2 text-center min-w-[70px]">
-                <input type="number" min="1" value="${item.qty}" onchange="window.updateScannedItem(${idx}, 'qty', this.value)" class="w-16 px-1.5 py-1.5 border border-slate-300 rounded-lg text-xs text-center font-bold text-slate-900 bg-white">
+            <td class="p-2 text-center min-w-[55px]">
+                <input type="number" min="1" value="${item.qty}" onchange="window.updateScannedItem(${idx}, 'qty', this.value)" class="w-12 px-1 py-1 border border-slate-300 rounded-md text-xs text-center font-bold text-slate-900 bg-white">
             </td>
-            <td class="p-2 text-right min-w-[95px]">
-                <input type="number" step="0.01" value="${item.buyRate}" placeholder="Buy Rate" onchange="window.updateScannedItem(${idx}, 'buyRate', this.value)" class="w-20 px-1.5 py-1.5 border border-slate-300 rounded-lg text-xs text-right font-bold text-slate-900 bg-white">
+            <td class="p-2 text-right min-w-[75px]">
+                <input type="number" step="0.01" value="${item.buyRate}" placeholder="Buy Rate" onchange="window.updateScannedItem(${idx}, 'buyRate', this.value)" class="w-18 px-1.5 py-1 border border-slate-300 rounded-md text-xs text-right font-bold text-slate-900 bg-white">
             </td>
-            <td class="p-2 text-right bg-amber-50/70 min-w-[105px]">
-                <input type="number" step="0.01" placeholder="Box MRP" value="${item.mrp || ''}" onchange="window.updateScannedItem(${idx}, 'mrp', this.value)" class="w-24 px-1.5 py-1.5 border border-amber-300 rounded-lg text-xs text-right font-black text-emerald-700 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <td class="p-1.5 text-center bg-amber-50/50 w-14">
+                <input type="number" step="0.1" value="${item.discountPercent || ''}" placeholder="0" onchange="window.updateScannedItem(${idx}, 'discountPercent', this.value)" class="w-11 px-1 py-1 border border-amber-300 rounded-md text-xs text-center font-bold text-amber-900 bg-white">
             </td>
-            <td class="p-2 text-center whitespace-nowrap min-w-[75px]">
+            <td class="p-1.5 text-center bg-purple-50/50 w-14">
+                <input type="number" step="0.1" value="${item.extraDiscountPercent || ''}" placeholder="0" onchange="window.updateScannedItem(${idx}, 'extraDiscountPercent', this.value)" class="w-11 px-1 py-1 border border-purple-300 rounded-md text-xs text-center font-bold text-purple-900 bg-white">
+            </td>
+            <td class="p-2 text-right bg-emerald-50/50 min-w-[80px]">
+                <input type="number" step="0.01" placeholder="Box MRP" value="${item.mrp || ''}" onchange="window.updateScannedItem(${idx}, 'mrp', this.value)" class="w-20 px-1.5 py-1 border border-emerald-300 rounded-md text-xs text-right font-black text-emerald-800 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500">
+            </td>
+            <td class="p-2 text-center whitespace-nowrap min-w-[70px]">
                 <div class="flex items-center justify-center gap-1">
-                    <button type="button" onclick="window.openEditScannedItemModal(${idx})" class="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition active:scale-95 cursor-pointer" title="Dawai Details Edit / Manual Update (Formula, Type, Expiry, Batch)">
+                    <button type="button" onclick="window.openEditScannedItemModal(${idx})" class="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition active:scale-95 cursor-pointer" title="Dawai Details Edit / Manual Update">
                         <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                     </button>
                     <button type="button" onclick="window.removeAiScannedRow(${idx})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition active:scale-95 cursor-pointer" title="Delete Row">
@@ -3289,7 +3573,31 @@ function renderAiScannedTable() {
                 </div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
+
+    const avgDisc = totalGross > 0 ? (discWeightedSum / totalGross) : 0;
+    const avgExtra = totalGross > 0 ? (extraWeightedSum / totalGross) : 0;
+    const finalBillTotal = window.lastInvoiceSummary?.totalBillAmount > 0 ? window.lastInvoiceSummary.totalBillAmount : totalNet;
+
+    if (tfoot) {
+        tfoot.innerHTML = `
+            <tr class="bg-slate-100 text-slate-900 border-t-2 border-slate-300">
+                <td class="p-2.5 font-black uppercase text-[11px] text-slate-800">
+                    Total Bill (${aiExtractedBuffer.length} Items)
+                </td>
+                <td class="p-2 text-slate-400 font-mono text-[10px]">TOTALS</td>
+                <td class="p-2 text-center font-black text-slate-950">${totalPacks}</td>
+                <td class="p-2 text-right font-extrabold text-slate-800">Rs. ${totalGross.toFixed(2)}</td>
+                <td class="p-2 text-center font-black text-amber-800 bg-amber-100/50">${avgDisc > 0 ? avgDisc.toFixed(1) + '%' : '0%'}</td>
+                <td class="p-2 text-center font-black text-purple-800 bg-purple-100/50">${avgExtra > 0 ? '+' + avgExtra.toFixed(1) + '%' : '0%'}</td>
+                <td class="p-2 text-right font-black text-emerald-800 bg-emerald-100/60 text-xs">Rs. ${finalBillTotal.toFixed(2)}</td>
+                <td class="p-2 text-center text-[10px] text-emerald-700 font-bold">Net Total</td>
+            </tr>
+        `;
+    }
+
+    window.updateScannedBillSummaryDisplay(window.lastInvoiceSummary, aiExtractedBuffer);
     safeCreateIcons();
 }
 
@@ -3389,7 +3697,39 @@ window.saveEditedScannedItem = function(event) {
 
 window.updateScannedItem = function(idx, field, value) {
     if (aiExtractedBuffer[idx]) {
-        aiExtractedBuffer[idx][field] = (field === 'qty' || field === 'buyRate' || field === 'mrp') ? Number(value) : value;
+        aiExtractedBuffer[idx][field] = (field === 'qty' || field === 'buyRate' || field === 'mrp' || field === 'discountPercent' || field === 'extraDiscountPercent') ? Number(value) : value;
+        window.updateScannedBillSummaryDisplay(window.lastInvoiceSummary, aiExtractedBuffer);
+        const tfoot = document.getElementById('ai-scanned-table-foot');
+        if (tfoot) {
+            let totalPacks = 0, totalGross = 0, totalNet = 0, discSum = 0, extraSum = 0;
+            aiExtractedBuffer.forEach(it => {
+                const q = Number(it.qty) || 1;
+                const r = Number(it.buyRate) || 0;
+                const lineGross = q * r;
+                const d = Number(it.discountPercent) || 0;
+                const ex = Number(it.extraDiscountPercent) || 0;
+                totalPacks += q;
+                totalGross += lineGross;
+                totalNet += lineGross * Math.max(0, 1 - (d/100) - (ex/100));
+                discSum += lineGross * d;
+                extraSum += lineGross * ex;
+            });
+            const avgD = totalGross > 0 ? (discSum / totalGross) : 0;
+            const avgEx = totalGross > 0 ? (extraSum / totalGross) : 0;
+            const finalNet = window.lastInvoiceSummary?.totalBillAmount > 0 ? window.lastInvoiceSummary.totalBillAmount : totalNet;
+            tfoot.innerHTML = `
+                <tr class="bg-slate-100 text-slate-900 border-t-2 border-slate-300">
+                    <td class="p-2.5 font-black uppercase text-[11px] text-slate-800">Total Bill (${aiExtractedBuffer.length} Items)</td>
+                    <td class="p-2 text-slate-400 font-mono text-[10px]">TOTALS</td>
+                    <td class="p-2 text-center font-black text-slate-950">${totalPacks}</td>
+                    <td class="p-2 text-right font-extrabold text-slate-800">Rs. ${totalGross.toFixed(2)}</td>
+                    <td class="p-2 text-center font-black text-amber-800 bg-amber-100/50">${avgD > 0 ? avgD.toFixed(1) + '%' : '0%'}</td>
+                    <td class="p-2 text-center font-black text-purple-800 bg-purple-100/50">${avgEx > 0 ? '+' + avgEx.toFixed(1) + '%' : '0%'}</td>
+                    <td class="p-2 text-right font-black text-emerald-800 bg-emerald-100/60 text-xs">Rs. ${finalNet.toFixed(2)}</td>
+                    <td class="p-2 text-center text-[10px] text-emerald-700 font-bold">Net Total</td>
+                </tr>
+            `;
+        }
     }
 };
 
@@ -3466,6 +3806,7 @@ window.saveAiScannedItemsToInventory = async function() {
     showToast('Stock inventory mein shamil ho gaya!', 'success');
     renderInventoryTable();
     renderDashboardMetrics();
+    window.syncStockWithNetwork();
 };
 
 // AI Margin Bill Scan
@@ -4728,10 +5069,11 @@ window.saveMedicineRecord = async function(event) {
         finalExpiry = `${mVal}/${yVal}`;
     } else if (yVal) {
         finalExpiry = `12/${yVal}`;
+    } else if (mVal) {
+        finalExpiry = `${mVal}`;
     } else {
-        const now = new Date();
-        const yy = String((now.getFullYear() + 2) % 100).padStart(2, '0');
-        finalExpiry = `12/${yy}`;
+        // STRICT: If no expiry entered or printed on bill, leave blank. Never fabricate fake future expiry!
+        finalExpiry = '';
     }
 
     const medType = document.getElementById('med-type')?.value || 'tab';
@@ -4893,7 +5235,7 @@ window.refreshNetworkList = async function() {
         if (res.ok) {
             const data = await res.json();
             if (data && Array.isArray(data.pharmacies)) {
-                stores = data.pharmacies;
+                stores = data.pharmacies.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && String(p.phone || '').replace(/\D/g, '') !== '03067717634' && p.phone !== '03********4' && !p.name?.includes('Super Admin'));
                 localStorage.setItem('sm_network_stores', JSON.stringify(stores));
             }
         }
@@ -4907,7 +5249,7 @@ window.refreshNetworkList = async function() {
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed)) {
-                    stores = parsed.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name));
+                    stores = parsed.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name) && String(p.phone || '').replace(/\D/g, '') !== '03067717634' && p.phone !== '03********4' && !p.name?.includes('Super Admin'));
                 }
             }
         } catch(e) {
@@ -6456,57 +6798,399 @@ async function deleteSaleFromStore(id) {
     }
 }
 
-// Account Hub & Authentication Management (3 Clear Options: Direct Login, Sign Up & Guest Mode)
+// Super Admin & Staff Management (Protected Phone Login - 03067717634 Masked as 03********4)
+const SUPER_ADMIN_PHONE = '03067717634';
+const SUPER_ADMIN_EMAIL = 'shzdkhkh01@gmail.com';
+
+window.handleAdminLogin = async function() {
+    const pass = document.getElementById('auth-admin-pass')?.value;
+
+    if (!pass || pass.length < 4) {
+        showToast('Barah-e-karam Super Admin password darj karein.', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('btn-auth-admin-submit');
+    const originalText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Verifying Admin Access...`;
+    }
+
+    try {
+        const res = await fetch('/api/admin/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone: SUPER_ADMIN_PHONE,
+                password: pass
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            showToast(data?.error || 'Ghalat Super Admin password darj kiya gaya hai!', 'error');
+            return;
+        }
+
+        const adminUser = {
+            name: 'Super Admin',
+            phone: SUPER_ADMIN_PHONE,
+            maskedPhone: '03********4',
+            role: 'super_admin',
+            isSuperAdmin: true,
+            uid: 'admin_master_03067717634',
+            loginMethod: 'admin_phone_secure',
+            isLiveSync: false
+        };
+
+        localStorage.setItem('sm_auth_user', JSON.stringify(adminUser));
+        localStorage.setItem('sm_user_mode', 'authenticated');
+        localStorage.setItem('sm_is_admin', 'true');
+
+        window.applyStoreIdentity();
+        window.closeAccountHubModal();
+        showToast('👑 Super Admin login kamyab! Staff aur Network Master Access activate ho gaya.', 'success');
+
+        const controls = document.getElementById('admin-action-controls');
+        if (controls) controls.classList.remove('hidden');
+
+        setTimeout(() => {
+            window.openAdminStaffModal();
+        }, 300);
+    } catch(err) {
+        console.error('Admin login error:', err);
+        showToast('Admin verification mein masla aya: ' + (err?.message || err), 'error');
+    } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+    }
+};
+
+window.openAdminStaffModal = function() {
+    const currentUser = window.getCurrentUser();
+    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '03********4' || currentUser?.email === SUPER_ADMIN_EMAIL || localStorage.getItem('sm_is_admin') === 'true';
+
+    if (!isSuperAdmin) {
+        showToast('Sirf Super Admin (03********4) ko staff aur network manage karne ki ijazat hai. Pehle Admin login karein.', 'warning');
+        window.openAccountHubModal();
+        window.switchHubAuthTab('admin');
+        return;
+    }
+
+    document.getElementById('admin-staff-modal')?.classList.remove('hidden');
+    window.switchAdminSectionTab('staff');
+    window.renderAdminStaffTable();
+    window.renderAdminNetworkTable();
+    syncModalScrollLock();
+    safeCreateIcons();
+};
+
+window.closeAdminStaffModal = function() {
+    document.getElementById('admin-staff-modal')?.classList.add('hidden');
+    syncModalScrollLock();
+};
+
+window.switchAdminSectionTab = function(tab) {
+    const btnStaff = document.getElementById('admin-tab-btn-staff');
+    const btnNet = document.getElementById('admin-tab-btn-network');
+    const panelStaff = document.getElementById('admin-panel-staff');
+    const panelNet = document.getElementById('admin-panel-network');
+
+    if (tab === 'network') {
+        btnStaff?.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
+        btnStaff?.classList.add('text-slate-600', 'hover:bg-white/60');
+        btnNet?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
+        btnNet?.classList.remove('text-slate-600', 'hover:bg-white/60');
+        panelStaff?.classList.add('hidden');
+        panelNet?.classList.remove('hidden');
+        window.renderAdminNetworkTable();
+    } else {
+        btnNet?.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
+        btnNet?.classList.add('text-slate-600', 'hover:bg-white/60');
+        btnStaff?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
+        btnStaff?.classList.remove('text-slate-600', 'hover:bg-white/60');
+        panelNet?.classList.add('hidden');
+        panelStaff?.classList.remove('hidden');
+        window.renderAdminStaffTable();
+    }
+    safeCreateIcons();
+};
+
+window.getRegisteredStaffList = function() {
+    let staff = [];
+    try {
+        const raw = localStorage.getItem('sm_staff_members');
+        if (raw) staff = JSON.parse(raw);
+    } catch(e) {}
+    if (!Array.isArray(staff) || staff.length === 0) {
+        staff = [
+            { id: 'staff_1', name: 'Super Admin', email: '03********4', role: 'Super Admin (1 Seat Master)', isFixedAdmin: true, status: 'Active', createdAt: new Date().toLocaleDateString() },
+            { id: 'staff_2', name: 'Muhammad Ali', email: 'ali.pharmacy@gmail.com', role: 'Pharmacist', isFixedAdmin: false, status: 'Active', createdAt: '2026-09-15' },
+            { id: 'staff_3', name: 'Usman Ghani', email: 'usman.cashier@gmail.com', role: 'Counter Cashier', isFixedAdmin: false, status: 'Active', createdAt: '2026-10-01' }
+        ];
+        localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+    }
+    return staff;
+};
+
+window.renderAdminStaffTable = function() {
+    const tbody = document.getElementById('admin-staff-table-body');
+    if (!tbody) return;
+    const staff = window.getRegisteredStaffList();
+
+    tbody.innerHTML = staff.map((s) => `
+        <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+            <td class="p-2.5">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-full ${s.isFixedAdmin ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-700'} flex items-center justify-center font-bold text-xs shrink-0">
+                        ${s.isFixedAdmin ? '👑' : (s.name[0] || 'U')}
+                    </div>
+                    <div>
+                        <strong class="text-slate-900 font-bold block leading-tight">${escapeHtml(s.name)}</strong>
+                        <span class="text-[10px] text-slate-400">Added: ${escapeHtml(s.createdAt || 'Recent')}</span>
+                    </div>
+                </div>
+            </td>
+            <td class="p-2.5">
+                ${s.isFixedAdmin ? `
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                        1 Seat Super Admin
+                    </span>
+                ` : `
+                    <select onchange="window.handleUpdateStaffRole('${s.id}', this.value)" class="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-800 bg-white">
+                        <option value="Pharmacist" ${s.role === 'Pharmacist' ? 'selected' : ''}>Pharmacist</option>
+                        <option value="Counter Cashier" ${s.role === 'Counter Cashier' ? 'selected' : ''}>Counter Cashier</option>
+                        <option value="Store Manager" ${s.role === 'Store Manager' ? 'selected' : ''}>Store Manager</option>
+                    </select>
+                `}
+            </td>
+            <td class="p-2.5 font-mono text-[11px] text-slate-600">
+                ${escapeHtml(s.email)}
+            </td>
+            <td class="p-2.5 text-center">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${s.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
+                    ● ${escapeHtml(s.status || 'Active')}
+                </span>
+            </td>
+            <td class="p-2.5 text-center">
+                ${s.isFixedAdmin ? `
+                    <span class="text-[10px] text-slate-400 font-bold italic">Protected</span>
+                ` : `
+                    <button type="button" onclick="window.handleRemoveStaffMember('${s.id}', '${escapeHtml(s.name)}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-[10px] border border-red-200 transition active:scale-95 flex items-center justify-center gap-1 mx-auto cursor-pointer" title="Remove this user from staff">
+                        <i data-lucide="trash-2" class="w-3 h-3"></i> Remove
+                    </button>
+                `}
+            </td>
+        </tr>
+    `).join('');
+    safeCreateIcons();
+};
+
+window.handleAddStaffMember = function() {
+    const name = document.getElementById('admin-add-staff-name')?.value.trim();
+    const email = document.getElementById('admin-add-staff-email')?.value.trim().toLowerCase();
+    const roleVal = document.getElementById('admin-add-staff-role')?.value;
+
+    if (!name || !email) {
+        showToast('Name aur Email darj karein!', 'warning');
+        return;
+    }
+
+    if (email === SUPER_ADMIN_EMAIL) {
+        showToast('Super Admin seat pehle se reserved hai.', 'error');
+        return;
+    }
+
+    let staff = window.getRegisteredStaffList();
+    if (staff.some(s => s.email.toLowerCase() === email)) {
+        showToast('Yeh email pehle se staff list mein mojood hai!', 'warning');
+        return;
+    }
+
+    let roleName = 'Pharmacist';
+    if (roleVal === 'cashier') roleName = 'Counter Cashier';
+    else if (roleVal === 'manager') roleName = 'Store Manager';
+
+    staff.push({
+        id: 'staff_' + Date.now(),
+        name,
+        email,
+        role: roleName,
+        isFixedAdmin: false,
+        status: 'Active',
+        createdAt: new Date().toLocaleDateString()
+    });
+
+    localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+    const nameInput = document.getElementById('admin-add-staff-name');
+    const emailInput = document.getElementById('admin-add-staff-email');
+    if (nameInput) nameInput.value = '';
+    if (emailInput) emailInput.value = '';
+    window.renderAdminStaffTable();
+    showToast(`Staff member "${name}" (${roleName}) shamil ho gaya!`, 'success');
+};
+
+window.handleUpdateStaffRole = function(id, newRole) {
+    let staff = window.getRegisteredStaffList();
+    const target = staff.find(s => s.id === id);
+    if (target && !target.isFixedAdmin) {
+        target.role = newRole;
+        localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        showToast(`Role "${newRole}" update ho gaya!`, 'info');
+    }
+};
+
+window.handleRemoveStaffMember = function(id, name) {
+    customConfirm('Staff Member Remove Karein?', `Kya aap "${name}" ko staff management se remove karna chahte hain?`, () => {
+        let staff = window.getRegisteredStaffList();
+        staff = staff.filter(s => s.id !== id);
+        localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        window.renderAdminStaffTable();
+        showToast(`Staff member "${name}" remove ho gaya!`, 'info');
+    });
+};
+
+window.renderAdminNetworkTable = async function() {
+    const tbody = document.getElementById('admin-network-table-body');
+    const countBadge = document.getElementById('admin-net-count');
+    if (!tbody) return;
+
+    let stores = [];
+    try {
+        const res = await fetch('/api/network/pharmacies');
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.pharmacies)) stores = data.pharmacies;
+        }
+    } catch(e) {}
+
+    if (stores.length === 0) {
+        try {
+            const saved = localStorage.getItem('sm_network_stores');
+            if (saved) stores = JSON.parse(saved);
+        } catch(e) {}
+    }
+
+    if (countBadge) countBadge.innerText = stores.length;
+
+    if (stores.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Koi partner pharmacy connected nahi hai.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = stores.map((s, idx) => `
+        <tr class="hover:bg-slate-50 border-b border-slate-100 transition text-xs">
+            <td class="p-2.5">
+                <strong class="text-slate-900 font-bold block">${escapeHtml(s.name)}</strong>
+                <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(s.id || ('net_' + idx))}</span>
+            </td>
+            <td class="p-2.5">
+                <span class="text-brand-800 font-semibold block">${escapeHtml(s.ownerName || 'Owner')}</span>
+                <span class="text-[10px] text-slate-500">📍 ${escapeHtml(s.city || 'Pakistan')}</span>
+            </td>
+            <td class="p-2.5 font-mono text-[11px] text-slate-600">
+                ${escapeHtml(s.phone)}
+            </td>
+            <td class="p-2.5 text-center">
+                <button type="button" onclick="window.handleAdminTogglePharmacyStatus(${idx}, '${s.id || ''}')" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition cursor-pointer">
+                    ● ${escapeHtml(s.status || 'Verified Live')}
+                </button>
+            </td>
+            <td class="p-2.5 text-center">
+                <button type="button" onclick="window.handleAdminDeletePharmacy('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-[10px] border border-red-200 transition active:scale-95 flex items-center justify-center gap-1 mx-auto cursor-pointer" title="Network se remove karein">
+                    <i data-lucide="trash-2" class="w-3 h-3"></i> Remove
+                </button>
+            </td>
+        </tr>
+    `).join('');
+    safeCreateIcons();
+};
+
+window.handleAdminDeletePharmacy = function(id, name, phone, idx) {
+    customConfirm('Pharmacy Network Se Remove Karein?', `Kya aap "${name}" ko network se permanently remove karna chahte hain?`, async () => {
+        try {
+            await fetch('/api/network/unregister', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: id,
+                    phone: phone,
+                    adminEmail: SUPER_ADMIN_EMAIL
+                })
+            });
+        } catch(e) {}
+
+        try {
+            let stores = JSON.parse(localStorage.getItem('sm_network_stores') || '[]');
+            stores = stores.filter(s => s.id !== id && s.phone !== phone);
+            localStorage.setItem('sm_network_stores', JSON.stringify(stores));
+        } catch(e) {}
+
+        window.renderAdminNetworkTable();
+        window.refreshNetworkList();
+        showToast(`Pharmacy "${name}" network se hata di gayi!`, 'info');
+    });
+};
+
+window.handleAdminTogglePharmacyStatus = function(idx, id) {
+    showToast('Pharmacy network verification status active hai!', 'info');
+};
+
+// Account Hub & Authentication Management (3 Clear Options: Sign Up, Login & Super Admin 1-Seat Portal)
 window.switchHubAuthTab = function(tab) {
     const btnLogin = document.getElementById('hub-tab-btn-login');
     const btnSignup = document.getElementById('hub-tab-btn-signup');
-    const btnGuest = document.getElementById('hub-tab-btn-guest');
+    const btnAdmin = document.getElementById('hub-tab-btn-admin');
 
     const panelLogin = document.getElementById('hub-panel-login');
     const panelSignup = document.getElementById('hub-panel-signup');
-    const panelGuest = document.getElementById('hub-panel-guest');
+    const panelAdmin = document.getElementById('hub-panel-admin');
 
     const setInactive = (btn) => {
-        btn?.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
+        btn?.classList.remove('bg-brand-600', 'bg-amber-500', 'text-white', 'text-slate-950', 'shadow-xs');
         btn?.classList.add('text-slate-600', 'hover:bg-white/60');
-    };
-    const setActive = (btn) => {
-        btn?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
-        btn?.classList.remove('text-slate-600', 'hover:bg-white/60');
     };
 
     setInactive(btnLogin);
     setInactive(btnSignup);
-    setInactive(btnGuest);
+    setInactive(btnAdmin);
 
     panelLogin?.classList.add('hidden');
     panelSignup?.classList.add('hidden');
-    panelGuest?.classList.add('hidden');
+    panelAdmin?.classList.add('hidden');
 
     if (tab === 'signup') {
-        setActive(btnSignup);
+        btnSignup?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
+        btnSignup?.classList.remove('text-slate-600', 'hover:bg-white/60');
         panelSignup?.classList.remove('hidden');
-    } else if (tab === 'guest') {
-        setActive(btnGuest);
-        panelGuest?.classList.remove('hidden');
+    } else if (tab === 'admin') {
+        btnAdmin?.classList.add('bg-amber-500', 'text-slate-950', 'shadow-xs');
+        btnAdmin?.classList.remove('text-slate-600', 'hover:bg-white/60');
+        panelAdmin?.classList.remove('hidden');
+        const adminPhoneInput = document.getElementById('auth-admin-phone');
+        if (adminPhoneInput) adminPhoneInput.value = '03********4';
     } else {
-        setActive(btnLogin);
+        btnLogin?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
+        btnLogin?.classList.remove('text-slate-600', 'hover:bg-white/60');
         panelLogin?.classList.remove('hidden');
     }
     safeCreateIcons();
 };
 
-// Direct Sign Up with Email/Gmail & Password (Saves to Firebase & Network Pharmacy)
+// Direct Sign Up with Email/Gmail & Password (Followed by 1st-Time Medical Store Setup)
 window.handleAuthSignup = async function() {
-    const storeName = document.getElementById('auth-signup-store')?.value.trim();
     const ownerName = document.getElementById('auth-signup-owner')?.value.trim();
     const email = document.getElementById('auth-signup-email')?.value.trim().toLowerCase();
     const phone = document.getElementById('auth-signup-phone')?.value.trim();
-    const city = document.getElementById('auth-signup-city')?.value.trim();
     const pass = document.getElementById('auth-signup-pass')?.value;
 
-    if (!storeName || !ownerName || !email || !phone || !city || !pass) {
-        showToast('Barah-e-karam tamam zaroori fields darj karein.', 'warning');
+    if (!ownerName || !email || !phone || !pass) {
+        showToast('Barah-e-karam Full Name, Gmail, Phone aur Password darj karein.', 'warning');
+        return;
+    }
+
+    const cleanPhoneDigits = phone.replace(/\D/g, '');
+    if (cleanPhoneDigits === '03067717634' || phone === '03********4') {
+        showToast('Yeh phone number sirf Super Admin seat kelye makhsoos hai. Barah-e-karam apna phone number darj karein.', 'error');
         return;
     }
     if (pass.length < 6) {
@@ -6540,14 +7224,9 @@ window.handleAuthSignup = async function() {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
                 return;
             }
-            // If email provider disabled or network issue, fallback to anonymous or deterministic UID
-            try {
-                const anonResult = await signInAnonymously(auth);
-                userUid = anonResult.user.uid;
-            } catch(eAnon) {
-                const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-                userUid = `ph_${cleanHash}`;
-            }
+            // Fallback UID if network glitch or offline
+            const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+            userUid = `ph_${cleanHash}`;
         }
 
         if (!userUid) {
@@ -6559,8 +7238,8 @@ window.handleAuthSignup = async function() {
             name: ownerName,
             email: email,
             phone: phone,
-            city: city,
-            pharmacyName: storeName,
+            city: '',
+            pharmacyName: '',
             uid: userUid,
             loginMethod: 'email_password',
             isLiveSync: true
@@ -6572,9 +7251,7 @@ window.handleAuthSignup = async function() {
                 uid: userUid,
                 email: email,
                 phone: phone,
-                city: city,
                 ownerName: ownerName,
-                pharmacyName: storeName,
                 passwordHash: btoa(pass),
                 createdAt: new Date().toISOString()
             }, { merge: true });
@@ -6582,36 +7259,7 @@ window.handleAuthSignup = async function() {
             console.warn('Firestore user save note:', eDoc);
         }
 
-        // 3. Register in Public Connected Network
-        try {
-            await setDoc(doc(db, 'pharmacies', userUid), {
-                name: storeName,
-                ownerName: ownerName,
-                city: city,
-                phone: phone,
-                email: email,
-                remarks: 'Verified Digital Pharma Live Member',
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
-        } catch(ePharm) {}
-
-        // Redundant backend network register
-        try {
-            await fetch('/api/network/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: storeName,
-                    ownerName: ownerName,
-                    city: city,
-                    phone: phone,
-                    email: email,
-                    remarks: 'Verified Digital Pharma Live Member'
-                })
-            });
-        } catch(eNet) {}
-
-        // Update local session & auto-login
+        // Update local session
         authUser = {
             uid: userUid,
             email: email,
@@ -6620,7 +7268,7 @@ window.handleAuthSignup = async function() {
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.removeItem('sm_user_mode');
 
-        // Save to registered accounts list so system knows this user was explicitly registered
+        // Save to registered accounts list
         try {
             const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
             if (!regUsers.some(u => u.email === email)) {
@@ -6628,29 +7276,32 @@ window.handleAuthSignup = async function() {
                     email,
                     uid: userUid,
                     ownerName,
-                    pharmacyName: storeName,
                     phone,
-                    city,
                     passwordHash: btoa(pass)
                 });
                 localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
             }
         } catch(eReg) {}
 
-        const config = window.getStoreConfig();
-        config.name = storeName;
-        config.ownerName = ownerName;
-        config.phone = phone;
-        config.address = city;
-        localStorage.setItem('sm_store_config', JSON.stringify(config));
-
         // Connect live listeners
         attachFirestoreSyncListeners(userUid);
 
-        window.applyStoreIdentity();
-        window.showHubActiveProfile();
-        window.refreshNetworkList();
-        showToast(`Mubarak! ${storeName} ka account ban gaya aur direct login ho gaya!`, 'success');
+        window.closeAccountHubModal();
+
+        // 1st Time: Automatically show Pharmacy / Medical Store Details Modal
+        const storeModal = document.getElementById('store-details-setup-modal');
+        if (storeModal) {
+            storeModal.classList.remove('hidden');
+            const fOwner = document.getElementById('first-store-owner');
+            if (fOwner) fOwner.value = ownerName;
+            const fPhone = document.getElementById('first-store-phone');
+            if (fPhone) fPhone.value = phone;
+            const fName = document.getElementById('first-store-name');
+            if (fName) fName.value = '';
+            const fCity = document.getElementById('first-store-city');
+            if (fCity) fCity.value = '';
+        }
+        showToast('Registration kamyab! Apne medical store ki details darj karein taake network mein live add ho sake.', 'success');
     } catch(err) {
         console.error('Signup error:', err);
         showToast('Registration mein masla aya: ' + (err?.message || err), 'error');
@@ -6824,10 +7475,25 @@ window.handleAuthLogin = async function() {
         attachFirestoreSyncListeners(userUid);
 
         window.applyStoreIdentity();
-        window.showHubActiveProfile();
-        showToast(`Kamyabi! Welcome back, ${authRecord.name || authRecord.pharmacyName}!`, 'success');
-        window.refreshNetworkList();
-        showToast(`Khush Amdeed! Aapki pharmacy (${email}) live connect ho gayi!`, 'success');
+        window.closeAccountHubModal();
+
+        const hasConfiguredStore = authRecord.pharmacyName && authRecord.city && authRecord.pharmacyName !== 'My Pharmacy';
+        if (!hasConfiguredStore) {
+            // First-time prompt for store details
+            const storeModal = document.getElementById('store-details-setup-modal');
+            if (storeModal) {
+                storeModal.classList.remove('hidden');
+                const fOwner = document.getElementById('first-store-owner');
+                if (fOwner) fOwner.value = authRecord.name || '';
+                const fPhone = document.getElementById('first-store-phone');
+                if (fPhone) fPhone.value = authRecord.phone || '';
+            }
+            showToast(`Khush Amdeed! Apne medical store ki details enter karein taake network mein connect ho sakein.`, 'info');
+        } else {
+            window.syncStockWithNetwork();
+            window.refreshNetworkList();
+            showToast(`Khush Amdeed! Aapki pharmacy (${authRecord.pharmacyName}) live connect ho gayi!`, 'success');
+        }
     } catch(err) {
         console.error('Login error:', err);
         showToast('Login nahi ho saka: ' + (err?.message || err), 'error');
@@ -6836,6 +7502,226 @@ window.handleAuthLogin = async function() {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
         }
+    }
+};
+
+// First-Time Pharmacy / Medical Store Details Setup (Syncs to Firestore & Live Network)
+window.handleSaveFirstTimeStoreDetails = async function() {
+    const storeName = document.getElementById('first-store-name')?.value.trim();
+    const city = document.getElementById('first-store-city')?.value.trim();
+    const phone = document.getElementById('first-store-phone')?.value.trim();
+    const ownerName = document.getElementById('first-store-owner')?.value.trim();
+    const licenseNo = document.getElementById('first-store-license')?.value.trim() || '';
+    const address = document.getElementById('first-store-address')?.value.trim() || '';
+
+    if (!storeName || !city || !phone || !ownerName) {
+        showToast('Pharmacy Name, City, Phone aur Owner Name zaroori hain.', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('btn-save-first-store');
+    const originalText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Connecting to Network...`;
+    }
+
+    try {
+        const user = window.getCurrentUser();
+        const userUid = user?.uid || `ph_${Date.now()}`;
+
+        // 1. Update sm_store_config
+        const config = window.getStoreConfig();
+        config.name = storeName;
+        config.ownerName = ownerName;
+        config.phone = phone;
+        config.address = city + (address ? ` (${address})` : '');
+        config.licenseNo = licenseNo;
+        localStorage.setItem('sm_store_config', JSON.stringify(config));
+
+        // 2. Update sm_auth_user
+        const authRecord = {
+            name: ownerName,
+            email: user?.email || '',
+            phone: phone,
+            city: city,
+            pharmacyName: storeName,
+            uid: userUid,
+            licenseNo: licenseNo,
+            loginMethod: user?.loginMethod || 'email_password',
+            isLiveSync: true
+        };
+        localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
+
+        // 3. Save to Firestore users & pharmacies
+        if (db) {
+            try {
+                await setDoc(doc(db, 'users', userUid), {
+                    pharmacyName: storeName,
+                    city: city,
+                    phone: phone,
+                    ownerName: ownerName,
+                    licenseNo: licenseNo,
+                    address: address,
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+            } catch(e) {}
+
+            try {
+                await setDoc(doc(db, 'pharmacies', userUid), {
+                    id: userUid,
+                    name: storeName,
+                    ownerName: ownerName,
+                    city: city,
+                    phone: phone,
+                    email: user?.email || '',
+                    licenseNo: licenseNo,
+                    remarks: 'Verified Digital Pharma Live Member',
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+            } catch(e) {}
+        }
+
+        // 4. Register with backend network
+        try {
+            await fetch('/api/network/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: userUid,
+                    name: storeName,
+                    ownerName: ownerName,
+                    city: city,
+                    phone: phone,
+                    email: user?.email || '',
+                    licenseNo: licenseNo,
+                    remarks: 'Verified Digital Pharma Live Member'
+                })
+            });
+        } catch(e) {}
+
+        // 5. Live sync stock with network
+        window.syncStockWithNetwork();
+
+        // 6. Close modal & update UI
+        const storeModal = document.getElementById('store-details-setup-modal');
+        if (storeModal) storeModal.classList.add('hidden');
+
+        window.applyStoreIdentity();
+        window.refreshNetworkList();
+        showToast(`Mubarak! ${storeName} live Connected Network Pharmacies mein fit ho gayi!`, 'success');
+    } catch (err) {
+        console.error('Save store details error:', err);
+        showToast('Store details save karne mein masla aya: ' + (err?.message || err), 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    }
+};
+
+// Cross-Store Medicine Live Stock Sync to Network Registry
+window.syncStockWithNetwork = async function() {
+    try {
+        const authUser = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
+        const config = window.getStoreConfig();
+        const phone = authUser?.phone || config.phone;
+        const storeName = config.name || authUser?.pharmacyName || 'Partner Pharmacy';
+        const city = config.address || authUser?.city || 'Pakistan';
+        const storeId = authUser?.uid || phone;
+
+        if (!phone || authUser?.isSuperAdmin || authUser?.role === 'super_admin') {
+            return; // Admin or stores without phone don't push stock
+        }
+
+        const medList = (window.medicines || medicines || []).map(m => ({
+            name: m.name,
+            type: m.type,
+            stock: Number(m.stock) || 0
+        })).filter(m => m.stock > 0);
+
+        await fetch('/api/network/sync-stock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                storeId,
+                storeName,
+                city,
+                phone,
+                medicines: medList
+            })
+        });
+    } catch (e) {
+        console.warn('Network stock sync note:', e);
+    }
+};
+
+// Real-time Medicine Availability Finder Across All Connected Network Stores
+window.searchMedicineAcrossNetwork = async function(query) {
+    const container = document.getElementById('network-med-search-results');
+    if (!container) return;
+    const q = String(query || '').trim();
+    if (!q) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="p-3 text-center text-xs text-slate-500 font-medium">
+            <span class="inline-block animate-spin mr-1">⌛</span> "${escapeHtml(q)}" tamam connected partner stores mein search ho raha hai...
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/network/medicine-lookup?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        const results = (data && Array.isArray(data.results)) ? data.results : [];
+
+        if (results.length === 0) {
+            container.innerHTML = `
+                <div class="p-4 bg-amber-50 rounded-xl border border-amber-200 text-center text-xs text-amber-900">
+                    <p class="font-bold">Kisi bhi connected partner pharmacy ke pas "${escapeHtml(q)}" available nahi mili.</p>
+                    <p class="text-[11px] text-amber-700 mt-0.5">Aap doosri spelling ya formula search kar ke check karein.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="space-y-2">
+                <div class="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                    <span>${results.length} Partner Stores ke pas Available Stock Mila:</span>
+                    <span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Live Ready</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                    ${results.map(r => `
+                        <div class="p-2.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl flex items-center justify-between gap-2 transition">
+                            <div>
+                                <strong class="text-xs font-bold text-slate-900 block">${escapeHtml(r.medicineName)}</strong>
+                                <span class="text-[10px] text-slate-500 font-medium">
+                                    🏥 ${escapeHtml(r.storeName)} (📍 ${escapeHtml(r.city)})
+                                </span>
+                                <div class="mt-0.5">
+                                    <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-mono font-bold text-[10px]">
+                                        📦 Stock: ${r.stockQty} ${escapeHtml(r.type || 'Packs')}
+                                    </span>
+                                </div>
+                            </div>
+                            <a href="https://wa.me/92${String(r.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma Network se aapke pas "' + r.medicineName + '" ka stock check kar ke rabta kiya hai. Barah-e-karam confirmation dein.')}" target="_blank" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 flex items-center gap-1 shadow-xs transition active:scale-95">
+                                <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Rabta
+                            </a>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        safeCreateIcons();
+    } catch (err) {
+        console.error('Medicine lookup error:', err);
+        container.innerHTML = `<div class="p-2 text-xs text-rose-600 font-bold">Search mein masla aya: ${escapeHtml(err?.message || err)}</div>`;
     }
 };
 
@@ -7244,12 +8130,17 @@ window.showHubActiveProfile = function() {
     const sessionName = document.getElementById('hub-session-user-name');
     const sessionDetail = document.getElementById('hub-session-user-detail');
 
-    if (mode === 'authenticated' && user) {
-        if (sessionName) sessionName.innerText = user.name || 'Google User';
+    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03067717634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+
+    if (isSuperAdmin) {
+        if (sessionName) sessionName.innerText = '👑 Super Admin';
+        if (sessionDetail) sessionDetail.innerText = `● 1 Seat Occupied: 03********4 (Master Control)`;
+    } else if (mode === 'authenticated' && user) {
+        if (sessionName) sessionName.innerText = user.name || 'Store Pharmacist';
         if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
     } else {
-        if (sessionName) sessionName.innerText = 'Guest User Mode';
-        if (sessionDetail) sessionDetail.innerText = '⚪ Local Device Storage';
+        if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
+        if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login as Admin';
     }
     safeCreateIcons();
 };
@@ -7316,14 +8207,15 @@ window.saveAccountHubStoreProfile = async function() {
 };
 
 window.handleHubLogout = async function() {
-    if (auth && fbAuthMod) {
+    if (auth && typeof signOut === 'function') {
         try {
-            await fbAuthMod.signOut(auth);
+            await signOut(auth);
         } catch(e) {}
     }
     localStorage.removeItem('sm_auth_user');
     localStorage.removeItem('sm_user_mode');
     localStorage.removeItem('sm_profile_pic');
+    localStorage.removeItem('sm_is_admin');
     authUser = null;
 
     window.applyStoreIdentity();
