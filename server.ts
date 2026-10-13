@@ -1112,25 +1112,75 @@ app.get('/api/network/medicine-lookup', (req: Request, res: Response): void => {
   });
 });
 
+// Deleted pharmacies tracking to prevent auto re-adding
+const DELETED_PHARMACIES_FILE = path.resolve(__dirname, 'deleted_pharmacies.json');
+
+function loadDeletedPharmacies(): string[] {
+  try {
+    if (fs.existsSync(DELETED_PHARMACIES_FILE)) {
+      const data = fs.readFileSync(DELETED_PHARMACIES_FILE, 'utf-8');
+      const list = JSON.parse(data);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveDeletedPharmacies(list: string[]) {
+  try {
+    fs.writeFileSync(DELETED_PHARMACIES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+let deletedPharmacyTokens: string[] = loadDeletedPharmacies();
+
+function normalizePhone(p?: string): string {
+  if (!p) return '';
+  const digits = String(p).replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
 app.get('/api/network/pharmacies', (_req: Request, res: Response) => {
-  const publicList = activeNetworkPharmacies.filter(p => !isPhoneAdmin(p.phone) && !p.name?.includes('Super Admin'));
+  // Deduplicate by normalized phone, email, and ID
+  const seen = new Set<string>();
+  const deduplicated: NetworkPharmacy[] = [];
+
+  activeNetworkPharmacies.forEach(p => {
+    if (isPhoneAdmin(p.phone) || p.name?.includes('Super Admin')) return;
+    const normPh = normalizePhone(p.phone);
+    if (normPh === '3452919634') return;
+
+    // Check if deleted or kicked
+    const isDeleted = (p.id && deletedPharmacyTokens.includes(p.id)) ||
+      (normPh && deletedPharmacyTokens.includes(normPh)) ||
+      (p.email && deletedPharmacyTokens.includes(p.email.toLowerCase()));
+    if (isDeleted) return;
+
+    const key = normPh ? `ph:${normPh}` : (p.email ? `em:${p.email.toLowerCase()}` : `id:${p.id}`);
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduplicated.push(p);
+    }
+  });
+
   res.json({
     success: true,
-    count: publicList.length,
-    pharmacies: publicList
+    count: deduplicated.length,
+    pharmacies: deduplicated
   });
 });
 
 app.post('/api/network/register', (req: Request, res: Response): void => {
   try {
-    const { name, ownerName, city, phone, email, licenseNo, remarks } = req.body;
+    const { id, name, ownerName, city, phone, email, licenseNo, remarks } = req.body;
     if (!name || !city || !phone) {
       res.status(400).json({ success: false, error: 'Pharmacy Name, City aur Phone zaroori hain.' });
       return;
     }
 
     const cleanPhone = String(phone).trim();
-    if (isPhoneAdmin(cleanPhone)) {
+    const normPhone = normalizePhone(cleanPhone);
+    if (isPhoneAdmin(cleanPhone) || normPhone === '3452919634') {
       res.status(400).json({ success: false, error: 'Super Admin phone number network stores list mein shamil nahi ho sakta.' });
       return;
     }
@@ -1138,16 +1188,27 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
     const cleanName = String(name).trim();
     const cleanCity = String(city).trim();
     const cleanEmail = email ? String(email).trim().toLowerCase() : '';
+    const cleanId = id ? String(id).trim() : '';
 
-    // Check if store already registered by email, phone, or name
-    const existingIndex = activeNetworkPharmacies.findIndex(p => 
-      (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) ||
-      (p.phone && p.phone.replace(/\D/g, '') === cleanPhone.replace(/\D/g, '')) ||
-      (p.name.toLowerCase() === cleanName.toLowerCase() && p.city.toLowerCase() === cleanCity.toLowerCase())
-    );
+    // Un-delete if user is explicitly re-registering
+    if (cleanId || normPhone || cleanEmail) {
+      deletedPharmacyTokens = deletedPharmacyTokens.filter(t => t !== cleanId && t !== normPhone && t !== cleanEmail);
+      saveDeletedPharmacies(deletedPharmacyTokens);
+    }
+
+    // STRICT DEDUPLICATION: Match by ID, normalized phone (last 10 digits), or lowercase email
+    const existingIndex = activeNetworkPharmacies.findIndex(p => {
+      if (cleanId && p.id === cleanId) return true;
+      if (normPhone && normalizePhone(p.phone) === normPhone) return true;
+      if (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) return true;
+      if (cleanName && p.name && p.name.toLowerCase() === cleanName.toLowerCase() && p.city?.toLowerCase() === cleanCity.toLowerCase()) return true;
+      return false;
+    });
+
+    const targetId = cleanId || (existingIndex !== -1 ? activeNetworkPharmacies[existingIndex].id : ('net_' + Date.now()));
 
     const record: NetworkPharmacy = {
-      id: existingIndex !== -1 ? activeNetworkPharmacies[existingIndex].id : ('net_' + Date.now()),
+      id: targetId,
       name: cleanName,
       ownerName: (ownerName || '').trim() || (cleanEmail ? cleanEmail.split('@')[0] : 'Store Owner'),
       city: cleanCity,
@@ -1164,7 +1225,43 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
       activeNetworkPharmacies.unshift(record);
     }
 
+    // Keep activeNetworkPharmacies deduplicated in memory and disk
+    const seenMap = new Map<string, NetworkPharmacy>();
+    activeNetworkPharmacies.forEach(item => {
+      const ph = normalizePhone(item.phone);
+      const k = ph ? `ph:${ph}` : (item.email ? `em:${item.email.toLowerCase()}` : `id:${item.id}`);
+      if (!seenMap.has(k)) {
+        seenMap.set(k, item);
+      }
+    });
+    activeNetworkPharmacies = Array.from(seenMap.values());
     saveNetworkPharmacies(activeNetworkPharmacies);
+
+    // Also sync to registeredUsers if not already present
+    const existingUserIdx = registeredUsers.findIndex(u => 
+      (cleanId && u.uid === cleanId) || 
+      (cleanEmail && u.email.toLowerCase() === cleanEmail) || 
+      (normPhone && normalizePhone(u.phone) === normPhone)
+    );
+    if (existingUserIdx === -1) {
+      registeredUsers.push({
+        uid: targetId,
+        email: cleanEmail || '',
+        phone: cleanPhone,
+        name: record.ownerName || cleanName,
+        pharmacyName: cleanName,
+        city: cleanCity,
+        status: 'Active',
+        role: 'Connected Pharmacy',
+        registeredAt: new Date().toISOString()
+      });
+      saveRegisteredUsers(registeredUsers);
+    } else {
+      registeredUsers[existingUserIdx].pharmacyName = cleanName;
+      registeredUsers[existingUserIdx].city = cleanCity;
+      if (record.ownerName) registeredUsers[existingUserIdx].name = record.ownerName;
+      saveRegisteredUsers(registeredUsers);
+    }
 
     const publicList = activeNetworkPharmacies.filter(p => !isPhoneAdmin(p.phone) && !p.name?.includes('Super Admin'));
 
@@ -1182,7 +1279,7 @@ app.post('/api/network/register', (req: Request, res: Response): void => {
 
 app.post('/api/network/unregister', (req: Request, res: Response): void => {
   try {
-    const { id, email, phone, adminEmail, adminPhone, selfRemove } = req.body;
+    const { id, email, phone, name, adminEmail, adminPhone, selfRemove } = req.body;
     const isAuthAdmin = (adminEmail && adminEmail.toLowerCase() === 'shzdkhkh01@gmail.com') || isPhoneAdmin(adminPhone);
     
     // Allow either Super Admin authorization OR legitimate self-removal of user's own pharmacy
@@ -1191,13 +1288,31 @@ app.post('/api/network/unregister', (req: Request, res: Response): void => {
       return;
     }
 
+    const cleanTargetId = id ? String(id).trim() : '';
+    const cleanTargetEmail = email ? String(email).trim().toLowerCase() : '';
+    const normTargetPhone = normalizePhone(phone);
+    const cleanTargetName = name ? String(name).trim().toLowerCase() : '';
+
+    // Permanently mark in deletedPharmacyTokens to prevent auto resurrection
+    if (cleanTargetId && !deletedPharmacyTokens.includes(cleanTargetId)) deletedPharmacyTokens.push(cleanTargetId);
+    if (normTargetPhone && !deletedPharmacyTokens.includes(normTargetPhone)) deletedPharmacyTokens.push(normTargetPhone);
+    if (cleanTargetEmail && !deletedPharmacyTokens.includes(cleanTargetEmail)) deletedPharmacyTokens.push(cleanTargetEmail);
+    saveDeletedPharmacies(deletedPharmacyTokens);
+
     activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
-      if (id && p.id === id) return false;
-      if (email && p.email && p.email.toLowerCase() === String(email).toLowerCase()) return false;
-      if (phone && p.phone && p.phone.replace(/\D/g, '') === String(phone).replace(/\D/g, '')) return false;
+      if (cleanTargetId && p.id === cleanTargetId) return false;
+      if (cleanTargetEmail && p.email && p.email.toLowerCase() === cleanTargetEmail) return false;
+      if (normTargetPhone && normalizePhone(p.phone) === normTargetPhone) return false;
+      if (cleanTargetName && p.name && p.name.toLowerCase() === cleanTargetName) return false;
       return true;
     });
     saveNetworkPharmacies(activeNetworkPharmacies);
+
+    // Also remove from shared medicine stocks
+    if (normTargetPhone) {
+      networkMedicineStocks = networkMedicineStocks.filter(s => normalizePhone(s.phone) !== normTargetPhone);
+    }
+
     res.json({ success: true, count: activeNetworkPharmacies.length, message: 'Pharmacy network se kamyabi se hata di gayi.' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Unregister failed' });
@@ -1349,16 +1464,60 @@ app.get('/api/user/check-status', (req: Request, res: Response): void => {
   });
 });
 
-// Endpoint: Super Admin Get All Users & Staff
+// Endpoint: Super Admin Get All Users & Staff (Combines registered accounts + network pharmacies)
 app.get('/api/admin/users', (_req: Request, res: Response): void => {
-  // Combine registered user accounts and connected network pharmacies
-  const list = registeredUsers.map(u => {
-    const isKicked = kickedUserIds.includes(u.uid) || kickedUserIds.includes(u.email.toLowerCase()) || kickedUserIds.includes(u.phone.replace(/\D/g, ''));
+  const mergedMap = new Map<string, UserAccount>();
+
+  registeredUsers.forEach(u => {
+    if (isPhoneAdmin(u.phone) || u.email?.toLowerCase() === 'shzdkhkh01@gmail.com') return;
+    const norm = normalizePhone(u.phone);
+    const key = norm ? `ph:${norm}` : (u.email ? `em:${u.email.toLowerCase()}` : `id:${u.uid}`);
+    mergedMap.set(key, { ...u });
+  });
+
+  activeNetworkPharmacies.forEach(p => {
+    if (isPhoneAdmin(p.phone) || p.name?.includes('Super Admin')) return;
+    const norm = normalizePhone(p.phone);
+    if (norm === '3452919634') return;
+
+    // Check if deleted
+    if (p.id && deletedPharmacyTokens.includes(p.id)) return;
+    if (norm && deletedPharmacyTokens.includes(norm)) return;
+    if (p.email && deletedPharmacyTokens.includes(p.email.toLowerCase())) return;
+
+    const key = norm ? `ph:${norm}` : (p.email ? `em:${p.email.toLowerCase()}` : `id:${p.id}`);
+    const existing = mergedMap.get(key);
+    if (existing) {
+      if (!existing.pharmacyName || existing.pharmacyName === 'My Pharmacy') existing.pharmacyName = p.name;
+      if (p.city && (!existing.city || existing.city === 'Pakistan')) existing.city = p.city;
+      if (!existing.name) existing.name = p.ownerName || p.name;
+    } else {
+      mergedMap.set(key, {
+        uid: p.id,
+        email: p.email || '',
+        phone: p.phone || '',
+        name: p.ownerName || p.name,
+        pharmacyName: p.name,
+        city: p.city || 'Pakistan',
+        status: 'Active',
+        role: 'Connected Pharmacy',
+        registeredAt: p.updatedAt || new Date().toISOString()
+      });
+    }
+  });
+
+  const list = Array.from(mergedMap.values()).map(u => {
+    const norm = normalizePhone(u.phone);
+    const isKicked = kickedUserIds.includes(u.uid) || 
+      (u.email && kickedUserIds.includes(u.email.toLowerCase())) || 
+      (norm && kickedUserIds.includes(norm)) ||
+      (u.phone && kickedUserIds.includes(u.phone));
     return {
       ...u,
-      status: isKicked ? 'Kicked' : 'Active'
+      status: isKicked ? ('Kicked' as const) : ('Active' as const)
     };
   });
+
   res.json({ success: true, users: list, kickedCount: kickedUserIds.length });
 });
 
