@@ -7365,6 +7365,23 @@ window.closeAdminStaffModal = function() {
     syncModalScrollLock();
 };
 
+window.handleAdminSuperControlLogout = async function() {
+    customConfirm('Super Admin Logout Karein?', 'Kya aap Super Admin control se logout hona chahte hain? Aapka admin master session band ho jayega.', async () => {
+        window.closeAdminStaffModal();
+        if (typeof window.handleHubLogout === 'function') {
+            await window.handleHubLogout();
+        } else {
+            localStorage.removeItem('sm_auth_user');
+            localStorage.removeItem('sm_user_mode');
+            localStorage.removeItem('sm_profile_pic');
+            localStorage.removeItem('sm_is_admin');
+            authUser = null;
+            window.applyStoreIdentity();
+        }
+        showToast('Super Admin kamyabi se logout ho gaya.', 'info');
+    });
+};
+
 window.switchAdminSectionTab = function(tab) {
     const btnStaff = document.getElementById('admin-tab-btn-staff');
     const btnNet = document.getElementById('admin-tab-btn-network');
