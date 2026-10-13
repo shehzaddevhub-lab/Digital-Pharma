@@ -1525,55 +1525,69 @@ app.get('/api/admin/users', (_req: Request, res: Response): void => {
 app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
   try {
     const { uid, email, phone, name } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
+    const rawEmail = String(email || '').trim().toLowerCase();
+    const cleanEmail = (rawEmail && rawEmail !== '-') ? rawEmail : '';
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     const cleanUid = String(uid || '').trim();
+    const cleanName = String(name || '').trim();
+    const normPhone = normalizePhone(cleanPhone);
 
-    if (!cleanEmail && !cleanUid && !cleanPhone) {
-      res.status(400).json({ success: false, error: 'User details missing' });
+    if (!cleanEmail && !cleanUid && !normPhone && !cleanName) {
+      res.status(400).json({ success: false, error: 'User ki details missing hain.' });
       return;
     }
 
-    if (cleanEmail === 'shzdkhkh01@gmail.com' || cleanPhone === '03452919634') {
-      res.status(403).json({ success: false, error: 'Super Admin cannot be kicked.' });
+    if (cleanEmail === 'shzdkhkh01@gmail.com' || cleanPhone === '03452919634' || normPhone === '3452919634') {
+      res.status(403).json({ success: false, error: 'Super Admin ko kick nahi kiya ja sakta.' });
       return;
     }
 
     // Add identifiers to kicked list
     if (cleanUid && !kickedUserIds.includes(cleanUid)) kickedUserIds.push(cleanUid);
     if (cleanEmail && !kickedUserIds.includes(cleanEmail)) kickedUserIds.push(cleanEmail);
+    if (normPhone && !kickedUserIds.includes(normPhone)) kickedUserIds.push(normPhone);
     if (cleanPhone && !kickedUserIds.includes(cleanPhone)) kickedUserIds.push(cleanPhone);
     saveKickedUsers(kickedUserIds);
 
+    // Also permanently blacklist in deletedPharmacyTokens so they never re-add automatically
+    if (cleanUid && !deletedPharmacyTokens.includes(cleanUid)) deletedPharmacyTokens.push(cleanUid);
+    if (normPhone && !deletedPharmacyTokens.includes(normPhone)) deletedPharmacyTokens.push(normPhone);
+    if (cleanEmail && !deletedPharmacyTokens.includes(cleanEmail)) deletedPharmacyTokens.push(cleanEmail);
+    if (cleanName && !deletedPharmacyTokens.includes(cleanName.toLowerCase())) deletedPharmacyTokens.push(cleanName.toLowerCase());
+    saveDeletedPharmacies(deletedPharmacyTokens);
+
     // Update status in registered users
     registeredUsers.forEach(u => {
-      if ((cleanUid && u.uid === cleanUid) || (cleanEmail && u.email.toLowerCase() === cleanEmail) || (cleanPhone && u.phone.replace(/\D/g, '') === cleanPhone)) {
+      if ((cleanUid && u.uid === cleanUid) || 
+          (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || 
+          (normPhone && normalizePhone(u.phone) === normPhone)) {
         u.status = 'Kicked';
       }
     });
     saveRegisteredUsers(registeredUsers);
 
-    // Remove from network pharmacies as well
+    // Remove from network pharmacies completely
     activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
       if (cleanUid && p.id === cleanUid) return false;
       if (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) return false;
-      if (cleanPhone && p.phone && p.phone.replace(/\D/g, '') === cleanPhone) return false;
+      if (normPhone && normalizePhone(p.phone) === normPhone) return false;
+      if (cleanName && p.name && p.name.toLowerCase() === cleanName.toLowerCase()) return false;
       return true;
     });
     saveNetworkPharmacies(activeNetworkPharmacies);
 
     // Remove from shared medicine stocks
-    if (cleanPhone) {
-      networkMedicineStocks = networkMedicineStocks.filter(s => s.phone.replace(/\D/g, '') !== cleanPhone);
+    if (normPhone) {
+      networkMedicineStocks = networkMedicineStocks.filter(s => normalizePhone(s.phone) !== normPhone);
     }
 
     res.json({
       success: true,
-      message: `User "${name || cleanEmail || cleanPhone}" has been kicked. App reset and data wipe signal dispatched.`,
+      message: `User "${cleanName || cleanEmail || cleanPhone}" kick ho gaya! App reset signal send kar diya gaya hai.`,
       kickedCount: kickedUserIds.length
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: 'Failed to kick user' });
+    res.status(500).json({ success: false, error: 'User kick karne mein server error aya' });
   }
 });
 
@@ -1581,17 +1595,25 @@ app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
 app.post('/api/admin/keep-user', (req: Request, res: Response): void => {
   try {
     const { uid, email, phone, name } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
+    const rawEmail = String(email || '').trim().toLowerCase();
+    const cleanEmail = (rawEmail && rawEmail !== '-') ? rawEmail : '';
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     const cleanUid = String(uid || '').trim();
+    const normPhone = normalizePhone(cleanPhone);
 
     // Remove from kicked list
-    kickedUserIds = kickedUserIds.filter(id => id !== cleanUid && id !== cleanEmail && id !== cleanPhone);
+    kickedUserIds = kickedUserIds.filter(id => id !== cleanUid && id !== cleanEmail && id !== cleanPhone && id !== normPhone);
     saveKickedUsers(kickedUserIds);
+
+    // Remove from deleted list
+    deletedPharmacyTokens = deletedPharmacyTokens.filter(t => t !== cleanUid && t !== cleanEmail && t !== normPhone);
+    saveDeletedPharmacies(deletedPharmacyTokens);
 
     // Update status in registered users
     registeredUsers.forEach(u => {
-      if ((cleanUid && u.uid === cleanUid) || (cleanEmail && u.email.toLowerCase() === cleanEmail) || (cleanPhone && u.phone.replace(/\D/g, '') === cleanPhone)) {
+      if ((cleanUid && u.uid === cleanUid) || 
+          (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || 
+          (normPhone && normalizePhone(u.phone) === normPhone)) {
         u.status = 'Active';
       }
     });
@@ -1599,11 +1621,61 @@ app.post('/api/admin/keep-user', (req: Request, res: Response): void => {
 
     res.json({
       success: true,
-      message: `User "${name || cleanEmail || cleanPhone}" is kept Active and verified.`,
+      message: `User "${name || cleanEmail || cleanPhone}" ko Active aur Keep kar diya gaya hai.`,
       kickedCount: kickedUserIds.length
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: 'Failed to keep user' });
+    res.status(500).json({ success: false, error: 'Failed to keep user active' });
+  }
+});
+
+// Endpoint: Super Admin Permanently Delete User
+app.post('/api/admin/delete-user', (req: Request, res: Response): void => {
+  try {
+    const { uid, email, phone } = req.body || {};
+    const rawEmail = String(email || '').trim().toLowerCase();
+    const cleanEmail = (rawEmail && rawEmail !== '-') ? rawEmail : '';
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const cleanUid = String(uid || '').trim();
+    const normPhone = normalizePhone(cleanPhone);
+
+    if (cleanEmail === 'shzdkhkh01@gmail.com' || cleanPhone === '03452919634' || normPhone === '3452919634') {
+      res.status(403).json({ success: false, error: 'Super Admin ko delete nahi kiya ja sakta.' });
+      return;
+    }
+
+    // Permanently remove from registered users
+    registeredUsers = registeredUsers.filter(u => {
+      if (cleanUid && u.uid === cleanUid) return false;
+      if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return false;
+      if (normPhone && normalizePhone(u.phone) === normPhone) return false;
+      return true;
+    });
+    saveRegisteredUsers(registeredUsers);
+
+    // Permanently remove from active network pharmacies
+    activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
+      if (cleanUid && p.id === cleanUid) return false;
+      if (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) return false;
+      if (normPhone && normalizePhone(p.phone) === normPhone) return false;
+      return true;
+    });
+    saveNetworkPharmacies(activeNetworkPharmacies);
+
+    // Add to blacklists so they can never auto reappear
+    if (cleanUid && !kickedUserIds.includes(cleanUid)) kickedUserIds.push(cleanUid);
+    if (cleanEmail && !kickedUserIds.includes(cleanEmail)) kickedUserIds.push(cleanEmail);
+    if (normPhone && !kickedUserIds.includes(normPhone)) kickedUserIds.push(normPhone);
+    saveKickedUsers(kickedUserIds);
+
+    if (cleanUid && !deletedPharmacyTokens.includes(cleanUid)) deletedPharmacyTokens.push(cleanUid);
+    if (normPhone && !deletedPharmacyTokens.includes(normPhone)) deletedPharmacyTokens.push(normPhone);
+    if (cleanEmail && !deletedPharmacyTokens.includes(cleanEmail)) deletedPharmacyTokens.push(cleanEmail);
+    saveDeletedPharmacies(deletedPharmacyTokens);
+
+    res.json({ success: true, message: 'User permanently system se delete ho gaya.' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'User delete karne mein error aya' });
   }
 });
 

@@ -1652,12 +1652,18 @@ window.applyStoreIdentity = function() {
 
     if (isSuperAdmin) {
         if (hubName) hubName.innerText = '👑 Super Admin';
-        if (hubStatus) hubStatus.innerText = '03********4';
+        if (hubStatus) hubStatus.innerText = 'Super Control';
         if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse';
         if (statusText) {
             statusText.innerText = 'Super Admin (03********4 Master Control)';
             statusText.className = 'text-amber-800 font-bold';
         }
+        if (headerChar) {
+            headerChar.innerText = '👑';
+            headerChar.classList.remove('hidden');
+        }
+        if (headerAnonIcon) headerAnonIcon.classList.add('hidden');
+        if (headerImg) headerImg.classList.add('hidden');
     } else if (mode === 'authenticated' && user) {
         if (hubName) hubName.innerText = user.name || config.name || 'My Store';
         if (hubStatus) hubStatus.innerText = 'Online Active';
@@ -5489,13 +5495,39 @@ window.refreshNetworkList = async function() {
         return;
     }
 
+    // Helper: Check if store is in client-side deleted blacklist
+    const getLocalDeletedTokens = () => {
+        try {
+            return JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+        } catch(_) { return []; }
+    };
+    const isStoreBlacklisted = (s) => {
+        if (!s) return true;
+        const tokens = getLocalDeletedTokens();
+        if (tokens.length === 0) return false;
+        const normP = (s.phone || '').replace(/\D/g, '').slice(-10);
+        const sEmail = (s.email && s.email !== '-') ? s.email.toLowerCase().trim() : '';
+        const sName = (s.name || '').toLowerCase().trim();
+        if (s.id && tokens.includes(s.id)) return true;
+        if (normP && tokens.includes(normP)) return true;
+        if (sEmail && tokens.includes(sEmail)) return true;
+        if (sName && tokens.includes(sName)) return true;
+        return false;
+    };
+
     let stores = [];
     // 1. First priority: Real-time online in-memory stores from Firestore
     if (Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
-        stores = window.onlineNetworkPharmacies.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && String(p.phone || '').replace(/\D/g, '').slice(-10) !== '3452919634' && p.phone !== '03********4' && !p.name?.includes('Super Admin'));
+        stores = window.onlineNetworkPharmacies.filter(p => 
+            !['net_1', 'net_2', 'net_3'].includes(p.id) && 
+            String(p.phone || '').replace(/\D/g, '').slice(-10) !== '3452919634' && 
+            p.phone !== '03********4' && 
+            !p.name?.includes('Super Admin') &&
+            !isStoreBlacklisted(p)
+        );
     }
 
-    // 2. Second priority: Backend online endpoint
+    // 2. Second priority: Backend online endpoint (Source of truth for deleted/active)
     try {
         const res = await fetch('/api/network/pharmacies');
         if (res.ok) {
@@ -5503,7 +5535,7 @@ window.refreshNetworkList = async function() {
             if (data && Array.isArray(data.pharmacies)) {
                 data.pharmacies.forEach(dp => {
                     const normDpPhone = (dp.phone || '').replace(/\D/g, '').slice(-10);
-                    if (normDpPhone === '3452919634' || dp.phone === '03********4' || dp.name?.includes('Super Admin')) return;
+                    if (normDpPhone === '3452919634' || dp.phone === '03********4' || dp.name?.includes('Super Admin') || isStoreBlacklisted(dp)) return;
                     if (!stores.some(s => (s.id && s.id === dp.id) || (normDpPhone && (s.phone || '').replace(/\D/g, '').slice(-10) === normDpPhone) || (dp.email && s.email && s.email.toLowerCase() === dp.email.toLowerCase()))) {
                         stores.push(dp);
                     }
@@ -5521,7 +5553,7 @@ window.refreshNetworkList = async function() {
             snap.forEach(d => {
                 const docData = { id: d.id, ...d.data() };
                 const normDPhone = (docData.phone || '').replace(/\D/g, '').slice(-10);
-                if (normDPhone !== '3452919634' && docData.phone !== '03********4' && !docData.name?.includes('Super Admin')) {
+                if (normDPhone !== '3452919634' && docData.phone !== '03********4' && !docData.name?.includes('Super Admin') && !isStoreBlacklisted(docData)) {
                     stores.push(docData);
                 }
             });
@@ -5533,7 +5565,7 @@ window.refreshNetworkList = async function() {
     const seenStores = new Set();
     const uniqueStores = [];
     stores.forEach(s => {
-        if (!s || !s.name) return;
+        if (!s || !s.name || isStoreBlacklisted(s)) return;
         const normPhone = (s.phone || '').replace(/\D/g, '').slice(-10);
         if (normPhone === '3452919634' || s.phone === '03********4' || s.name?.includes('Super Admin')) return;
         const key = normPhone ? `ph:${normPhone}` : (s.email ? `em:${s.email.toLowerCase()}` : `id:${s.id}`);
@@ -5610,32 +5642,42 @@ window.refreshNetworkList = async function() {
 };
 
 window.removePharmacyFromNetwork = function(id, name, phone, idx) {
-    customConfirm('Pharmacy Network Se Hataen?', `Kya aap "${name}" ko Connected Pharmacies network se delete karna chahte hain? Yeh pharmacy permanently remove ho jayegi.`, async () => {
+    customConfirm('Pharmacy Network Se Hataen?', `Kya aap "${name}" ko Connected Pharmacies network se delete karna chahte hain? Yeh pharmacy permanently remove ho jayegi aur dobara auto re-add nahi hogi.`, async () => {
         const normPhone = (phone || '').replace(/\D/g, '').slice(-10);
+        const cleanName = (name || '').trim();
 
-        // 1. Remove from Firestore if online (delete by ID and any matching phone docs)
+        // 1. Permanently blacklist in localStorage so it NEVER reappears on client
+        try {
+            const blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+            if (id && !blacklist.includes(id)) blacklist.push(id);
+            if (normPhone && !blacklist.includes(normPhone)) blacklist.push(normPhone);
+            if (cleanName && !blacklist.includes(cleanName.toLowerCase())) blacklist.push(cleanName.toLowerCase());
+            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+            localStorage.removeItem('sm_network_stores');
+        } catch(_) {}
+
+        // 2. Remove from Firestore if online (properly await all delete operations)
         if (db) {
+            const deletePromises = [];
             if (id) {
-                try {
-                    await deleteDoc(doc(db, 'pharmacies', id));
-                } catch(e) {
-                    console.warn('Firestore delete note:', e);
-                }
+                deletePromises.push(deleteDoc(doc(db, 'pharmacies', id)).catch(() => {}));
             }
             try {
                 const pharmCol = collection(db, 'pharmacies');
                 const snap = await getDocs(pharmCol);
-                snap.forEach(async (d) => {
+                snap.forEach((d) => {
                     const data = d.data();
                     const dNorm = (data.phone || '').replace(/\D/g, '').slice(-10);
-                    if ((normPhone && dNorm === normPhone) || d.id === id || (name && data.name === name)) {
-                        try { await deleteDoc(d.ref); } catch(_) {}
+                    const dName = (data.name || '').trim().toLowerCase();
+                    if ((normPhone && dNorm === normPhone) || d.id === id || (cleanName && dName === cleanName.toLowerCase())) {
+                        deletePromises.push(deleteDoc(d.ref).catch(() => {}));
                     }
                 });
             } catch(_) {}
+            await Promise.all(deletePromises);
         }
 
-        // 2. Remove from Backend Central Registry
+        // 3. Remove from Backend Central Registry
         try {
             await fetch('/api/network/unregister', {
                 method: 'POST',
@@ -5650,19 +5692,17 @@ window.removePharmacyFromNetwork = function(id, name, phone, idx) {
             });
         } catch(e) {}
 
-        // 3. Clear from in-memory state and local storage
+        // 4. Clear from in-memory state
         if (Array.isArray(window.onlineNetworkPharmacies)) {
             window.onlineNetworkPharmacies = window.onlineNetworkPharmacies.filter(s => {
                 const sNorm = (s.phone || '').replace(/\D/g, '').slice(-10);
+                const sName = (s.name || '').trim().toLowerCase();
                 if (id && s.id === id) return false;
                 if (normPhone && sNorm === normPhone) return false;
-                if (name && s.name === name) return false;
+                if (cleanName && sName === cleanName.toLowerCase()) return false;
                 return true;
             });
         }
-        try {
-            localStorage.removeItem('sm_network_stores');
-        } catch(e) {}
 
         // If current user is this store, clear store name so it doesn't auto re-register
         const myConfig = window.getStoreConfig();
@@ -5676,7 +5716,7 @@ window.removePharmacyFromNetwork = function(id, name, phone, idx) {
         if (typeof window.renderAdminNetworkTable === 'function') {
             window.renderAdminNetworkTable();
         }
-        showToast(`Pharmacy "${name}" kamyabi se network se delete ho gayi!`, 'success');
+        showToast(`Pharmacy "${name}" permanently delete ho gayi!`, 'success');
     });
 };
 
@@ -7447,7 +7487,9 @@ window.renderAdminStaffTable = async function() {
         return;
     }
 
-    tbody.innerHTML = users.map((s) => {
+    window.adminStaffUsersList = users;
+
+    tbody.innerHTML = users.map((s, idx) => {
         const isMaster = s.isFixedAdmin || s.email === SUPER_ADMIN_EMAIL || s.phone === SUPER_ADMIN_PHONE || s.email === '03********4';
         const isKicked = s.status === 'Kicked';
 
@@ -7483,12 +7525,17 @@ window.renderAdminStaffTable = async function() {
                         <span class="text-[10px] text-amber-800 font-bold italic">Protected 1-Seat</span>
                     ` : `
                         <div class="flex items-center justify-center gap-1.5 flex-wrap">
-                            <button type="button" onclick="window.handleAdminKeepUser('${s.uid || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name || '')}')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Keep user active">
+                            <button type="button" onclick="window.handleAdminKeepUserByIndex(${idx})" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Keep user active">
                                 <i data-lucide="check" class="w-3 h-3 inline"></i> Keep
                             </button>
-                            <button type="button" onclick="window.handleAdminKickUser('${s.uid || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name || '')}')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick user and wipe their app data">
+                            <button type="button" onclick="window.handleAdminKickUserByIndex(${idx})" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick user and wipe their app data">
                                 <i data-lucide="trash-2" class="w-3 h-3 inline"></i> Kick
                             </button>
+                            ${isKicked ? `
+                            <button type="button" onclick="window.handleAdminDeleteUserPermanentlyByIndex(${idx})" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer shadow-xs" title="Permanently delete user record">
+                                <i data-lucide="trash" class="w-3 h-3 inline"></i> Delete
+                            </button>
+                            ` : ''}
                         </div>
                     `}
                 </td>
@@ -7553,57 +7600,232 @@ window.handleUpdateStaffRole = function(id, newRole) {
 };
 
 window.handleAdminKickUser = function(uid, email, phone, name) {
-    customConfirm('User ko Kick & App Reset Karein?', `Kya aap "${name}" ko kick / remove karna chahte hain? Is se us user ki app par inventory, profile aur tamam data auto khtm ho kar app reset ho jayegi.`, async () => {
+    const displayName = (name && name !== '-') ? name : ((email && email !== '-') ? email : (phone || 'User'));
+    customConfirm('User ko Kick & App Reset Karein?', `Kya aap "${displayName}" ko kick / remove karna chahte hain? Is se us user ki app par inventory, profile aur tamam data auto khtm ho kar app reset ho jayegi.`, async () => {
+        const normPhone = (phone || '').replace(/\D/g, '').slice(-10);
+        const cleanEmail = (email && email !== '-') ? String(email).trim().toLowerCase() : '';
+        const cleanUid = uid ? String(uid).trim() : '';
+
+        // 1. Blacklist permanently on client
+        try {
+            const blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+            if (cleanUid && !blacklist.includes(cleanUid)) blacklist.push(cleanUid);
+            if (normPhone && !blacklist.includes(normPhone)) blacklist.push(normPhone);
+            if (cleanEmail && !blacklist.includes(cleanEmail)) blacklist.push(cleanEmail);
+            if (displayName && !blacklist.includes(displayName.toLowerCase())) blacklist.push(displayName.toLowerCase());
+            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+            localStorage.removeItem('sm_network_stores');
+        } catch(_) {}
+
+        // 2. Remove from local staff members list if present
+        try {
+            let staff = window.getRegisteredStaffList();
+            staff = staff.filter(s => {
+                if (cleanUid && s.id === cleanUid) return false;
+                if (cleanEmail && s.email && s.email.toLowerCase() === cleanEmail) return false;
+                if (displayName && s.name === displayName) return false;
+                return true;
+            });
+            localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        } catch(_) {}
+
+        // 3. Permanent delete in Firestore if connected
+        if (db) {
+            const deletePromises = [];
+            if (cleanUid) {
+                deletePromises.push(deleteDoc(doc(db, 'pharmacies', cleanUid)).catch(() => {}));
+                deletePromises.push(deleteDoc(doc(db, 'users', cleanUid)).catch(() => {}));
+            }
+            try {
+                const pharmSnap = await getDocs(collection(db, 'pharmacies'));
+                pharmSnap.forEach(d => {
+                    const data = d.data();
+                    const dNorm = (data.phone || '').replace(/\D/g, '').slice(-10);
+                    const dName = (data.name || '').trim().toLowerCase();
+                    const dEmail = (data.email || '').trim().toLowerCase();
+                    if ((normPhone && dNorm === normPhone) || d.id === cleanUid || (displayName && dName === displayName.toLowerCase()) || (cleanEmail && dEmail === cleanEmail)) {
+                        deletePromises.push(deleteDoc(d.ref).catch(() => {}));
+                    }
+                });
+            } catch(_) {}
+            await Promise.all(deletePromises);
+        }
+
+        // 4. Call backend kick-user endpoint
+        let kickSuccess = false;
+        let kickMsg = '';
         try {
             const res = await fetch('/api/admin/kick-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid, email, phone, name })
+                body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone || '', name: displayName })
             });
+            let data = null;
+            try { data = await res.json(); } catch(_) {}
             if (res.ok) {
-                // Also update local staff if matching
-                let staff = window.getRegisteredStaffList();
-                staff = staff.map(s => {
-                    if (s.email === email || s.id === uid) return { ...s, status: 'Kicked' };
-                    return s;
-                });
-                localStorage.setItem('sm_staff_members', JSON.stringify(staff));
-
-                showToast(`"${name}" kick ho gaya! Uska data aur app auto reset ho jayegi.`, 'info');
-                window.renderAdminStaffTable();
-                window.renderAdminNetworkTable();
+                kickSuccess = true;
+                kickMsg = data?.message || '';
             } else {
-                const err = await res.json();
-                showToast(err.error || 'User kick karne mein masla aya', 'error');
+                kickMsg = data?.error || 'Kick nahi ho saka';
             }
-        } catch(e) {
-            showToast('Network error: User kick nahi ho saka', 'error');
+        } catch(netErr) {
+            console.warn('Backend kick error:', netErr);
         }
+
+        // 5. Call backend network unregister endpoint
+        try {
+            await fetch('/api/network/unregister', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: cleanUid,
+                    name: displayName,
+                    phone: phone || '',
+                    email: cleanEmail,
+                    selfRemove: true,
+                    adminEmail: SUPER_ADMIN_EMAIL
+                })
+            });
+        } catch(_) {}
+
+        // 6. Update in-memory state
+        if (Array.isArray(window.onlineNetworkPharmacies)) {
+            window.onlineNetworkPharmacies = window.onlineNetworkPharmacies.filter(item => {
+                const itemNorm = (item.phone || '').replace(/\D/g, '').slice(-10);
+                if (cleanUid && item.id === cleanUid) return false;
+                if (normPhone && itemNorm === normPhone) return false;
+                if (cleanEmail && item.email && item.email.toLowerCase() === cleanEmail) return false;
+                if (displayName && item.name && item.name.toLowerCase() === displayName.toLowerCase()) return false;
+                return true;
+            });
+        }
+
+        if (kickSuccess) {
+            showToast(`"${displayName}" kick ho gaya! Uska data aur app auto reset ho jayegi.`, 'info');
+        } else if (kickMsg) {
+            showToast(kickMsg, 'info');
+        } else {
+            showToast(`"${displayName}" kick aur permanently remove ho gaya!`, 'info');
+        }
+
+        window.renderAdminStaffTable();
+        window.renderAdminNetworkTable();
+        window.refreshNetworkList();
     });
 };
 
 window.handleAdminKeepUser = async function(uid, email, phone, name) {
+    const displayName = (name && name !== '-') ? name : ((email && email !== '-') ? email : (phone || 'User'));
+    const cleanEmail = (email && email !== '-') ? String(email).trim().toLowerCase() : '';
+    const cleanUid = uid ? String(uid).trim() : '';
+    const normPhone = (phone || '').replace(/\D/g, '').slice(-10);
+
+    // Un-blacklist on client
+    try {
+        let blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+        blacklist = blacklist.filter(t => t !== cleanUid && t !== normPhone && t !== cleanEmail && t !== displayName.toLowerCase());
+        localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+    } catch(_) {}
+
     try {
         const res = await fetch('/api/admin/keep-user', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid, email, phone, name })
+            body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone || '', name: displayName })
         });
-        if (res.ok) {
-            let staff = window.getRegisteredStaffList();
-            staff = staff.map(s => {
-                if (s.email === email || s.id === uid) return { ...s, status: 'Active' };
-                return s;
-            });
-            localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        let data = null;
+        try { data = await res.json(); } catch(_) {}
 
-            showToast(`"${name}" verify ho gaya aur active rakha gaya hai.`, 'success');
-            window.renderAdminStaffTable();
-            window.renderAdminNetworkTable();
-        }
+        let staff = window.getRegisteredStaffList();
+        staff = staff.map(s => {
+            if ((cleanUid && s.id === cleanUid) || (cleanEmail && s.email && s.email.toLowerCase() === cleanEmail)) {
+                return { ...s, status: 'Active' };
+            }
+            return s;
+        });
+        localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+
+        showToast(`"${displayName}" verify ho gaya aur active rakha gaya hai.`, 'success');
+        window.renderAdminStaffTable();
+        window.renderAdminNetworkTable();
     } catch(e) {
         showToast('Error keeping user active', 'error');
     }
+};
+
+window.handleAdminDeleteUserPermanentlyByIndex = function(idx) {
+    const s = window.adminStaffUsersList?.[idx];
+    if (!s) return;
+    const displayName = s.name || s.email || s.phone || 'User';
+    customConfirm('User Permanently Delete Karein?', `Kya aap "${displayName}" ko system se mukammal delete karna chahte hain? Yeh record dobara kabhi wapas nahi aayega.`, async () => {
+        const cleanEmail = (s.email && s.email !== '-') ? String(s.email).trim().toLowerCase() : '';
+        const cleanUid = s.uid ? String(s.uid).trim() : '';
+        const phone = s.phone || '';
+        const normPhone = (phone || '').replace(/\D/g, '').slice(-10);
+
+        // Remove from local staff
+        try {
+            let staff = window.getRegisteredStaffList();
+            staff = staff.filter(item => item.id !== cleanUid && item.email !== cleanEmail && item.name !== displayName);
+            localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        } catch(_) {}
+
+        // Blacklist in localStorage
+        try {
+            const blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+            if (cleanUid && !blacklist.includes(cleanUid)) blacklist.push(cleanUid);
+            if (normPhone && !blacklist.includes(normPhone)) blacklist.push(normPhone);
+            if (cleanEmail && !blacklist.includes(cleanEmail)) blacklist.push(cleanEmail);
+            if (displayName && !blacklist.includes(displayName.toLowerCase())) blacklist.push(displayName.toLowerCase());
+            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+        } catch(_) {}
+
+        // Backend delete
+        try {
+            await fetch('/api/admin/delete-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone, name: displayName })
+            });
+        } catch(_) {}
+
+        // Firestore delete
+        if (db) {
+            if (cleanUid) {
+                try { await deleteDoc(doc(db, 'pharmacies', cleanUid)); } catch(_) {}
+                try { await deleteDoc(doc(db, 'users', cleanUid)); } catch(_) {}
+            }
+        }
+
+        showToast(`"${displayName}" permanently delete ho gaya!`, 'info');
+        window.renderAdminStaffTable();
+        window.renderAdminNetworkTable();
+        window.refreshNetworkList();
+    });
+};
+
+window.handleAdminKickUserByIndex = function(idx) {
+    const s = window.adminStaffUsersList?.[idx];
+    if (!s) return;
+    window.handleAdminKickUser(s.uid, s.email, s.phone, s.name);
+};
+
+window.handleAdminKeepUserByIndex = function(idx) {
+    const s = window.adminStaffUsersList?.[idx];
+    if (!s) return;
+    window.handleAdminKeepUser(s.uid, s.email, s.phone, s.name);
+};
+
+window.handleAdminKickPharmacyByIndex = function(idx) {
+    const s = window.adminNetworkStoresList?.[idx];
+    if (!s) return;
+    window.handleAdminKickUser(s.id, s.email, s.phone, s.name);
+};
+
+window.handleAdminKeepPharmacyByIndex = function(idx) {
+    const s = window.adminNetworkStoresList?.[idx];
+    if (!s) return;
+    window.handleAdminKeepUser(s.id, s.email, s.phone, s.name);
 };
 
 window.handleRemoveStaffMember = function(id, name) {
@@ -7615,18 +7837,36 @@ window.renderAdminNetworkTable = async function() {
     const countBadge = document.getElementById('admin-net-count');
     if (!tbody) return;
 
+    const getLocalDeletedTokens = () => {
+        try { return JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]'); } catch(_) { return []; }
+    };
+    const isBlacklisted = (s) => {
+        if (!s) return true;
+        const tokens = getLocalDeletedTokens();
+        if (tokens.length === 0) return false;
+        const normP = (s.phone || '').replace(/\D/g, '').slice(-10);
+        const sEmail = (s.email && s.email !== '-') ? s.email.toLowerCase().trim() : '';
+        const sName = (s.name || '').toLowerCase().trim();
+        if (s.id && tokens.includes(s.id)) return true;
+        if (normP && tokens.includes(normP)) return true;
+        if (sEmail && tokens.includes(sEmail)) return true;
+        if (sName && tokens.includes(sName)) return true;
+        return false;
+    };
+
     let stores = [];
     try {
         const res = await fetch('/api/network/pharmacies');
         if (res.ok) {
             const data = await res.json();
-            if (Array.isArray(data.pharmacies)) stores = data.pharmacies;
+            if (Array.isArray(data.pharmacies)) stores = data.pharmacies.filter(p => !isBlacklisted(p));
         }
     } catch(e) {}
 
     // Merge with online in-memory stores from Firestore
     if (Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
         window.onlineNetworkPharmacies.forEach(p => {
+            if (isBlacklisted(p)) return;
             const normPPhone = (p.phone || '').replace(/\D/g, '').slice(-10);
             if (normPPhone === '3452919634' || p.phone === '03********4' || p.name?.includes('Super Admin')) return;
             const exists = stores.some(s => 
@@ -7636,13 +7876,6 @@ window.renderAdminNetworkTable = async function() {
             );
             if (!exists) {
                 stores.push(p);
-                try {
-                    fetch('/api/network/register', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(p)
-                    }).catch(() => {});
-                } catch(_) {}
             }
         });
     }
@@ -7653,6 +7886,7 @@ window.renderAdminNetworkTable = async function() {
             const snap = await getDocs(collection(db, 'pharmacies'));
             snap.forEach(d => {
                 const data = { id: d.id, ...d.data() };
+                if (isBlacklisted(data)) return;
                 const normD = (data.phone || '').replace(/\D/g, '').slice(-10);
                 if (normD !== '3452919634' && data.phone !== '03********4' && !data.name?.includes('Super Admin')) {
                     stores.push(data);
@@ -7662,41 +7896,11 @@ window.renderAdminNetworkTable = async function() {
         } catch(_) {}
     }
 
-    // Also check current user store config
-    const myConfig = window.getStoreConfig();
-    const currentUser = window.getCurrentUser();
-    if (myConfig && myConfig.name && myConfig.phone && myConfig.name !== 'Digital Pharma' && myConfig.name !== 'My Pharmacy') {
-        const myNorm = (myConfig.phone || '').replace(/\D/g, '').slice(-10);
-        if (myNorm !== '3452919634') {
-            const exists = stores.some(s => (s.phone || '').replace(/\D/g, '').slice(-10) === myNorm);
-            if (!exists) {
-                const selfStore = {
-                    id: currentUser?.uid || ('net_' + Date.now()),
-                    name: myConfig.name,
-                    ownerName: myConfig.ownerName || currentUser?.name || 'Store Owner',
-                    city: myConfig.address || 'Pakistan',
-                    phone: myConfig.phone,
-                    email: currentUser?.email || '',
-                    licenseNo: myConfig.licenseNo || '',
-                    remarks: 'Verified Digital Pharma Live Member'
-                };
-                stores.push(selfStore);
-                try {
-                    fetch('/api/network/register', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(selfStore)
-                    }).catch(() => {});
-                } catch(_) {}
-            }
-        }
-    }
-
     // STRICT DEDUPLICATION: Maximum 1 entry per pharmacy
     const seen = new Set();
     const uniqueStores = [];
     stores.forEach(s => {
-        if (!s || !s.name) return;
+        if (!s || !s.name || isBlacklisted(s)) return;
         const normPhone = (s.phone || '').replace(/\D/g, '').slice(-10);
         if (normPhone === '3452919634' || s.phone === '03********4' || s.name?.includes('Super Admin')) return;
         const key = normPhone ? `ph:${normPhone}` : (s.email ? `em:${s.email.toLowerCase()}` : `id:${s.id}`);
@@ -7705,6 +7909,8 @@ window.renderAdminNetworkTable = async function() {
             uniqueStores.push(s);
         }
     });
+
+    window.adminNetworkStoresList = uniqueStores;
 
     if (countBadge) countBadge.innerText = uniqueStores.length;
 
@@ -7733,10 +7939,10 @@ window.renderAdminNetworkTable = async function() {
             </td>
             <td class="p-2.5 text-center">
                 <div class="flex items-center justify-center gap-1.5 flex-wrap">
-                    <button type="button" onclick="window.handleAdminKeepUser('${s.id || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name)}')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Keep pharmacy active">
+                    <button type="button" onclick="window.handleAdminKeepPharmacyByIndex(${idx})" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Keep pharmacy active">
                         <i data-lucide="check" class="w-3 h-3 inline"></i> Keep
                     </button>
-                    <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${s.phone || ''}', ${idx})" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick / Delete pharmacy permanently">
+                    <button type="button" onclick="window.handleAdminKickPharmacyByIndex(${idx})" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick / Delete pharmacy permanently">
                         <i data-lucide="trash-2" class="w-3 h-3 inline"></i> Kick
                     </button>
                 </div>
@@ -8852,20 +9058,38 @@ window.showHubActiveProfile = function() {
 
     const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
 
+    const superAdminBox = document.getElementById('hub-super-admin-controls');
+    const storeProfileForm = document.getElementById('hub-store-profile-form');
+
     if (isSuperAdmin) {
         if (sessionName) sessionName.innerText = '👑 Super Admin';
         if (sessionDetail) sessionDetail.innerText = `● 1 Seat Occupied: 03********4 (Master Control)`;
-    } else if (mode === 'authenticated' && user) {
-        if (sessionName) sessionName.innerText = user.name || 'Store Pharmacist';
-        if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
+        if (superAdminBox) superAdminBox.classList.remove('hidden');
+        if (storeProfileForm) storeProfileForm.classList.add('hidden');
     } else {
-        if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
-        if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login as Admin';
+        if (superAdminBox) superAdminBox.classList.add('hidden');
+        if (storeProfileForm) storeProfileForm.classList.remove('hidden');
+        if (mode === 'authenticated' && user) {
+            if (sessionName) sessionName.innerText = user.name || 'Store Pharmacist';
+            if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
+        } else {
+            if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
+            if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login as Admin';
+        }
     }
     safeCreateIcons();
 };
 
 window.openAccountHubModal = function() {
+    const user = window.getCurrentUser();
+    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+
+    // If Super Admin is logged in, profile button directly opens the Admin Super Control modal
+    if (isSuperAdmin) {
+        window.openAdminStaffModal();
+        return;
+    }
+
     const mode = window.getCurrentUserMode();
     if (!mode || mode === 'guest') {
         window.showHubChoiceSection();
