@@ -974,7 +974,7 @@ const SUPER_ADMIN_PASSWORD = 'medical@shehzad634';
 function isPhoneAdmin(phone?: string): boolean {
   if (!phone) return false;
   const digits = String(phone).replace(/\D/g, '');
-  return digits === '03452919634' || phone === '03********4';
+  return digits === '03452919634' || phone === '***********' || phone === '*********' || phone === '03********4';
 }
 
 const NETWORK_FILE = path.resolve(__dirname, 'network_pharmacies.json');
@@ -1021,7 +1021,12 @@ app.post('/api/admin/verify', (req: Request, res: Response): void => {
     const cleanInputPhone = inputPhone.replace(/\D/g, '');
     const cleanExpected = SUPER_ADMIN_PHONE.replace(/\D/g, '');
 
-    const isPhoneMatch = !inputPhone || cleanInputPhone === cleanExpected || inputPhone === '03********4' || inputPhone === SUPER_ADMIN_PHONE;
+    const isPhoneMatch = !inputPhone || 
+      cleanInputPhone === cleanExpected || 
+      inputPhone === '***********' || 
+      inputPhone === '*********' || 
+      inputPhone === '03********4' || 
+      inputPhone === SUPER_ADMIN_PHONE;
     const isPassMatch = inputPass === SUPER_ADMIN_PASSWORD;
 
     if (isPhoneMatch && isPassMatch) {
@@ -1031,7 +1036,7 @@ app.post('/api/admin/verify', (req: Request, res: Response): void => {
         admin: {
           name: 'Super Admin',
           phone: SUPER_ADMIN_PHONE,
-          maskedPhone: '03********4',
+          maskedPhone: '***********',
           email: 'shzdkhkh01@gmail.com',
           role: 'super_admin',
           isSuperAdmin: true,
@@ -1382,7 +1387,7 @@ function saveKickedUsers(list: string[]) {
 let registeredUsers: UserAccount[] = loadRegisteredUsers();
 let kickedUserIds: string[] = loadKickedUsers();
 
-// Endpoint: Register or sync a registered user
+// Endpoint: Register or sync a registered user (Strict 1 Account per Gmail ID)
 app.post('/api/users/register', (req: Request, res: Response): void => {
   try {
     const { uid, email, phone, name, pharmacyName, city } = req.body || {};
@@ -1392,6 +1397,16 @@ app.post('/api/users/register', (req: Request, res: Response): void => {
 
     if (!cleanEmail && !cleanUid) {
       res.status(400).json({ success: false, error: 'Email ya UID zaroori hai.' });
+      return;
+    }
+
+    // STRICT USER REQUIREMENT: 1 Gmail ID pe sirf 1 account create hona chahiye
+    const existingByEmail = registeredUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    if (existingByEmail && cleanUid && existingByEmail.uid !== cleanUid) {
+      res.status(409).json({
+        success: false,
+        error: 'Is Gmail ID par pehle se account mojood hai! 1 Gmail ID par sirf 1 account create ho sakta hai.'
+      });
       return;
     }
 
@@ -1429,6 +1444,33 @@ app.post('/api/users/register', (req: Request, res: Response): void => {
   }
 });
 
+// Endpoint: Check if specific email exists (For Forgot Password verification)
+app.get('/api/users/check', (req: Request, res: Response): void => {
+  const qEmail = String(req.query.email || '').trim().toLowerCase();
+  if (!qEmail) {
+    res.json({ exists: false, error: 'Email missing' });
+    return;
+  }
+
+  const foundUser = registeredUsers.find(u => u.email.toLowerCase() === qEmail);
+  const foundPharm = activeNetworkPharmacies.find(p => p.email && p.email.toLowerCase() === qEmail);
+
+  if (foundUser || foundPharm) {
+    const user = foundUser || {
+      uid: foundPharm?.id || '',
+      email: foundPharm?.email || qEmail,
+      phone: foundPharm?.phone || '',
+      name: foundPharm?.ownerName || foundPharm?.name || 'Pharmacy Owner',
+      pharmacyName: foundPharm?.name || 'My Pharmacy',
+      status: foundPharm?.status || 'Active'
+    };
+    res.json({ exists: true, user });
+    return;
+  }
+
+  res.json({ exists: false });
+});
+
 // Endpoint: List all registered accounts (Strict check for login & forgot password)
 app.get('/api/users/list', (_req: Request, res: Response): void => {
   res.json({
@@ -1461,6 +1503,55 @@ app.get('/api/user/check-status', (req: Request, res: Response): void => {
   res.json({
     success: true,
     kicked: isKicked
+  });
+});
+
+// Endpoint: Get list of removed / kicked members for Super Admin Control separate list
+app.get('/api/admin/kicked-list', (_req: Request, res: Response): void => {
+  const kickedMembers: any[] = [];
+  const seenKeys = new Set<string>();
+
+  // 1. From registeredUsers marked as Kicked
+  registeredUsers.filter(u => u.status === 'Kicked').forEach(u => {
+    const key = u.email ? `em:${u.email.toLowerCase()}` : `id:${u.uid}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      kickedMembers.push({
+        id: u.uid,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        pharmacyName: u.pharmacyName,
+        status: 'Kicked / Data Wiped',
+        type: 'Registered User'
+      });
+    }
+  });
+
+  // 2. From kickedUserIds or deletedPharmacyTokens
+  kickedUserIds.forEach(id => {
+    if (!id || isPhoneAdmin(id) || id === 'shzdkhkh01@gmail.com') return;
+    const isEmail = id.includes('@');
+    const isPhone = /^\d{10,11}$/.test(id);
+    const key = `raw:${id}`;
+    if (!seenKeys.has(key) && !seenKeys.has(`em:${id.toLowerCase()}`)) {
+      seenKeys.add(key);
+      kickedMembers.push({
+        id: id,
+        name: isEmail ? id.split('@')[0] : (isPhone ? ('User ' + id) : 'Removed Account'),
+        email: isEmail ? id : '-',
+        phone: isPhone ? id : '-',
+        pharmacyName: 'Removed Member',
+        status: 'Kicked / Data Wiped',
+        type: 'Blacklist Record'
+      });
+    }
+  });
+
+  res.json({
+    success: true,
+    count: kickedMembers.length,
+    kicked: kickedMembers
   });
 });
 

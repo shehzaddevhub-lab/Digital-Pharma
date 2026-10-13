@@ -1613,25 +1613,35 @@ window.getCurrentUserMode = function() {
 };
 
 window.getCurrentUser = function() {
+    let base = {};
     if (authUser) {
-        return {
+        base = {
             name: authUser.displayName || authUser.email?.split('@')[0] || 'User',
             email: authUser.email || '',
-            photo: authUser.photoURL || localStorage.getItem('sm_profile_pic') || ''
+            photo: authUser.photoURL || localStorage.getItem('sm_profile_pic') || '',
+            uid: authUser.uid
         };
     }
     try {
         const localAuth = localStorage.getItem('sm_auth_user');
         if (localAuth) {
             const parsed = JSON.parse(localAuth);
-            return {
-                name: parsed.name || parsed.email?.split('@')[0] || 'User',
-                email: parsed.email || '',
-                photo: parsed.photo || localStorage.getItem('sm_profile_pic') || ''
+            base = {
+                ...parsed,
+                ...base,
+                name: base.name || parsed.name || parsed.email?.split('@')[0] || 'User',
+                email: base.email || parsed.email || '',
+                phone: parsed.phone || base.phone || '',
+                role: parsed.role || base.role || '',
+                maskedPhone: parsed.maskedPhone || base.maskedPhone || '***********',
+                isSuperAdmin: parsed.isSuperAdmin || localStorage.getItem('sm_is_admin') === 'true'
             };
         }
     } catch(e) {}
-    return null;
+    if (localStorage.getItem('sm_is_admin') === 'true') {
+        base.isSuperAdmin = true;
+    }
+    return Object.keys(base).length ? base : null;
 };
 
 window.applyStoreIdentity = function() {
@@ -1648,14 +1658,14 @@ window.applyStoreIdentity = function() {
     const statusDot = document.getElementById('hub-status-dot');
     const statusText = document.getElementById('hub-status-text');
 
-    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
 
     if (isSuperAdmin) {
         if (hubName) hubName.innerText = '👑 Super Admin';
         if (hubStatus) hubStatus.innerText = 'Super Control';
         if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse';
         if (statusText) {
-            statusText.innerText = 'Super Admin (03********4 Master Control)';
+            statusText.innerText = 'Super Admin (Master Control)';
             statusText.className = 'text-amber-800 font-bold';
         }
         if (headerChar) {
@@ -4754,12 +4764,12 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
     // Pure Online in-memory connection (No local storage fallback).
     const currentUser = window.getCurrentUser();
     const mode = window.getCurrentUserMode();
-    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '03********4' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '***********' || currentUser?.maskedPhone === '03********4' || localStorage.getItem('sm_is_admin') === 'true';
     const isLoggedIn = Boolean(isSuperAdmin || (mode === 'authenticated' && (authUser || currentUser?.email)));
 
     let savedStores = [];
     if (isLoggedIn && Array.isArray(window.onlineNetworkPharmacies)) {
-        savedStores = window.onlineNetworkPharmacies.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name) && String(p.phone || '').replace(/\D/g, '') !== SUPER_ADMIN_PHONE && p.phone !== '03********4' && !p.name?.includes('Super Admin'));
+        savedStores = window.onlineNetworkPharmacies.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name) && String(p.phone || '').replace(/\D/g, '') !== SUPER_ADMIN_PHONE && p.phone !== '***********' && p.phone !== '03********4' && !p.name?.includes('Super Admin'));
     }
 
     const queryLower = query.toLowerCase().trim();
@@ -5521,6 +5531,7 @@ window.refreshNetworkList = async function() {
         stores = window.onlineNetworkPharmacies.filter(p => 
             !['net_1', 'net_2', 'net_3'].includes(p.id) && 
             String(p.phone || '').replace(/\D/g, '').slice(-10) !== '3452919634' && 
+            p.phone !== '***********' && 
             p.phone !== '03********4' && 
             !p.name?.includes('Super Admin') &&
             !isStoreBlacklisted(p)
@@ -5535,7 +5546,7 @@ window.refreshNetworkList = async function() {
             if (data && Array.isArray(data.pharmacies)) {
                 data.pharmacies.forEach(dp => {
                     const normDpPhone = (dp.phone || '').replace(/\D/g, '').slice(-10);
-                    if (normDpPhone === '3452919634' || dp.phone === '03********4' || dp.name?.includes('Super Admin') || isStoreBlacklisted(dp)) return;
+                    if (normDpPhone === '3452919634' || dp.phone === '***********' || dp.phone === '03********4' || dp.name?.includes('Super Admin') || isStoreBlacklisted(dp)) return;
                     if (!stores.some(s => (s.id && s.id === dp.id) || (normDpPhone && (s.phone || '').replace(/\D/g, '').slice(-10) === normDpPhone) || (dp.email && s.email && s.email.toLowerCase() === dp.email.toLowerCase()))) {
                         stores.push(dp);
                     }
@@ -5553,7 +5564,7 @@ window.refreshNetworkList = async function() {
             snap.forEach(d => {
                 const docData = { id: d.id, ...d.data() };
                 const normDPhone = (docData.phone || '').replace(/\D/g, '').slice(-10);
-                if (normDPhone !== '3452919634' && docData.phone !== '03********4' && !docData.name?.includes('Super Admin') && !isStoreBlacklisted(docData)) {
+                if (normDPhone !== '3452919634' && docData.phone !== '***********' && docData.phone !== '03********4' && !docData.name?.includes('Super Admin') && !isStoreBlacklisted(docData)) {
                     stores.push(docData);
                 }
             });
@@ -5567,7 +5578,7 @@ window.refreshNetworkList = async function() {
     stores.forEach(s => {
         if (!s || !s.name || isStoreBlacklisted(s)) return;
         const normPhone = (s.phone || '').replace(/\D/g, '').slice(-10);
-        if (normPhone === '3452919634' || s.phone === '03********4' || s.name?.includes('Super Admin')) return;
+        if (normPhone === '3452919634' || s.phone === '***********' || s.phone === '03********4' || s.name?.includes('Super Admin')) return;
         const key = normPhone ? `ph:${normPhone}` : (s.email ? `em:${s.email.toLowerCase()}` : `id:${s.id}`);
         if (!seenStores.has(key)) {
             seenStores.add(key);
@@ -7242,7 +7253,7 @@ async function deleteSaleFromStore(id) {
     }
 }
 
-// Super Admin & Staff Management (Protected Phone Login - 03452919634 Masked as 03********4)
+// Super Admin & Staff Management (Protected Super Admin Portal - Fully Masked Phone)
 const SUPER_ADMIN_PHONE = '03452919634';
 const SUPER_ADMIN_EMAIL = 'shzdkhkh01@gmail.com';
 
@@ -7293,17 +7304,17 @@ window.handleAdminLogin = async function() {
                 }
             }
         } catch (fetchErr) {
-            console.warn('Admin API fetch failed:', fetchErr);
+            console.warn('Admin API fetch note:', fetchErr);
         }
 
-        // Direct secure fallback verification if server was unavailable or returned HTML
+        // Direct secure verification fallback if server was unavailable or password matched
         if (!isVerified) {
             const cleanDigits = inputPhone.replace(/\D/g, '');
-            const isPhoneMatch = !inputPhone || inputPhone === '03********4' || cleanDigits === '03452919634';
+            const isPhoneMatch = !inputPhone || inputPhone.includes('*') || inputPhone === '***********' || inputPhone === '03********4' || cleanDigits === '03452919634' || inputPhone === SUPER_ADMIN_PHONE;
             if (isPhoneMatch && pass === 'medical@shehzad634') {
                 isVerified = true;
             } else {
-                showToast('Ghalat Super Admin password darj kiya gaya hai!', 'error');
+                showToast('Ghalat Super Admin password darj kiya gaya hai! Sahi password enter karein.', 'error');
                 return;
             }
         }
@@ -7311,7 +7322,7 @@ window.handleAdminLogin = async function() {
         const adminUser = adminInfo || {
             name: 'Super Admin',
             phone: SUPER_ADMIN_PHONE,
-            maskedPhone: '03********4',
+            maskedPhone: '***********',
             role: 'super_admin',
             isSuperAdmin: true,
             uid: 'admin_master_03452919634',
@@ -7323,19 +7334,29 @@ window.handleAdminLogin = async function() {
         localStorage.setItem('sm_user_mode', 'authenticated');
         localStorage.setItem('sm_is_admin', 'true');
 
-        window.applyStoreIdentity();
-        window.closeAccountHubModal();
-        showToast('👑 Super Admin login kamyab! Staff aur Network Master Access activate ho gaya.', 'success');
+        try {
+            window.applyStoreIdentity();
+        } catch(e) {}
+        try {
+            window.closeAccountHubModal();
+        } catch(e) {}
+
+        showToast('👑 Super Admin login kamyab! Master Control activate ho gaya.', 'success');
 
         const controls = document.getElementById('admin-action-controls');
         if (controls) controls.classList.remove('hidden');
 
         setTimeout(() => {
-            window.openAdminStaffModal();
-        }, 300);
+            try {
+                window.openAdminStaffModal();
+            } catch(e) {}
+        }, 200);
     } catch(err) {
         console.error('Admin login error:', err);
-        showToast('Admin verification mein masla: Ghalat password ya system masla.', 'error');
+        // Only show verification error if user was NOT verified
+        if (localStorage.getItem('sm_is_admin') !== 'true') {
+            showToast('Admin verification mein masla: Ghalat password ya system masla.', 'error');
+        }
     } finally {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
     }
@@ -7343,10 +7364,10 @@ window.handleAdminLogin = async function() {
 
 window.openAdminStaffModal = function() {
     const currentUser = window.getCurrentUser();
-    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '03********4' || currentUser?.email === SUPER_ADMIN_EMAIL || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '***********' || currentUser?.maskedPhone === '03********4' || currentUser?.email === SUPER_ADMIN_EMAIL || localStorage.getItem('sm_is_admin') === 'true';
 
     if (!isSuperAdmin) {
-        showToast('Sirf Super Admin (03********4) ko staff aur network manage karne ki ijazat hai. Pehle Admin login karein.', 'warning');
+        showToast('Sirf Super Admin ko staff aur network manage karne ki ijazat hai. Pehle Admin login karein.', 'warning');
         window.openAccountHubModal();
         window.switchHubAuthTab('admin');
         return;
@@ -7356,6 +7377,7 @@ window.openAdminStaffModal = function() {
     window.switchAdminSectionTab('staff');
     window.renderAdminStaffTable();
     window.renderAdminNetworkTable();
+    window.renderAdminKickedTable();
     syncModalScrollLock();
     safeCreateIcons();
 };
@@ -7385,23 +7407,37 @@ window.handleAdminSuperControlLogout = async function() {
 window.switchAdminSectionTab = function(tab) {
     const btnStaff = document.getElementById('admin-tab-btn-staff');
     const btnNet = document.getElementById('admin-tab-btn-network');
+    const btnKicked = document.getElementById('admin-tab-btn-kicked');
     const panelStaff = document.getElementById('admin-panel-staff');
     const panelNet = document.getElementById('admin-panel-network');
+    const panelKicked = document.getElementById('admin-panel-kicked');
+
+    const resetBtn = (b) => {
+        b?.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
+        b?.classList.add('text-slate-600', 'hover:bg-white/60');
+    };
+    const setActiveBtn = (b) => {
+        b?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
+        b?.classList.remove('text-slate-600', 'hover:bg-white/60');
+    };
+
+    resetBtn(btnStaff);
+    resetBtn(btnNet);
+    resetBtn(btnKicked);
+    panelStaff?.classList.add('hidden');
+    panelNet?.classList.add('hidden');
+    panelKicked?.classList.add('hidden');
 
     if (tab === 'network') {
-        btnStaff?.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
-        btnStaff?.classList.add('text-slate-600', 'hover:bg-white/60');
-        btnNet?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
-        btnNet?.classList.remove('text-slate-600', 'hover:bg-white/60');
-        panelStaff?.classList.add('hidden');
+        setActiveBtn(btnNet);
         panelNet?.classList.remove('hidden');
         window.renderAdminNetworkTable();
+    } else if (tab === 'kicked') {
+        setActiveBtn(btnKicked);
+        panelKicked?.classList.remove('hidden');
+        window.renderAdminKickedTable();
     } else {
-        btnNet?.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
-        btnNet?.classList.add('text-slate-600', 'hover:bg-white/60');
-        btnStaff?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
-        btnStaff?.classList.remove('text-slate-600', 'hover:bg-white/60');
-        panelNet?.classList.add('hidden');
+        setActiveBtn(btnStaff);
         panelStaff?.classList.remove('hidden');
         window.renderAdminStaffTable();
     }
@@ -7431,7 +7467,7 @@ window.getRegisteredStaffList = function() {
 
     if (staff.length === 0) {
         staff = [
-            { id: 'staff_1', name: 'Super Admin', email: '03********4', role: 'Super Admin (1 Seat Master)', isFixedAdmin: true, status: 'Active', createdAt: new Date().toLocaleDateString() }
+            { id: 'staff_1', name: 'Super Admin', email: 'Master Control', role: 'Super Admin (1 Seat Master)', isFixedAdmin: true, status: 'Active', createdAt: new Date().toLocaleDateString() }
         ];
     }
     localStorage.setItem('sm_staff_members', JSON.stringify(staff));
@@ -7442,6 +7478,21 @@ window.renderAdminStaffTable = async function() {
     const tbody = document.getElementById('admin-staff-table-body');
     if (!tbody) return;
 
+    const getLocalDeletedTokens = () => {
+        try { return JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]'); } catch(_) { return []; }
+    };
+    const isExcluded = (id, email, phone, name) => {
+        const tokens = getLocalDeletedTokens();
+        const normP = (phone || '').replace(/\D/g, '').slice(-10);
+        const sEmail = (email && email !== '-') ? email.toLowerCase().trim() : '';
+        const sName = (name || '').toLowerCase().trim();
+        if (id && tokens.includes(id)) return true;
+        if (normP && tokens.includes(normP)) return true;
+        if (sEmail && tokens.includes(sEmail)) return true;
+        if (sName && tokens.includes(sName)) return true;
+        return false;
+    };
+
     let users = [];
     try {
         const res = await fetch('/api/admin/users');
@@ -7451,7 +7502,7 @@ window.renderAdminStaffTable = async function() {
         }
     } catch(_) {}
 
-    // Merge with registered accounts and local staff (strictly no Usman Ghani or Muhammad Ali)
+    // Merge with registered accounts and local staff
     const localStaff = window.getRegisteredStaffList();
     localStaff.forEach(s => {
         if (!users.some(u => u.email === s.email || (s.id && u.uid === s.id))) {
@@ -7459,7 +7510,7 @@ window.renderAdminStaffTable = async function() {
                 uid: s.id,
                 name: s.name,
                 email: s.email,
-                phone: s.email.startsWith('03') ? s.email : '',
+                phone: s.email?.startsWith('03') ? s.email : '',
                 pharmacyName: s.role || 'Staff Member',
                 status: s.status || 'Active',
                 isFixedAdmin: s.isFixedAdmin
@@ -7471,7 +7522,8 @@ window.renderAdminStaffTable = async function() {
     if (Array.isArray(window.onlineNetworkPharmacies)) {
         window.onlineNetworkPharmacies.forEach(p => {
             const normPhone = (p.phone || '').replace(/\D/g, '').slice(-10);
-            if (normPhone === '3452919634' || p.phone === '03********4' || p.name?.includes('Super Admin')) return;
+            if (normPhone === '3452919634' || p.phone === '***********' || p.phone === '03********4' || p.name?.includes('Super Admin')) return;
+            if (isExcluded(p.id, p.email, p.phone, p.name)) return;
             const exists = users.some(u => 
                 (p.id && u.uid === p.id) || 
                 (p.email && u.email && u.email.toLowerCase() === p.email.toLowerCase()) ||
@@ -7491,31 +7543,30 @@ window.renderAdminStaffTable = async function() {
         });
     }
 
-    // Filter out Usman Ghani and Muhammad Ali
-    users = users.filter(u => 
-        u.name !== 'Muhammad Ali' && 
-        u.name !== 'Usman Ghani' && 
-        u.email !== 'ali.pharmacy@gmail.com' && 
-        u.email !== 'usman.cashier@gmail.com'
-    );
+    // Filter out dummy test accounts and excluded/kicked accounts from active list
+    users = users.filter(u => {
+        if (u.name === 'Muhammad Ali' || u.name === 'Usman Ghani') return false;
+        if (u.email === 'ali.pharmacy@gmail.com' || u.email === 'usman.cashier@gmail.com') return false;
+        if (!u.isFixedAdmin && (u.status === 'Kicked' || isExcluded(u.uid, u.email, u.phone, u.name))) return false;
+        return true;
+    });
 
     if (users.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Koi registered user ya staff mojood nahi hai.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Koi active registered user ya staff mojood nahi hai.</td></tr>`;
         return;
     }
 
     window.adminStaffUsersList = users;
 
     tbody.innerHTML = users.map((s, idx) => {
-        const isMaster = s.isFixedAdmin || s.email === SUPER_ADMIN_EMAIL || s.phone === SUPER_ADMIN_PHONE || s.email === '03********4';
-        const isKicked = s.status === 'Kicked';
+        const isMaster = s.isFixedAdmin || s.email === SUPER_ADMIN_EMAIL || s.phone === SUPER_ADMIN_PHONE || s.email === 'Master Control';
 
         return `
-            <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${isKicked ? 'bg-red-50/40' : ''}">
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100">
                 <td class="p-2.5">
                     <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 rounded-full ${isMaster ? 'bg-amber-100 text-amber-900 border border-amber-300' : (isKicked ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-700')} flex items-center justify-center font-bold text-xs shrink-0">
-                            ${isMaster ? '👑' : (isKicked ? '🚫' : (s.name ? s.name[0] : 'U'))}
+                        <div class="w-7 h-7 rounded-full ${isMaster ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-700'} flex items-center justify-center font-bold text-xs shrink-0">
+                            ${isMaster ? '👑' : (s.name ? s.name[0] : 'U')}
                         </div>
                         <div>
                             <strong class="text-slate-900 font-bold block leading-tight">${escapeHtml(s.name || 'User')}</strong>
@@ -7529,11 +7580,11 @@ window.renderAdminStaffTable = async function() {
                     </span>
                 </td>
                 <td class="p-2.5 font-mono text-[11px] text-slate-600">
-                    <div>${escapeHtml(s.email || '-')}</div>
-                    ${s.phone ? `<div class="text-[10px] text-slate-400">${escapeHtml(s.phone)}</div>` : ''}
+                    <div>${isMaster ? 'Protected Master' : escapeHtml(s.email || '-')}</div>
+                    ${(s.phone && !isMaster) ? `<div class="text-[10px] text-slate-400">${escapeHtml(s.phone)}</div>` : ''}
                 </td>
                 <td class="p-2.5 text-center">
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isKicked ? 'bg-red-100 text-red-800 border border-red-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                         ● ${escapeHtml(s.status || 'Active')}
                     </span>
                 </td>
@@ -7548,11 +7599,6 @@ window.renderAdminStaffTable = async function() {
                             <button type="button" onclick="window.handleAdminKickUserByIndex(${idx})" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick user and wipe their app data">
                                 <i data-lucide="trash-2" class="w-3 h-3 inline"></i> Kick
                             </button>
-                            ${isKicked ? `
-                            <button type="button" onclick="window.handleAdminDeleteUserPermanentlyByIndex(${idx})" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer shadow-xs" title="Permanently delete user record">
-                                <i data-lucide="trash" class="w-3 h-3 inline"></i> Delete
-                            </button>
-                            ` : ''}
                         </div>
                     `}
                 </td>
@@ -7560,6 +7606,113 @@ window.renderAdminStaffTable = async function() {
         `;
     }).join('');
     safeCreateIcons();
+};
+
+// TAB 3: RENDER REMOVED / KICKED MEMBERS IN DEDICATED SEPARATE LIST
+window.renderAdminKickedTable = async function() {
+    const tbody = document.getElementById('admin-kicked-table-body');
+    const badge = document.getElementById('admin-kicked-count');
+    if (!tbody) return;
+
+    let kickedList = [];
+    try {
+        const res = await fetch('/api/admin/kicked-list');
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.kicked)) kickedList = data.kicked;
+        }
+    } catch(_) {}
+
+    // Also include local staff marked as kicked
+    try {
+        const staff = window.getRegisteredStaffList();
+        staff.filter(s => s.status === 'Kicked').forEach(s => {
+            if (!kickedList.some(k => k.id === s.id || (k.email && s.email && k.email.toLowerCase() === s.email.toLowerCase()))) {
+                kickedList.push({
+                    id: s.id,
+                    name: s.name,
+                    email: s.email,
+                    phone: s.phone || '-',
+                    pharmacyName: s.role || 'Staff Account',
+                    status: 'Kicked / Data Wiped',
+                    type: 'Staff Member'
+                });
+            }
+        });
+    } catch(_) {}
+
+    window.adminKickedMembersList = kickedList;
+    if (badge) badge.innerText = kickedList.length;
+
+    if (kickedList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Filhal koi member ya pharmacy kick / remove nahi ki gayi.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = kickedList.map((m, idx) => `
+        <tr class="hover:bg-rose-50/40 border-b border-rose-100 transition text-xs">
+            <td class="p-2.5">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0">
+                        🚫
+                    </div>
+                    <div>
+                        <strong class="text-slate-900 font-bold block leading-tight">${escapeHtml(m.name || 'Removed User')}</strong>
+                        <span class="text-[10px] text-slate-500">${escapeHtml(m.pharmacyName || m.type || 'Removed Member')}</span>
+                    </div>
+                </div>
+            </td>
+            <td class="p-2.5 font-mono text-[11px] text-slate-600">
+                ${escapeHtml(m.email || '-')}
+            </td>
+            <td class="p-2.5 font-mono text-[11px] text-slate-600">
+                ${escapeHtml(m.phone || '-')}
+            </td>
+            <td class="p-2.5 text-center">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                    ● ${escapeHtml(m.status || 'Kicked / Data Wiped')}
+                </span>
+            </td>
+            <td class="p-2.5 text-center">
+                <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                    <button type="button" onclick="window.handleAdminKeepKickedMemberByIndex(${idx})" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Restore and keep user active">
+                        <i data-lucide="check" class="w-3 h-3 inline"></i> Restore / Keep
+                    </button>
+                    <button type="button" onclick="window.handleAdminDeleteKickedMemberPermanentlyByIndex(${idx})" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer shadow-xs" title="Permanently delete record">
+                        <i data-lucide="trash" class="w-3 h-3 inline"></i> Delete Record
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+    safeCreateIcons();
+};
+
+window.handleAdminKeepKickedMemberByIndex = function(idx) {
+    const m = window.adminKickedMembersList?.[idx];
+    if (!m) return;
+    window.handleAdminKeepUser(m.id, m.email, m.phone, m.name);
+    setTimeout(() => {
+        window.renderAdminKickedTable();
+    }, 400);
+};
+
+window.handleAdminDeleteKickedMemberPermanentlyByIndex = function(idx) {
+    const m = window.adminKickedMembersList?.[idx];
+    if (!m) return;
+    customConfirm('Record Permanently Delete Karein?', `Kya aap "${m.name || m.email || 'Member'}" ka record blacklist se mukammal khatam karna chahte hain?`, async () => {
+        try {
+            await fetch('/api/admin/delete-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: m.id, email: m.email, phone: m.phone, name: m.name })
+            });
+        } catch(_) {}
+        showToast('Record permanently delete ho gaya!', 'info');
+        window.renderAdminKickedTable();
+        window.renderAdminStaffTable();
+        window.renderAdminNetworkTable();
+    });
 };
 
 window.handleAddStaffMember = function() {
@@ -7727,6 +7880,7 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
 
         window.renderAdminStaffTable();
         window.renderAdminNetworkTable();
+        window.renderAdminKickedTable();
         window.refreshNetworkList();
     });
 };
@@ -7765,6 +7919,7 @@ window.handleAdminKeepUser = async function(uid, email, phone, name) {
         showToast(`"${displayName}" verify ho gaya aur active rakha gaya hai.`, 'success');
         window.renderAdminStaffTable();
         window.renderAdminNetworkTable();
+        window.renderAdminKickedTable();
     } catch(e) {
         showToast('Error keeping user active', 'error');
     }
@@ -7885,7 +8040,7 @@ window.renderAdminNetworkTable = async function() {
         window.onlineNetworkPharmacies.forEach(p => {
             if (isBlacklisted(p)) return;
             const normPPhone = (p.phone || '').replace(/\D/g, '').slice(-10);
-            if (normPPhone === '3452919634' || p.phone === '03********4' || p.name?.includes('Super Admin')) return;
+            if (normPPhone === '3452919634' || p.phone === '***********' || p.phone === '03********4' || p.name?.includes('Super Admin')) return;
             const exists = stores.some(s => 
                 (p.id && s.id === p.id) || 
                 (p.email && s.email && s.email.toLowerCase() === p.email.toLowerCase()) ||
@@ -7905,7 +8060,7 @@ window.renderAdminNetworkTable = async function() {
                 const data = { id: d.id, ...d.data() };
                 if (isBlacklisted(data)) return;
                 const normD = (data.phone || '').replace(/\D/g, '').slice(-10);
-                if (normD !== '3452919634' && data.phone !== '03********4' && !data.name?.includes('Super Admin')) {
+                if (normD !== '3452919634' && data.phone !== '***********' && data.phone !== '03********4' && !data.name?.includes('Super Admin')) {
                     stores.push(data);
                 }
             });
@@ -7919,7 +8074,7 @@ window.renderAdminNetworkTable = async function() {
     stores.forEach(s => {
         if (!s || !s.name || isBlacklisted(s)) return;
         const normPhone = (s.phone || '').replace(/\D/g, '').slice(-10);
-        if (normPhone === '3452919634' || s.phone === '03********4' || s.name?.includes('Super Admin')) return;
+        if (normPhone === '3452919634' || s.phone === '***********' || s.phone === '03********4' || s.name?.includes('Super Admin')) return;
         const key = normPhone ? `ph:${normPhone}` : (s.email ? `em:${s.email.toLowerCase()}` : `id:${s.id}`);
         if (!seen.has(key)) {
             seen.add(key);
@@ -8080,7 +8235,7 @@ window.switchHubAuthTab = function(tab) {
         btnAdmin?.classList.remove('text-slate-600', 'hover:bg-white/60');
         panelAdmin?.classList.remove('hidden');
         const adminPhoneInput = document.getElementById('auth-admin-phone');
-        if (adminPhoneInput) adminPhoneInput.value = '03********4';
+        if (adminPhoneInput) adminPhoneInput.value = '***********';
     } else {
         btnLogin?.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
         btnLogin?.classList.remove('text-slate-600', 'hover:bg-white/60');
@@ -8102,7 +8257,7 @@ window.handleAuthSignup = async function() {
     }
 
     const cleanPhoneDigits = phone.replace(/\D/g, '');
-    if (cleanPhoneDigits === '03452919634' || phone === '03********4') {
+    if (cleanPhoneDigits === '03452919634' || phone === '***********' || phone === '03********4') {
         showToast('Yeh phone number sirf Super Admin seat kelye makhsoos hai. Barah-e-karam apna phone number darj karein.', 'error');
         return;
     }
@@ -8118,6 +8273,34 @@ window.handleAuthSignup = async function() {
         submitBtn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Registering...`;
     }
 
+    // STRICT USER REQUIREMENT: 1 Gmail ID pe sirf 1 account create hona chahiye
+    try {
+        const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+        if (regUsers.some(u => u.email && u.email.toLowerCase() === email)) {
+            showToast('Is Gmail ID par pehle se account mojood hai! 1 Gmail ID par sirf 1 account create ho sakta hai. Barah-e-karam Login karein.', 'warning');
+            window.switchHubAuthTab('login');
+            const loginEmailInput = document.getElementById('auth-login-email');
+            if (loginEmailInput) loginEmailInput.value = email;
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+            return;
+        }
+    } catch(_) {}
+
+    try {
+        const chkRes = await fetch(`/api/users/check?email=${encodeURIComponent(email)}`);
+        if (chkRes.ok) {
+            const chkData = await chkRes.json();
+            if (chkData.exists) {
+                showToast('Is Gmail ID par pehle se account mojood hai! 1 Gmail ID par sirf 1 account create ho sakta hai. Barah-e-karam Login karein.', 'warning');
+                window.switchHubAuthTab('login');
+                const loginEmailInput = document.getElementById('auth-login-email');
+                if (loginEmailInput) loginEmailInput.value = email;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                return;
+            }
+        }
+    } catch(_) {}
+
     try {
         let userUid = null;
         let firebaseAuthUser = null;
@@ -8130,7 +8313,7 @@ window.handleAuthSignup = async function() {
         } catch(authErr) {
             console.warn('Firebase createUser note:', authErr?.code, authErr?.message);
             if (authErr?.code === 'auth/email-already-in-use') {
-                showToast('Yeh Gmail pehle se registered hai! Barah-e-karam Login karein.', 'warning');
+                showToast('Is Gmail ID par pehle se account mojood hai! 1 Gmail ID par sirf 1 account create ho sakta hai. Barah-e-karam Login karein.', 'warning');
                 window.switchHubAuthTab('login');
                 const loginEmailInput = document.getElementById('auth-login-email');
                 if (loginEmailInput) loginEmailInput.value = email;
@@ -8780,55 +8963,119 @@ window.generateAccountSerialKey = async function() {
     }
 
     try {
-        const cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-        const targetUid = `ph_${cleanHash}`;
+        let cleanHash = btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+        let targetUid = `ph_${cleanHash}`;
         let accountExists = false;
+        let foundName = '';
 
-        // 1. Check local session
+        // 1. Check local registered users list
+        try {
+            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            const localMatch = regUsers.find(u => u.email && u.email.toLowerCase() === email);
+            if (localMatch) {
+                accountExists = true;
+                foundName = localMatch.ownerName || localMatch.name || '';
+                if (localMatch.uid) targetUid = localMatch.uid;
+            }
+        } catch(_) {}
+
+        // 2. Check local session
         const localAuth = JSON.parse(localStorage.getItem('sm_auth_user') || 'null');
         if (localAuth && localAuth.email && localAuth.email.toLowerCase() === email) {
             accountExists = true;
+            foundName = localAuth.name || foundName;
+            if (localAuth.uid) targetUid = localAuth.uid;
         }
 
-        // 2. Check Firestore users collection
+        // 3. Check backend users verification API
+        try {
+            const res = await fetch(`/api/users/check?email=${encodeURIComponent(email)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.exists && data.user) {
+                    accountExists = true;
+                    foundName = data.user.name || foundName;
+                    if (data.user.uid) targetUid = data.user.uid;
+                }
+            }
+        } catch(_) {}
+
+        // 4. Check backend users list API
+        if (!accountExists) {
+            try {
+                const res = await fetch('/api/users/list');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data.users)) {
+                        const uMatch = data.users.find(u => u.email && u.email.toLowerCase() === email);
+                        if (uMatch) {
+                            accountExists = true;
+                            foundName = uMatch.name || foundName;
+                            if (uMatch.uid) targetUid = uMatch.uid;
+                        }
+                    }
+                }
+            } catch(_) {}
+        }
+
+        // 5. Check Firestore users collection by email query or targetUid
+        if (!accountExists && db) {
+            try {
+                const qSnap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
+                if (!qSnap.empty) {
+                    accountExists = true;
+                    targetUid = qSnap.docs[0].id;
+                    foundName = qSnap.docs[0].data()?.ownerName || foundName;
+                }
+            } catch (eDoc) {
+                console.warn('Firestore user query note:', eDoc);
+            }
+        }
+
+        // 6. Check Firestore direct doc UID
         if (!accountExists && db) {
             try {
                 const userSnap = await getDoc(doc(db, 'users', targetUid));
                 if (userSnap.exists()) {
                     accountExists = true;
+                    foundName = userSnap.data()?.ownerName || foundName;
                 }
-            } catch (eDoc) {
-                console.warn('Firestore user check note:', eDoc);
-            }
+            } catch (_) {}
         }
 
-        // 3. Check Firestore pharmacies directory
+        // 7. Check Firestore pharmacies directory
         if (!accountExists && db) {
             try {
                 const pharmSnap = await getDoc(doc(db, 'pharmacies', targetUid));
                 if (pharmSnap.exists()) {
                     accountExists = true;
+                    foundName = pharmSnap.data()?.ownerName || pharmSnap.data()?.name || foundName;
                 }
-            } catch (ePharm) {}
+            } catch (_) {}
         }
 
-        // 4. Check backend network registry
+        // 8. Check backend network registry
         if (!accountExists) {
             try {
                 const res = await fetch('/api/network/stores');
                 if (res.ok) {
                     const list = await res.json();
-                    if (Array.isArray(list) && list.some(s => s.email && s.email.toLowerCase() === email)) {
-                        accountExists = true;
+                    if (Array.isArray(list)) {
+                        const sMatch = list.find(s => s.email && s.email.toLowerCase() === email);
+                        if (sMatch) {
+                            accountExists = true;
+                            foundName = sMatch.ownerName || sMatch.name || foundName;
+                            if (sMatch.id) targetUid = sMatch.id;
+                        }
                     }
                 }
-            } catch (eNet) {}
+            } catch (_) {}
         }
 
-        // If account not found in system
+        // If account not found in any system record
         if (!accountExists) {
             if (notFoundEl) notFoundEl.classList.remove('hidden');
-            showToast('Aapka account already mojood nahi hai! Barah-e-karam pehle sign up karein.', 'error');
+            showToast('Aapka account system record mein mojood nahi hai! Barah-e-karam pehle Sign Up karein.', 'error');
             return;
         }
 
@@ -8840,6 +9087,7 @@ window.generateAccountSerialKey = async function() {
             email: email,
             serialKey: randomSerial,
             uid: targetUid,
+            name: foundName,
             timestamp: Date.now()
         };
 
@@ -8856,7 +9104,7 @@ window.generateAccountSerialKey = async function() {
         if (confPass) confPass.value = '';
 
         window.switchFpStep('verify');
-        showToast(`Account mil gaya! Serial Key (${randomSerial}) generate ho chuki hai.`, 'success');
+        showToast(`Account tasdeeq ho gaya (${foundName || email})! Serial Key (${randomSerial}) generate ho chuki hai.`, 'success');
     } catch(err) {
         console.error('Serial key generation error:', err);
         showToast('Check karne mein masla aya: ' + (err?.message || err), 'error');
@@ -9073,33 +9321,33 @@ window.showHubActiveProfile = function() {
     const sessionName = document.getElementById('hub-session-user-name');
     const sessionDetail = document.getElementById('hub-session-user-detail');
 
-    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+
+    if (isSuperAdmin) {
+        // Direct redirect to Super Admin Control as requested: profile button should open admin control section, not pharmacy profile!
+        window.closeAccountHubModal();
+        window.openAdminStaffModal();
+        return;
+    }
 
     const superAdminBox = document.getElementById('hub-super-admin-controls');
     const storeProfileForm = document.getElementById('hub-store-profile-form');
 
-    if (isSuperAdmin) {
-        if (sessionName) sessionName.innerText = '👑 Super Admin';
-        if (sessionDetail) sessionDetail.innerText = `● 1 Seat Occupied: 03********4 (Master Control)`;
-        if (superAdminBox) superAdminBox.classList.remove('hidden');
-        if (storeProfileForm) storeProfileForm.classList.add('hidden');
+    if (superAdminBox) superAdminBox.classList.add('hidden');
+    if (storeProfileForm) storeProfileForm.classList.remove('hidden');
+    if (mode === 'authenticated' && user) {
+        if (sessionName) sessionName.innerText = user.name || 'Store Pharmacist';
+        if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
     } else {
-        if (superAdminBox) superAdminBox.classList.add('hidden');
-        if (storeProfileForm) storeProfileForm.classList.remove('hidden');
-        if (mode === 'authenticated' && user) {
-            if (sessionName) sessionName.innerText = user.name || 'Store Pharmacist';
-            if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
-        } else {
-            if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
-            if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login as Admin';
-        }
+        if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
+        if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login as Admin';
     }
     safeCreateIcons();
 };
 
 window.openAccountHubModal = function() {
     const user = window.getCurrentUser();
-    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
 
     // If Super Admin is logged in, profile button directly opens the Admin Super Control modal
     if (isSuperAdmin) {
