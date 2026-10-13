@@ -29,6 +29,11 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // Public connection test document
+    match /test/{docId} {
+      allow read: if true;
+    }
+
     // Public Connected Pharmacies Directory (Connects all pharmacies together)
     match /pharmacies/{pharmacyId} {
       allow read: if true;

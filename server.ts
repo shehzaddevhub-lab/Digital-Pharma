@@ -968,13 +968,13 @@ interface NetworkPharmacy {
   updatedAt: string;
 }
 
-const SUPER_ADMIN_PHONE = '03067717634';
+const SUPER_ADMIN_PHONE = '03452919634';
 const SUPER_ADMIN_PASSWORD = 'medical@shehzad634';
 
 function isPhoneAdmin(phone?: string): boolean {
   if (!phone) return false;
   const digits = String(phone).replace(/\D/g, '');
-  return digits === '03067717634' || phone === '03********4';
+  return digits === '03452919634' || phone === '03********4';
 }
 
 const NETWORK_FILE = path.resolve(__dirname, 'network_pharmacies.json');
@@ -1035,7 +1035,7 @@ app.post('/api/admin/verify', (req: Request, res: Response): void => {
           email: 'shzdkhkh01@gmail.com',
           role: 'super_admin',
           isSuperAdmin: true,
-          token: 'adm_sec_' + Buffer.from('03067717634:' + Date.now()).toString('base64')
+          token: 'adm_sec_' + Buffer.from(SUPER_ADMIN_PHONE + ':' + Date.now()).toString('base64')
         }
       });
       return;
@@ -1212,9 +1212,10 @@ app.get('/api/health', (_req, res) => {
 // Setup Vite middleware in dev or static files in production
 async function startServer() {
   const distPath = path.resolve(__dirname, 'dist');
+  const isProd = process.env.NODE_ENV === 'production';
   const hasDist = fs.existsSync(distPath) && fs.existsSync(path.resolve(distPath, 'index.html'));
 
-  if (hasDist) {
+  if (isProd && hasDist) {
     console.log('Serving production static build from dist directory.');
     app.use(express.static(distPath, {
       setHeaders: (res, filePath) => {

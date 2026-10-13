@@ -11,6 +11,7 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth';
 import { 
+  initializeFirestore,
   getFirestore, 
   collection, 
   doc, 
@@ -19,7 +20,8 @@ import {
   getDocs, 
   onSnapshot, 
   getDocFromServer,
-  deleteDoc
+  deleteDoc,
+  setLogLevel
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -31,30 +33,34 @@ if (typeof window !== 'undefined') {
   window.__FIREBASE_CONFIG__ = firebaseConfig;
 }
 
-// CRITICAL: Initialize Firestore with firestoreDatabaseId
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Set Firestore log level to silent to prevent console spam when client is offline or reconnecting
+try {
+  setLogLevel('silent');
+} catch (_) {}
+
+// CRITICAL: Initialize Firestore with firestoreDatabaseId & robust long-polling to prevent iframe/proxy network drops
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+}, firebaseConfig.firestoreDatabaseId);
 
 // Initialize Auth
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Test connection on boot as mandated
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase connection check: Client offline or initializing.');
-    }
-  }
-}
-testConnection();
-
 // Standard Firestore Error Handling
 export function handleFirestoreError(error, operationType, path) {
+  const errCode = error?.code || '';
+  const errMsg = error instanceof Error ? error.message : String(error);
+
+  // Gracefully handle transient offline / reconnecting events without triggering fatal error reports
+  if (errCode === 'unavailable' || errMsg.includes('unavailable') || errMsg.includes('offline') || errMsg.includes('Could not reach Cloud Firestore')) {
+    console.warn(`Firestore [${operationType}] offline/reconnecting for path: ${path || 'unknown'}`);
+    return null;
+  }
+
   const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
