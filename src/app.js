@@ -75,12 +75,10 @@ function initFirebase() {
             unsubscribeMeds = onSnapshot(medsColRef, async (snapshot) => {
                 const cloudMeds = [];
                 snapshot.forEach(docSnap => cloudMeds.push(docSnap.data()));
-                if (cloudMeds.length > 0) {
-                    medicines = cloudMeds;
-                    localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-                    renderInventoryTable();
-                    renderDashboardMetrics();
-                }
+                medicines = cloudMeds;
+                localStorage.setItem('sm_medicines', JSON.stringify(medicines));
+                renderInventoryTable();
+                renderDashboardMetrics();
             }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/medicines`));
 
             // 2. Sync User-Owned Sales Invoices
@@ -89,11 +87,9 @@ function initFirebase() {
             unsubscribeSales = onSnapshot(salesColRef, async (snapshot) => {
                 const cloudSales = [];
                 snapshot.forEach(docSnap => cloudSales.push(docSnap.data()));
-                if (cloudSales.length > 0) {
-                    sales = cloudSales;
-                    localStorage.setItem('sm_sales', JSON.stringify(sales));
-                    renderDashboardMetrics();
-                }
+                sales = cloudSales;
+                localStorage.setItem('sm_sales', JSON.stringify(sales));
+                renderDashboardMetrics();
             }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/sales`));
 
             // Note: Registration to Connected Network happens explicitly when store profile is configured,
