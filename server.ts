@@ -1204,6 +1204,250 @@ app.post('/api/network/unregister', (req: Request, res: Response): void => {
   }
 });
 
+// ==========================================
+// REGISTERED USERS & KICK / WIPE APP MANAGEMENT
+// ==========================================
+const REGISTERED_USERS_FILE = path.resolve(__dirname, 'registered_users.json');
+const KICKED_USERS_FILE = path.resolve(__dirname, 'kicked_users.json');
+
+interface UserAccount {
+  uid: string;
+  email: string;
+  phone: string;
+  name: string;
+  pharmacyName: string;
+  city: string;
+  status: 'Active' | 'Kicked';
+  role?: string;
+  registeredAt: string;
+}
+
+function loadRegisteredUsers(): UserAccount[] {
+  try {
+    if (fs.existsSync(REGISTERED_USERS_FILE)) {
+      const data = fs.readFileSync(REGISTERED_USERS_FILE, 'utf-8');
+      const list = JSON.parse(data);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (e) {
+    console.error('Error loading registered users:', e);
+  }
+  return [];
+}
+
+function saveRegisteredUsers(users: UserAccount[]) {
+  try {
+    fs.writeFileSync(REGISTERED_USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error saving registered users:', e);
+  }
+}
+
+function loadKickedUsers(): string[] {
+  try {
+    if (fs.existsSync(KICKED_USERS_FILE)) {
+      const data = fs.readFileSync(KICKED_USERS_FILE, 'utf-8');
+      const list = JSON.parse(data);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (e) {
+    console.error('Error loading kicked users:', e);
+  }
+  return [];
+}
+
+function saveKickedUsers(list: string[]) {
+  try {
+    fs.writeFileSync(KICKED_USERS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error saving kicked users:', e);
+  }
+}
+
+let registeredUsers: UserAccount[] = loadRegisteredUsers();
+let kickedUserIds: string[] = loadKickedUsers();
+
+// Endpoint: Register or sync a registered user
+app.post('/api/users/register', (req: Request, res: Response): void => {
+  try {
+    const { uid, email, phone, name, pharmacyName, city } = req.body || {};
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const cleanUid = String(uid || '').trim();
+
+    if (!cleanEmail && !cleanUid) {
+      res.status(400).json({ success: false, error: 'Email ya UID zaroori hai.' });
+      return;
+    }
+
+    // Check if previously kicked; unkick if registering again with valid intent
+    kickedUserIds = kickedUserIds.filter(id => id !== cleanUid && id !== cleanEmail && id !== cleanPhone);
+    saveKickedUsers(kickedUserIds);
+
+    const idx = registeredUsers.findIndex(u => 
+      (cleanUid && u.uid === cleanUid) || 
+      (cleanEmail && u.email.toLowerCase() === cleanEmail) ||
+      (cleanPhone && u.phone.replace(/\D/g, '') === cleanPhone)
+    );
+
+    const account: UserAccount = {
+      uid: cleanUid || (idx !== -1 ? registeredUsers[idx].uid : ('ph_' + Date.now())),
+      email: cleanEmail,
+      phone: String(phone || '').trim(),
+      name: String(name || '').trim() || cleanEmail.split('@')[0],
+      pharmacyName: String(pharmacyName || '').trim() || 'My Pharmacy',
+      city: String(city || '').trim() || 'Pakistan',
+      status: 'Active',
+      registeredAt: idx !== -1 ? registeredUsers[idx].registeredAt : new Date().toISOString()
+    };
+
+    if (idx !== -1) {
+      registeredUsers[idx] = account;
+    } else {
+      registeredUsers.push(account);
+    }
+    saveRegisteredUsers(registeredUsers);
+
+    res.json({ success: true, message: 'User registered in backend system', user: account });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Registration failed' });
+  }
+});
+
+// Endpoint: List all registered accounts (Strict check for login & forgot password)
+app.get('/api/users/list', (_req: Request, res: Response): void => {
+  res.json({
+    success: true,
+    count: registeredUsers.length,
+    users: registeredUsers.map(u => ({
+      uid: u.uid,
+      email: u.email,
+      phone: u.phone,
+      name: u.name,
+      pharmacyName: u.pharmacyName,
+      status: u.status,
+      registeredAt: u.registeredAt
+    }))
+  });
+});
+
+// Endpoint: Check if specific user is kicked / banned by admin
+app.get('/api/user/check-status', (req: Request, res: Response): void => {
+  const qUid = String(req.query.uid || '').trim();
+  const qEmail = String(req.query.email || '').trim().toLowerCase();
+  const qPhone = String(req.query.phone || '').replace(/\D/g, '');
+
+  const isKicked = kickedUserIds.some(k => 
+    (qUid && k === qUid) || 
+    (qEmail && k === qEmail) || 
+    (qPhone && k === qPhone)
+  );
+
+  res.json({
+    success: true,
+    kicked: isKicked
+  });
+});
+
+// Endpoint: Super Admin Get All Users & Staff
+app.get('/api/admin/users', (_req: Request, res: Response): void => {
+  // Combine registered user accounts and connected network pharmacies
+  const list = registeredUsers.map(u => {
+    const isKicked = kickedUserIds.includes(u.uid) || kickedUserIds.includes(u.email.toLowerCase()) || kickedUserIds.includes(u.phone.replace(/\D/g, ''));
+    return {
+      ...u,
+      status: isKicked ? 'Kicked' : 'Active'
+    };
+  });
+  res.json({ success: true, users: list, kickedCount: kickedUserIds.length });
+});
+
+// Endpoint: Super Admin Kick User (Wipes their data & resets their app)
+app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
+  try {
+    const { uid, email, phone, name } = req.body || {};
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const cleanUid = String(uid || '').trim();
+
+    if (!cleanEmail && !cleanUid && !cleanPhone) {
+      res.status(400).json({ success: false, error: 'User details missing' });
+      return;
+    }
+
+    if (cleanEmail === 'shzdkhkh01@gmail.com' || cleanPhone === '03452919634') {
+      res.status(403).json({ success: false, error: 'Super Admin cannot be kicked.' });
+      return;
+    }
+
+    // Add identifiers to kicked list
+    if (cleanUid && !kickedUserIds.includes(cleanUid)) kickedUserIds.push(cleanUid);
+    if (cleanEmail && !kickedUserIds.includes(cleanEmail)) kickedUserIds.push(cleanEmail);
+    if (cleanPhone && !kickedUserIds.includes(cleanPhone)) kickedUserIds.push(cleanPhone);
+    saveKickedUsers(kickedUserIds);
+
+    // Update status in registered users
+    registeredUsers.forEach(u => {
+      if ((cleanUid && u.uid === cleanUid) || (cleanEmail && u.email.toLowerCase() === cleanEmail) || (cleanPhone && u.phone.replace(/\D/g, '') === cleanPhone)) {
+        u.status = 'Kicked';
+      }
+    });
+    saveRegisteredUsers(registeredUsers);
+
+    // Remove from network pharmacies as well
+    activeNetworkPharmacies = activeNetworkPharmacies.filter(p => {
+      if (cleanUid && p.id === cleanUid) return false;
+      if (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) return false;
+      if (cleanPhone && p.phone && p.phone.replace(/\D/g, '') === cleanPhone) return false;
+      return true;
+    });
+    saveNetworkPharmacies(activeNetworkPharmacies);
+
+    // Remove from shared medicine stocks
+    if (cleanPhone) {
+      networkMedicineStocks = networkMedicineStocks.filter(s => s.phone.replace(/\D/g, '') !== cleanPhone);
+    }
+
+    res.json({
+      success: true,
+      message: `User "${name || cleanEmail || cleanPhone}" has been kicked. App reset and data wipe signal dispatched.`,
+      kickedCount: kickedUserIds.length
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to kick user' });
+  }
+});
+
+// Endpoint: Super Admin Keep / Restore User (Keeps user active)
+app.post('/api/admin/keep-user', (req: Request, res: Response): void => {
+  try {
+    const { uid, email, phone, name } = req.body || {};
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const cleanUid = String(uid || '').trim();
+
+    // Remove from kicked list
+    kickedUserIds = kickedUserIds.filter(id => id !== cleanUid && id !== cleanEmail && id !== cleanPhone);
+    saveKickedUsers(kickedUserIds);
+
+    // Update status in registered users
+    registeredUsers.forEach(u => {
+      if ((cleanUid && u.uid === cleanUid) || (cleanEmail && u.email.toLowerCase() === cleanEmail) || (cleanPhone && u.phone.replace(/\D/g, '') === cleanPhone)) {
+        u.status = 'Active';
+      }
+    });
+    saveRegisteredUsers(registeredUsers);
+
+    res.json({
+      success: true,
+      message: `User "${name || cleanEmail || cleanPhone}" is kept Active and verified.`,
+      kickedCount: kickedUserIds.length
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to keep user' });
+  }
+});
+
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', app: 'Digital Pharma', developer: '@ShahzadKhakh' });

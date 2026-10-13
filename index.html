@@ -506,6 +506,18 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Dashboard Exclusive Footer (Well-designed & styled) -->
+            <footer class="col-span-full mt-4 mb-2 text-center select-none">
+                <div class="inline-flex flex-col items-center justify-center px-8 py-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white shadow-xl border border-teal-800/40 hover:border-emerald-500/50 transition">
+                    <span class="text-xs sm:text-sm font-black tracking-wider text-amber-400 font-sans">
+                        Digital Pharma - Software
+                    </span>
+                    <span class="text-[11px] sm:text-xs font-bold tracking-wide text-emerald-200 mt-1 font-sans">
+                        Developed by @ShahzadKhakh
+                    </span>
+                </div>
+            </footer>
         </section>
 
         <!-- POS VIEW -->
@@ -532,10 +544,10 @@
                 </div>
 
                 <!-- Instant POS Search Bar -->
-                <div class="relative">
+                <div id="pos-search-wrapper" class="relative transition-all scroll-mt-2">
                     <label class="block text-xs font-bold text-slate-600 mb-1">Dawai Search Karein (Type medicine name):</label>
                     <div class="relative">
-                        <input type="text" id="pos-search" placeholder="Search brand name or formula..." oninput="window.searchMedicineForPos()" onkeydown="window.handlePosSearchKey(event)" class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 font-medium text-xs sm:text-sm text-slate-900">
+                        <input type="text" id="pos-search" placeholder="Search brand name or formula..." onfocus="window.scrollPosSearchToTop()" oninput="window.searchMedicineForPos(); window.scrollPosSearchToTop();" onkeydown="window.handlePosSearchKey(event)" class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 font-medium text-xs sm:text-sm text-slate-900 shadow-xs">
                         <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
                     </div>
                     <div id="pos-search-results" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto z-20 divide-y divide-slate-100"></div>
@@ -558,6 +570,7 @@
                         <select id="pos-unit-type" onchange="window.updatePosLivePriceHint()" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
                             <option value="pack">📦 Full Pack</option>
                             <option value="loose">Loose Unit 💊</option>
+                            <option value="strip">Full Strip 📑</option>
                         </select>
                     </div>
                     <div>
@@ -842,12 +855,6 @@
                         <span id="simple-calc-sale-amount-badge" class="px-2.5 py-1 rounded-xl bg-white text-emerald-900 font-mono font-black text-xs sm:text-sm shadow-sm inline-block opacity-75 transition-all">Rs. 0</span>
                     </div>
                 </button>
-                <div id="simple-calc-last-sale-status" class="hidden mt-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[11px] text-emerald-800 font-medium flex items-center justify-between">
-                    <span id="simple-calc-last-sale-text" class="flex items-center gap-1.5 font-bold"></span>
-                    <button type="button" onclick="window.openSalesAnalyticsModal('today', 'data')" class="text-emerald-700 hover:text-emerald-900 underline font-black text-[10px] cursor-pointer">
-                        View Sale ↗
-                    </button>
-                </div>
             </div>
 
             <!-- CALCULATOR 2: Rate & Pack Calculator -->
@@ -1059,10 +1066,7 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button type="button" onclick="window.clearLocalNetworkStorage()" class="bg-red-500/20 hover:bg-red-500/30 text-rose-200 border border-rose-400/30 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer" title="Mobile ya local storage ka purana network data saaf karein">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-300"></i> Clear Local Cache
-                    </button>
-                    <button type="button" onclick="window.refreshNetworkList()" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer">
+                    <button type="button" onclick="window.refreshNetworkList()" class="bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh Network
                     </button>
                 </div>
@@ -1081,19 +1085,19 @@
                     Pharmacies network load ho raha hai...
                 </div>
             </div>
-        </section>
 
-        <!-- Main Content Bottom Developer Credit -->
-        <footer id="app-main-footer" class="mt-4 mb-2 text-center px-3">
-            <div class="inline-flex flex-col items-center justify-center px-7 py-3 rounded-2xl bg-gradient-to-r from-slate-900 via-brand-950 to-slate-900 text-white shadow-xl border border-slate-700/80">
-                <span class="text-xs sm:text-sm font-black tracking-wider text-amber-400 font-sans">
-                    Digital Pharma - Software
-                </span>
-                <span class="text-[11px] sm:text-xs font-bold tracking-wide text-slate-200 mt-0.5 font-sans">
-                    Developed by Shahzad Khakh
-                </span>
-            </div>
-        </footer>
+            <!-- Network Pharmacy Exclusive Footer (Well-designed & styled) -->
+            <footer class="mt-4 mb-2 text-center select-none">
+                <div class="inline-flex flex-col items-center justify-center px-8 py-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white shadow-xl border border-teal-800/40 hover:border-emerald-500/50 transition">
+                    <span class="text-xs sm:text-sm font-black tracking-wider text-amber-400 font-sans">
+                        Digital Pharma - Software
+                    </span>
+                    <span class="text-[11px] sm:text-xs font-bold tracking-wide text-emerald-200 mt-1 font-sans">
+                        Developed by @ShahzadKhakh
+                    </span>
+                </div>
+            </footer>
+        </section>
 
     </main>
 
@@ -2443,61 +2447,6 @@
                         <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-600"></i> Delete Account & Clear All Data
                     </button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- SUPER ADMIN STAFF & NETWORK PHARMACY MANAGEMENT MODAL -->
-    <div id="admin-staff-modal" onclick="if(event.target===this) window.closeAdminStaffModal()" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-4 border border-amber-400/40 max-h-[92vh] overflow-y-auto">
-            <div class="flex items-center justify-between border-b pb-3">
-                <div class="flex items-center gap-2.5">
-                    <span class="p-2 bg-amber-500 text-slate-950 rounded-2xl shadow-xs">
-                        <i data-lucide="shield-check" class="w-5 h-5"></i>
-                    </span>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h3 class="font-black text-slate-900 text-sm sm:text-base">Super Admin Network Control</h3>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">1 Seat Master</span>
-                        </div>
-                        <p class="text-[11px] text-slate-500">Authorized: <strong class="text-amber-800">shzdkhkh01@gmail.com</strong> • Manage Network Stores & Staff</p>
-                    </div>
-                </div>
-                <button type="button" onclick="window.closeAdminStaffModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <div class="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl text-xs space-y-1">
-                <span class="font-black text-amber-950 flex items-center gap-1.5">
-                    <i data-lucide="info" class="w-4 h-4 text-amber-700"></i>
-                    Network Pharmacies Directory Management:
-                </span>
-                <p class="text-[11px] text-amber-900 leading-relaxed">
-                    Yahan se aap kisi bhi partner pharmacy ko review kar sakte hain, verify kar sakte hain ya click kar ke foran network se <strong>Remove / Keep</strong> kar sakte hain.
-                </p>
-            </div>
-
-            <!-- Stores List in Admin Control -->
-            <div class="space-y-2">
-                <div class="flex items-center justify-between">
-                    <h4 class="font-black text-slate-800 text-xs uppercase tracking-wider">Registered Network Pharmacies (<span id="admin-stores-count">0</span>):</h4>
-                    <button type="button" onclick="window.refreshAdminStaffList()" class="text-xs text-brand-700 font-bold hover:underline flex items-center gap-1">
-                        <i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh List
-                    </button>
-                </div>
-
-                <div id="admin-stores-list" class="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden max-h-80 overflow-y-auto">
-                    <div class="p-6 text-center text-slate-400 text-xs">
-                        Loading network stores...
-                    </div>
-                </div>
-            </div>
-
-            <div class="pt-2 border-t flex justify-end">
-                <button type="button" onclick="window.closeAdminStaffModal()" class="px-5 py-2.5 bg-slate-900 hover:bg-black text-white font-bold rounded-xl text-xs transition cursor-pointer active:scale-95">
-                    Close Control Panel
-                </button>
             </div>
         </div>
     </div>

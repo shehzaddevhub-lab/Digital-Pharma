@@ -2722,22 +2722,13 @@ window.addSimpleCalcToSale = async function() {
         console.error('Error saving calculator sale:', err);
     }
 
-    // 3. Instant live update of Dashboard metrics & sales records
+    // 3. Instant live update of Dashboard metrics & sales records (History sent to All Bills, Dashboard & Sales)
     renderDashboardMetrics();
     if (typeof window.renderSalesAnalytics === 'function') {
         try { window.renderSalesAnalytics(); } catch(_) {}
     }
 
-    // 4. Update status display below calculator button
-    const lastStatus = document.getElementById('simple-calc-last-sale-status');
-    const lastText = document.getElementById('simple-calc-last-sale-text');
-    if (lastStatus && lastText) {
-        lastText.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> <span>Rs. ${formatShopDisplay(String(currentNum))} Sale mein shamil ho gaya (#${invoiceId})</span>`;
-        lastStatus.classList.remove('hidden');
-        safeCreateIcons();
-    }
-
-    // 5. Clear calculator for the next transaction / calculation
+    // 4. Clear calculator for the next calculation (Strictly no history added below calculator)
     window.simpleCalcClear();
 
     showToast(`Rs. ${formatShopDisplay(String(currentNum))} Sale mein shamil ho gaya!`, 'success');
@@ -2942,14 +2933,14 @@ window.handlePrescriptionScan = async function(event) {
                     </div>
                     <strong class="text-sm font-black text-rose-900 block">AI Scan Complete Nahi Ho Saka</strong>
                     <p class="text-xs text-rose-700 max-w-sm mx-auto leading-relaxed">
-                        ${err?.message || 'Hosting server se rabta nahi ho saka ya internet mein masla aya.'}
+                        ${err?.message || 'Server se rabta nahi ho saka ya internet mein masla aya.'}
                     </p>
 
-                    <!-- Live Host & Installed PWA Free Google Gemini Key Input -->
+                    <!-- Google Gemini Key Input -->
                     <div class="max-w-sm mx-auto p-3.5 bg-amber-50 border border-amber-300/80 rounded-xl text-left space-y-2 mt-2">
                         <div class="flex items-center justify-between">
                             <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
-                                <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Live Host / PWA Gemini API Key
+                                <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Gemini API Key
                             </span>
                             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[11px] font-black text-amber-950 bg-gradient-to-r from-amber-200 via-amber-300 to-amber-200 hover:from-amber-300 hover:to-amber-400 border border-amber-400 px-2.5 py-0.5 rounded-full shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer">
                                 <i data-lucide="key" class="w-3 h-3 text-amber-800"></i> Get API Key ↗
@@ -3279,14 +3270,14 @@ window.handleRealInvoiceOcr = async function(event) {
                 </div>
                 <strong class="text-sm font-black text-rose-900 block">Bill AI Scan Mukammal Nahi Ho Saka</strong>
                 <p class="text-xs text-rose-700 max-w-sm mx-auto leading-relaxed">
-                    ${err?.message || 'Hosting server se rabta nahi ho saka ya internet mein masla aya.'}
+                    ${err?.message || 'Server se rabta nahi ho saka ya internet mein masla aya.'}
                 </p>
 
-                <!-- Live Host & Installed PWA Free Google Gemini Key Input -->
+                <!-- Google Gemini Key Input -->
                 <div class="max-w-sm mx-auto p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-left space-y-2 my-2">
                     <div class="flex items-center justify-between">
                         <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
-                            <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Live Host / PWA Gemini API Key
+                            <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Gemini API Key
                         </span>
                         <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[11px] font-black text-amber-950 bg-gradient-to-r from-amber-200 via-amber-300 to-amber-200 hover:from-amber-300 hover:to-amber-400 border border-amber-400 px-2.5 py-0.5 rounded-full shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer">
                             <i data-lucide="key" class="w-3 h-3 text-amber-800"></i> Get API Key ↗
@@ -4274,6 +4265,8 @@ window.updatePosLivePriceHint = function() {
 
     const packInfo = parsePackSize(currentSelectedMed.packSize);
     const totalUnits = Math.max(1, packInfo.totalUnits);
+    const unitsPerStrip = packInfo.strips > 1 ? packInfo.unitsPerStrip : (totalUnits >= 10 ? 10 : totalUnits);
+    const stripsInPack = packInfo.strips > 1 ? packInfo.strips : Math.max(1, Math.round(totalUnits / unitsPerStrip));
     const mrp = Number(currentSelectedMed.mrp) || 0;
     const qty = Math.max(1, parseInt(document.getElementById('pos-qty')?.value) || 1);
     const unitType = document.getElementById('pos-unit-type')?.value || 'pack';
@@ -4283,6 +4276,11 @@ window.updatePosLivePriceHint = function() {
         const total = perTabPrice * qty;
         badge.innerText = `Rs. ${perTabPrice.toFixed(1)}/unit (Tot: Rs. ${total.toFixed(1)})`;
         badge.className = 'text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded truncate max-w-[130px]';
+    } else if (unitType === 'strip') {
+        const perStripPrice = packInfo.strips > 1 ? (mrp / packInfo.strips) : ((mrp / totalUnits) * unitsPerStrip);
+        const total = perStripPrice * qty;
+        badge.innerText = `Rs. ${perStripPrice.toFixed(1)}/strip (${unitsPerStrip}u, Tot: Rs. ${total.toFixed(1)})`;
+        badge.className = 'text-[9px] font-black text-indigo-800 bg-indigo-100 px-1.5 py-0.5 rounded truncate max-w-[130px]';
     } else {
         const total = mrp * qty;
         badge.innerText = `Rs. ${mrp.toFixed(1)}/pack (Tot: Rs. ${total.toFixed(1)})`;
@@ -4310,6 +4308,7 @@ window.addItemToCart = function() {
     const qty = Math.max(1, parseInt(document.getElementById('pos-qty')?.value) || 1);
     const packInfo = parsePackSize(currentSelectedMed.packSize);
     const totalUnits = Math.max(1, packInfo.totalUnits);
+    const unitsPerStrip = packInfo.strips > 1 ? packInfo.unitsPerStrip : (totalUnits >= 10 ? 10 : totalUnits);
     const mrp = Number(currentSelectedMed.mrp) || 0;
 
     let pricePerUnit = 0;
@@ -4323,6 +4322,16 @@ window.addItemToCart = function() {
         const totalUnitsAvailable = currentSelectedMed.stock * totalUnits;
         if (totalUnitsAvailable < qty) {
             showToast(`Stock kam hai! Mojood Loose Unit 💊: ${Math.floor(totalUnitsAvailable)}`, 'error');
+            return;
+        }
+    } else if (unitType === 'strip') {
+        pricePerUnit = packInfo.strips > 1 ? (mrp / packInfo.strips) : ((mrp / totalUnits) * unitsPerStrip);
+        stockDeduction = (qty * unitsPerStrip) / totalUnits;
+        displayUnit = `Full Strip 📑 (${unitsPerStrip}u)`;
+        const totalUnitsAvailable = currentSelectedMed.stock * totalUnits;
+        if (totalUnitsAvailable < (qty * unitsPerStrip)) {
+            const availableStrips = Math.floor(totalUnitsAvailable / unitsPerStrip);
+            showToast(`Stock kam hai! Mojood Full Strips 📑: ${availableStrips}`, 'error');
             return;
         }
     } else {
@@ -4372,8 +4381,9 @@ window.changeCartItemQty = function(index, delta) {
         return;
     }
     const med = medicines.find(m => m.id === item.id);
-    const packInfo = med ? parsePackSize(med.packSize) : { totalUnits: 20 };
+    const packInfo = med ? parsePackSize(med.packSize) : { totalUnits: 20, strips: 1, unitsPerStrip: 20 };
     const totalUnits = Math.max(1, packInfo.totalUnits);
+    const unitsPerStrip = packInfo.strips > 1 ? packInfo.unitsPerStrip : (totalUnits >= 10 ? 10 : totalUnits);
 
     if (item.unitType === 'loose') {
         const totalUnitsAvailable = (med ? med.stock : 999) * totalUnits;
@@ -4382,6 +4392,14 @@ window.changeCartItemQty = function(index, delta) {
             return;
         }
         item.stockDeduct = newQty / totalUnits;
+    } else if (item.unitType === 'strip') {
+        const totalUnitsAvailable = (med ? med.stock : 999) * totalUnits;
+        if (totalUnitsAvailable < (newQty * unitsPerStrip)) {
+            const availableStrips = Math.floor(totalUnitsAvailable / unitsPerStrip);
+            showToast(`Stock kam hai! Mojood Full Strips 📑: ${availableStrips}`, 'error');
+            return;
+        }
+        item.stockDeduct = (newQty * unitsPerStrip) / totalUnits;
     } else {
         if (med && med.stock < newQty) {
             showToast(`Stock kam hai! Mojood: ${med.stock} packs`, 'error');
@@ -5461,7 +5479,7 @@ window.refreshNetworkList = async function() {
                 </div>
                 <h4 class="font-black text-slate-900 text-base">Sirf Login Accounts Kelye Dastyab Hai</h4>
                 <p class="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-                    Connected Pharmacy Network, partner stores ki inventory aur live medicine rates sirf verified login users kelye hain. Local storage system permanent khtm kar diya gaya hai, sirf online real-time network connected rahega.
+                    Connected Pharmacy Network, partner stores ki inventory aur live medicine rates sirf verified login users kelye hain.
                 </p>
                 <div class="pt-2">
                     <button type="button" onclick="window.openAccountHubModal()" class="px-5 py-2.5 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-xl text-xs font-black shadow-md active:scale-95 transition inline-flex items-center gap-2 cursor-pointer">
@@ -7292,56 +7310,88 @@ window.getRegisteredStaffList = function() {
     return staff;
 };
 
-window.renderAdminStaffTable = function() {
+window.renderAdminStaffTable = async function() {
     const tbody = document.getElementById('admin-staff-table-body');
     if (!tbody) return;
-    const staff = window.getRegisteredStaffList();
 
-    tbody.innerHTML = staff.map((s) => `
-        <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-            <td class="p-2.5">
-                <div class="flex items-center gap-2">
-                    <div class="w-7 h-7 rounded-full ${s.isFixedAdmin ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-700'} flex items-center justify-center font-bold text-xs shrink-0">
-                        ${s.isFixedAdmin ? '👑' : (s.name[0] || 'U')}
+    let users = [];
+    try {
+        const res = await fetch('/api/admin/users');
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.users)) users = data.users;
+        }
+    } catch(_) {}
+
+    // Merge with registered accounts and local staff
+    const localStaff = window.getRegisteredStaffList();
+    localStaff.forEach(s => {
+        if (!users.some(u => u.email === s.email)) {
+            users.push({
+                uid: s.id,
+                name: s.name,
+                email: s.email,
+                phone: s.email.startsWith('03') ? s.email : '',
+                pharmacyName: s.role || 'Staff Member',
+                status: s.status || 'Active',
+                isFixedAdmin: s.isFixedAdmin
+            });
+        }
+    });
+
+    if (users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Koi registered user ya staff mojood nahi hai.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = users.map((s) => {
+        const isMaster = s.isFixedAdmin || s.email === SUPER_ADMIN_EMAIL || s.phone === SUPER_ADMIN_PHONE || s.email === '03********4';
+        const isKicked = s.status === 'Kicked';
+
+        return `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${isKicked ? 'bg-red-50/40' : ''}">
+                <td class="p-2.5">
+                    <div class="flex items-center gap-2">
+                        <div class="w-7 h-7 rounded-full ${isMaster ? 'bg-amber-100 text-amber-900 border border-amber-300' : (isKicked ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-700')} flex items-center justify-center font-bold text-xs shrink-0">
+                            ${isMaster ? '👑' : (isKicked ? '🚫' : (s.name ? s.name[0] : 'U'))}
+                        </div>
+                        <div>
+                            <strong class="text-slate-900 font-bold block leading-tight">${escapeHtml(s.name || 'User')}</strong>
+                            <span class="text-[10px] text-slate-500">${escapeHtml(s.pharmacyName || 'Registered Account')}</span>
+                        </div>
                     </div>
-                    <div>
-                        <strong class="text-slate-900 font-bold block leading-tight">${escapeHtml(s.name)}</strong>
-                        <span class="text-[10px] text-slate-400">Added: ${escapeHtml(s.createdAt || 'Recent')}</span>
-                    </div>
-                </div>
-            </td>
-            <td class="p-2.5">
-                ${s.isFixedAdmin ? `
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-                        1 Seat Super Admin
+                </td>
+                <td class="p-2.5">
+                    <span class="text-[11px] font-bold text-slate-700">
+                        ${isMaster ? 'Super Admin' : (s.role || 'Pharmacy Staff')}
                     </span>
-                ` : `
-                    <select onchange="window.handleUpdateStaffRole('${s.id}', this.value)" class="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-800 bg-white">
-                        <option value="Pharmacist" ${s.role === 'Pharmacist' ? 'selected' : ''}>Pharmacist</option>
-                        <option value="Counter Cashier" ${s.role === 'Counter Cashier' ? 'selected' : ''}>Counter Cashier</option>
-                        <option value="Store Manager" ${s.role === 'Store Manager' ? 'selected' : ''}>Store Manager</option>
-                    </select>
-                `}
-            </td>
-            <td class="p-2.5 font-mono text-[11px] text-slate-600">
-                ${escapeHtml(s.email)}
-            </td>
-            <td class="p-2.5 text-center">
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${s.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-                    ● ${escapeHtml(s.status || 'Active')}
-                </span>
-            </td>
-            <td class="p-2.5 text-center">
-                ${s.isFixedAdmin ? `
-                    <span class="text-[10px] text-slate-400 font-bold italic">Protected</span>
-                ` : `
-                    <button type="button" onclick="window.handleRemoveStaffMember('${s.id}', '${escapeHtml(s.name)}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-[10px] border border-red-200 transition active:scale-95 flex items-center justify-center gap-1 mx-auto cursor-pointer" title="Remove this user from staff">
-                        <i data-lucide="trash-2" class="w-3 h-3"></i> Remove
-                    </button>
-                `}
-            </td>
-        </tr>
-    `).join('');
+                </td>
+                <td class="p-2.5 font-mono text-[11px] text-slate-600">
+                    <div>${escapeHtml(s.email || '-')}</div>
+                    ${s.phone ? `<div class="text-[10px] text-slate-400">${escapeHtml(s.phone)}</div>` : ''}
+                </td>
+                <td class="p-2.5 text-center">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isKicked ? 'bg-red-100 text-red-800 border border-red-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">
+                        ● ${escapeHtml(s.status || 'Active')}
+                    </span>
+                </td>
+                <td class="p-2.5 text-center">
+                    ${isMaster ? `
+                        <span class="text-[10px] text-amber-800 font-bold italic">Protected 1-Seat</span>
+                    ` : `
+                        <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                            <button type="button" onclick="window.handleAdminKeepUser('${s.uid || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name || '')}')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Keep user active">
+                                <i data-lucide="check" class="w-3 h-3 inline"></i> Keep
+                            </button>
+                            <button type="button" onclick="window.handleAdminKickUser('${s.uid || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name || '')}')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick user and wipe their app data">
+                                <i data-lucide="trash-2" class="w-3 h-3 inline"></i> Kick
+                            </button>
+                        </div>
+                    `}
+                </td>
+            </tr>
+        `;
+    }).join('');
     safeCreateIcons();
 };
 
@@ -7399,14 +7449,62 @@ window.handleUpdateStaffRole = function(id, newRole) {
     }
 };
 
-window.handleRemoveStaffMember = function(id, name) {
-    customConfirm('Staff Member Remove Karein?', `Kya aap "${name}" ko staff management se remove karna chahte hain?`, () => {
-        let staff = window.getRegisteredStaffList();
-        staff = staff.filter(s => s.id !== id);
-        localStorage.setItem('sm_staff_members', JSON.stringify(staff));
-        window.renderAdminStaffTable();
-        showToast(`Staff member "${name}" remove ho gaya!`, 'info');
+window.handleAdminKickUser = function(uid, email, phone, name) {
+    customConfirm('User ko Kick & App Reset Karein?', `Kya aap "${name}" ko kick / remove karna chahte hain? Is se us user ki app par inventory, profile aur tamam data auto khtm ho kar app reset ho jayegi.`, async () => {
+        try {
+            const res = await fetch('/api/admin/kick-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid, email, phone, name })
+            });
+            if (res.ok) {
+                // Also update local staff if matching
+                let staff = window.getRegisteredStaffList();
+                staff = staff.map(s => {
+                    if (s.email === email || s.id === uid) return { ...s, status: 'Kicked' };
+                    return s;
+                });
+                localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+
+                showToast(`"${name}" kick ho gaya! Uska data aur app auto reset ho jayegi.`, 'info');
+                window.renderAdminStaffTable();
+                window.renderAdminNetworkTable();
+            } else {
+                const err = await res.json();
+                showToast(err.error || 'User kick karne mein masla aya', 'error');
+            }
+        } catch(e) {
+            showToast('Network error: User kick nahi ho saka', 'error');
+        }
     });
+};
+
+window.handleAdminKeepUser = async function(uid, email, phone, name) {
+    try {
+        const res = await fetch('/api/admin/keep-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid, email, phone, name })
+        });
+        if (res.ok) {
+            let staff = window.getRegisteredStaffList();
+            staff = staff.map(s => {
+                if (s.email === email || s.id === uid) return { ...s, status: 'Active' };
+                return s;
+            });
+            localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+
+            showToast(`"${name}" verify ho gaya aur active rakha gaya hai.`, 'success');
+            window.renderAdminStaffTable();
+            window.renderAdminNetworkTable();
+        }
+    } catch(e) {
+        showToast('Error keeping user active', 'error');
+    }
+};
+
+window.handleRemoveStaffMember = function(id, name) {
+    window.handleAdminKickUser(id, '', '', name);
 };
 
 window.renderAdminNetworkTable = async function() {
@@ -7451,14 +7549,19 @@ window.renderAdminNetworkTable = async function() {
                 ${escapeHtml(s.phone)}
             </td>
             <td class="p-2.5 text-center">
-                <button type="button" onclick="window.handleAdminTogglePharmacyStatus(${idx}, '${s.id || ''}')" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition cursor-pointer">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                     ● ${escapeHtml(s.status || 'Verified Live')}
-                </button>
+                </span>
             </td>
             <td class="p-2.5 text-center">
-                <button type="button" onclick="window.handleAdminDeletePharmacy('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-[10px] border border-red-200 transition active:scale-95 flex items-center justify-center gap-1 mx-auto cursor-pointer" title="Network se remove karein">
-                    <i data-lucide="trash-2" class="w-3 h-3"></i> Remove
-                </button>
+                <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                    <button type="button" onclick="window.handleAdminKeepUser('${s.id || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name)}')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Keep pharmacy active">
+                        <i data-lucide="check" class="w-3 h-3 inline"></i> Keep
+                    </button>
+                    <button type="button" onclick="window.handleAdminKickUser('${s.id || ''}', '${s.email || ''}', '${s.phone || ''}', '${escapeHtml(s.name)}')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Kick pharmacy and wipe data">
+                        <i data-lucide="trash-2" class="w-3 h-3 inline"></i> Kick
+                    </button>
+                </div>
             </td>
         </tr>
     `).join('');
@@ -7466,33 +7569,82 @@ window.renderAdminNetworkTable = async function() {
 };
 
 window.handleAdminDeletePharmacy = function(id, name, phone, idx) {
-    customConfirm('Pharmacy Network Se Remove Karein?', `Kya aap "${name}" ko network se permanently remove karna chahte hain?`, async () => {
-        try {
-            await fetch('/api/network/unregister', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: id,
-                    phone: phone,
-                    adminEmail: SUPER_ADMIN_EMAIL
-                })
-            });
-        } catch(e) {}
-
-        try {
-            let stores = JSON.parse(localStorage.getItem('sm_network_stores') || '[]');
-            stores = stores.filter(s => s.id !== id && s.phone !== phone);
-            localStorage.setItem('sm_network_stores', JSON.stringify(stores));
-        } catch(e) {}
-
-        window.renderAdminNetworkTable();
-        window.refreshNetworkList();
-        showToast(`Pharmacy "${name}" network se hata di gayi!`, 'info');
-    });
+    window.handleAdminKickUser(id, '', phone, name);
 };
 
 window.handleAdminTogglePharmacyStatus = function(idx, id) {
-    showToast('Pharmacy network verification status active hai!', 'info');
+    showToast('Pharmacy verification status active hai!', 'info');
+};
+
+// Auto scroll for Counter Section POS search bar
+window.scrollPosSearchToTop = function() {
+    const el = document.getElementById('pos-search-wrapper') || document.getElementById('pos-search');
+    if (el) {
+        const rect = el.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = scrollTop + rect.top - 12;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+    }
+};
+
+// Check if current logged in user has been kicked by Super Admin
+window.checkUserKickedStatus = async function() {
+    const user = window.getCurrentUser();
+    if (!user) return;
+    if (user.isSuperAdmin || user.phone === SUPER_ADMIN_PHONE || user.email === SUPER_ADMIN_EMAIL) return;
+
+    const uid = authUser?.uid || user.uid;
+    const email = authUser?.email || user.email;
+    const phone = authUser?.phone || user.phone;
+
+    if (!uid && !email && !phone) return;
+
+    try {
+        const res = await fetch(`/api/user/check-status?uid=${encodeURIComponent(uid || '')}&email=${encodeURIComponent(email || '')}&phone=${encodeURIComponent(phone || '')}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.kicked) {
+                window.triggerKickedAppReset();
+            }
+        }
+    } catch(_) {}
+};
+
+// Auto wipe inventory, sales, profile and reset app when kicked by Super Admin
+window.triggerKickedAppReset = function() {
+    try {
+        localStorage.clear();
+        sessionStorage.clear();
+    } catch(_) {}
+
+    medicines = [];
+    sales = [];
+    cart = [];
+    authUser = null;
+    currentUser = null;
+    window.onlineNetworkPharmacies = [];
+
+    if ('caches' in window) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+    }
+
+    document.querySelectorAll('.fixed:not(.hidden)').forEach(m => m.classList.add('hidden'));
+
+    renderInventoryTable();
+    renderDashboardMetrics();
+    renderCartTable();
+    updateAuthUI();
+
+    customAlert(
+        'Account Removed & App Reset',
+        'Aapka account Super Admin ki taraf se kick / remove kar diya gaya hai. Aapki app, inventory aur profile reset kar di gayi hai.'
+    );
+
+    window.switchTab('dashboard');
+    setTimeout(() => {
+        window.openAccountHubModal();
+        window.switchHubAuthTab('login');
+    }, 1200);
 };
 
 // Account Hub & Authentication Management (3 Clear Options: Sign Up, Login & Super Admin 1-Seat Portal)
@@ -7643,6 +7795,22 @@ window.handleAuthSignup = async function() {
             }
         } catch(eReg) {}
 
+        // Save to backend system & server registry
+        try {
+            await fetch('/api/users/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userUid,
+                    email: email,
+                    phone: phone,
+                    name: ownerName,
+                    pharmacyName: 'My Pharmacy',
+                    city: 'Pakistan'
+                })
+            });
+        } catch(_) {}
+
         // Connect live listeners
         attachFirestoreSyncListeners(userUid);
 
@@ -7781,6 +7949,19 @@ window.handleAuthLogin = async function() {
             if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
             return;
         }
+
+        // Check if account was kicked / banned by Admin
+        try {
+            const kickRes = await fetch(`/api/user/check-status?uid=${encodeURIComponent(userUid)}&email=${encodeURIComponent(email)}`);
+            if (kickRes.ok) {
+                const kData = await kickRes.json();
+                if (kData.kicked) {
+                    showToast('Aapka account Super Admin ki taraf se remove / kick kar diya gaya hai. Login nahi kiya ja sakta.', 'error');
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                    return;
+                }
+            }
+        } catch(_) {}
 
         // Fetch Firestore profile if not loaded
         if (!authRecord) {
@@ -8660,6 +8841,10 @@ function initApp() {
     safeCreateIcons();
     syncModalScrollLock();
     window.switchTab('dashboard');
+    window.checkUserKickedStatus();
+    setInterval(() => {
+        window.checkUserKickedStatus();
+    }, 8000);
 }
 
 // Instant startup without waiting for full window.load
