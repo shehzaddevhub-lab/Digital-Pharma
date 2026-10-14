@@ -28,9 +28,12 @@ import {
     collection, 
     doc, 
     setDoc, 
+    getDoc,
+    getDocs, 
+    query,
+    where,
     deleteDoc,
     onSnapshot, 
-    getDocs, 
     handleFirestoreError 
 } from './firebase.js';
 
@@ -1658,6 +1661,19 @@ window.applyStoreIdentity = function() {
     const statusDot = document.getElementById('hub-status-dot');
     const statusText = document.getElementById('hub-status-text');
 
+    // Profile photo & Anonymous state management DOM elements (declared early to prevent TDZ ReferenceError)
+    const savedPhoto = (user ? user.photo : '') || localStorage.getItem('sm_profile_pic') || '';
+    const headerAnonIcon = document.getElementById('profile-anonymous-icon');
+    const headerImg = document.getElementById('profile-header-img');
+    const headerChar = document.getElementById('profile-avatar-char');
+
+    const hubAnonIcon = document.getElementById('hub-anon-icon');
+    const hubImg = document.getElementById('hub-avatar-img');
+    const hubChar = document.getElementById('hub-avatar-char');
+    const hubCameraBtn = document.getElementById('hub-avatar-camera-btn');
+    const hubPhotoBox = document.getElementById('hub-photo-control-box');
+    const removePhotoBtn = document.getElementById('remove-profile-pic-btn');
+
     const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
 
     if (isSuperAdmin) {
@@ -1710,19 +1726,6 @@ window.applyStoreIdentity = function() {
             rLicense.classList.add('hidden');
         }
     }
-
-    // Profile photo & Anonymous state management
-    const savedPhoto = (user ? user.photo : '') || localStorage.getItem('sm_profile_pic') || '';
-    const headerAnonIcon = document.getElementById('profile-anonymous-icon');
-    const headerImg = document.getElementById('profile-header-img');
-    const headerChar = document.getElementById('profile-avatar-char');
-
-    const hubAnonIcon = document.getElementById('hub-anon-icon');
-    const hubImg = document.getElementById('hub-avatar-img');
-    const hubChar = document.getElementById('hub-avatar-char');
-    const hubCameraBtn = document.getElementById('hub-avatar-camera-btn');
-    const hubPhotoBox = document.getElementById('hub-photo-control-box');
-    const removePhotoBtn = document.getElementById('remove-profile-pic-btn');
 
     if (mode === 'authenticated' && user) {
         // LOGGED IN USER: Show Photo or First Initial Letter

@@ -966,6 +966,7 @@ interface NetworkPharmacy {
   licenseNo?: string;
   remarks?: string;
   updatedAt: string;
+  status?: string;
 }
 
 const SUPER_ADMIN_PHONE = '03452919634';

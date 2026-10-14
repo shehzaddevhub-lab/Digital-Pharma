@@ -18,6 +18,8 @@ import {
   setDoc, 
   getDoc, 
   getDocs, 
+  query,
+  where,
   onSnapshot, 
   getDocFromServer,
   deleteDoc,
@@ -87,6 +89,8 @@ export {
   setDoc,
   getDoc,
   getDocs,
+  query,
+  where,
   onSnapshot,
   deleteDoc
 };
