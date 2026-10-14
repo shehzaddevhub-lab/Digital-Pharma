@@ -67,8 +67,11 @@ function initFirebase() {
                 city: savedUser?.city || '',
                 loginMethod: savedUser?.loginMethod || 'email_password',
                 isLiveSync: true,
-                photo: user.photoURL || savedUser?.photo || ''
+                photo: user.photoURL || savedUser?.photo || '',
+                isSuperAdmin: false,
+                role: 'owner'
             };
+            localStorage.removeItem('sm_is_admin');
             localStorage.setItem('sm_auth_user', JSON.stringify(activeUser));
             localStorage.removeItem('sm_user_mode');
 
@@ -1629,21 +1632,31 @@ window.getCurrentUser = function() {
         const localAuth = localStorage.getItem('sm_auth_user');
         if (localAuth) {
             const parsed = JSON.parse(localAuth);
+            // Strict 1-Seat Super Admin Check:
+            // Only true when user explicitly logged in through Super Admin Portal with verified admin credentials!
+            const isActualSuperAdmin = Boolean(
+                (parsed.role === 'super_admin' || parsed.loginMethod === 'admin_phone_secure' || parsed.isSuperAdmin === true) && 
+                localStorage.getItem('sm_is_admin') === 'true'
+            );
+            
             base = {
                 ...parsed,
                 ...base,
                 name: base.name || parsed.name || parsed.email?.split('@')[0] || 'User',
                 email: base.email || parsed.email || '',
                 phone: parsed.phone || base.phone || '',
-                role: parsed.role || base.role || '',
-                maskedPhone: parsed.maskedPhone || base.maskedPhone || '***********',
-                isSuperAdmin: parsed.isSuperAdmin || localStorage.getItem('sm_is_admin') === 'true'
+                role: isActualSuperAdmin ? 'super_admin' : (parsed.role || 'owner'),
+                pharmacyName: parsed.pharmacyName || base.pharmacyName || '',
+                city: parsed.city || base.city || '',
+                isSuperAdmin: isActualSuperAdmin
             };
+
+            // Clean up stale admin flag if this is a regular user
+            if (!isActualSuperAdmin && localStorage.getItem('sm_is_admin') === 'true') {
+                localStorage.removeItem('sm_is_admin');
+            }
         }
     } catch(e) {}
-    if (localStorage.getItem('sm_is_admin') === 'true') {
-        base.isSuperAdmin = true;
-    }
     return Object.keys(base).length ? base : null;
 };
 
@@ -1674,7 +1687,7 @@ window.applyStoreIdentity = function() {
     const hubPhotoBox = document.getElementById('hub-photo-control-box');
     const removePhotoBtn = document.getElementById('remove-profile-pic-btn');
 
-    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = Boolean(user && user.isSuperAdmin === true);
 
     if (isSuperAdmin) {
         if (hubName) hubName.innerText = '👑 Super Admin';
@@ -1691,7 +1704,7 @@ window.applyStoreIdentity = function() {
         if (headerAnonIcon) headerAnonIcon.classList.add('hidden');
         if (headerImg) headerImg.classList.add('hidden');
     } else if (mode === 'authenticated' && user) {
-        if (hubName) hubName.innerText = user.name || config.name || 'My Store';
+        if (hubName) hubName.innerText = user.pharmacyName || user.name || config.name || 'My Store';
         if (hubStatus) hubStatus.innerText = 'Online Active';
         if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse';
         if (statusText) {
@@ -4767,7 +4780,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
     // Pure Online in-memory connection (No local storage fallback).
     const currentUser = window.getCurrentUser();
     const mode = window.getCurrentUserMode();
-    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '***********' || currentUser?.maskedPhone === '03********4' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = Boolean(currentUser && currentUser.isSuperAdmin === true);
     const isLoggedIn = Boolean(isSuperAdmin || (mode === 'authenticated' && (authUser || currentUser?.email)));
 
     let savedStores = [];
@@ -5479,7 +5492,7 @@ window.refreshNetworkList = async function() {
 
     const currentUser = window.getCurrentUser();
     const mode = window.getCurrentUserMode();
-    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '03********4' || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = Boolean(currentUser && currentUser.isSuperAdmin === true);
     const isLoggedIn = Boolean(isSuperAdmin || (mode === 'authenticated' && (authUser || currentUser?.email)));
 
     const countEl = document.getElementById('network-stores-count');
@@ -7367,7 +7380,7 @@ window.handleAdminLogin = async function() {
 
 window.openAdminStaffModal = function() {
     const currentUser = window.getCurrentUser();
-    const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.phone === SUPER_ADMIN_PHONE || currentUser?.maskedPhone === '***********' || currentUser?.maskedPhone === '03********4' || currentUser?.email === SUPER_ADMIN_EMAIL || localStorage.getItem('sm_is_admin') === 'true';
+    const isSuperAdmin = Boolean(currentUser && currentUser.isSuperAdmin === true);
 
     if (!isSuperAdmin) {
         showToast('Sirf Super Admin ko staff aur network manage karne ki ijazat hai. Pehle Admin login karein.', 'warning');
@@ -8340,6 +8353,8 @@ window.handleAuthSignup = async function() {
             city: '',
             pharmacyName: '',
             uid: userUid,
+            role: 'owner',
+            isSuperAdmin: false,
             loginMethod: 'email_password',
             isLiveSync: true
         };
@@ -8358,14 +8373,15 @@ window.handleAuthSignup = async function() {
             console.warn('Firestore user save note:', eDoc);
         }
 
-        // Update local session
+        // Update local session (Strict regular user isolation)
         authUser = {
             uid: userUid,
             email: email,
             displayName: ownerName
         };
+        localStorage.removeItem('sm_is_admin');
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
-        localStorage.removeItem('sm_user_mode');
+        localStorage.setItem('sm_user_mode', 'authenticated');
 
         // Save to registered accounts list
         try {
@@ -8584,13 +8600,16 @@ window.handleAuthLogin = async function() {
             };
         }
 
+        authRecord.isSuperAdmin = false;
+        authRecord.role = 'owner';
         authUser = {
             uid: userUid,
             email: email,
             displayName: authRecord.name
         };
+        localStorage.removeItem('sm_is_admin');
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
-        localStorage.removeItem('sm_user_mode');
+        localStorage.setItem('sm_user_mode', 'authenticated');
 
         const config = window.getStoreConfig();
         if (authRecord.pharmacyName) config.name = authRecord.pharmacyName;
@@ -9324,44 +9343,41 @@ window.showHubActiveProfile = function() {
     const sessionName = document.getElementById('hub-session-user-name');
     const sessionDetail = document.getElementById('hub-session-user-detail');
 
-    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
-
-    if (isSuperAdmin) {
-        // Direct redirect to Super Admin Control as requested: profile button should open admin control section, not pharmacy profile!
-        window.closeAccountHubModal();
-        window.openAdminStaffModal();
-        return;
-    }
+    const isSuperAdmin = Boolean(user && user.isSuperAdmin === true);
 
     const superAdminBox = document.getElementById('hub-super-admin-controls');
     const storeProfileForm = document.getElementById('hub-store-profile-form');
 
-    if (superAdminBox) superAdminBox.classList.add('hidden');
-    if (storeProfileForm) storeProfileForm.classList.remove('hidden');
-    if (mode === 'authenticated' && user) {
-        if (sessionName) sessionName.innerText = user.name || 'Store Pharmacist';
-        if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
+    if (isSuperAdmin) {
+        if (superAdminBox) superAdminBox.classList.remove('hidden');
+        if (storeProfileForm) storeProfileForm.classList.add('hidden');
+        if (sessionName) sessionName.innerText = '👑 Super Admin';
+        if (sessionDetail) sessionDetail.innerText = 'Super Admin (Master 1-Seat Control)';
     } else {
-        if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
-        if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login as Admin';
+        if (superAdminBox) superAdminBox.classList.add('hidden');
+        if (storeProfileForm) storeProfileForm.classList.remove('hidden');
+        if (mode === 'authenticated' && user) {
+            if (sessionName) sessionName.innerText = user.name || config.ownerName || 'Store Pharmacist';
+            if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
+            if (storeNameInput && user.pharmacyName) storeNameInput.value = user.pharmacyName;
+            if (storeOwnerInput && user.name) storeOwnerInput.value = user.name;
+            if (storePhoneInput && user.phone) storePhoneInput.value = user.phone;
+            if (storeAddrInput && user.city) storeAddrInput.value = user.city;
+        } else {
+            if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
+            if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login';
+        }
     }
     safeCreateIcons();
 };
 
 window.openAccountHubModal = function() {
     const user = window.getCurrentUser();
-    const isSuperAdmin = user?.isSuperAdmin || user?.phone === '03452919634' || user?.maskedPhone === '***********' || user?.maskedPhone === '03********4' || user?.email === 'shzdkhkh01@gmail.com' || localStorage.getItem('sm_is_admin') === 'true';
-
-    // If Super Admin is logged in, profile button directly opens the Admin Super Control modal
-    if (isSuperAdmin) {
-        window.openAdminStaffModal();
-        return;
-    }
-
     const mode = window.getCurrentUserMode();
-    if (!mode || mode === 'guest') {
+
+    if (!user || !mode || mode === 'guest') {
         window.showHubChoiceSection();
-        window.switchHubAuthTab('signup');
+        window.switchHubAuthTab('login');
     } else {
         window.showHubActiveProfile();
     }
