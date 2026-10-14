@@ -1289,7 +1289,7 @@ window.getValidGeminiKey = getValidGeminiKey;
 async function callGeminiVisionDirect(prompt, base64Data) {
     const key = getValidGeminiKey();
     if (!key) {
-        throw new Error('Live Host / PWA par AI Scanner chalane kelye Google Gemini API Key darkaar hai.');
+        throw new Error('AI Scanner chalane kelye Google Gemini API Key darj karein.');
     }
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
     const models = [
@@ -1590,7 +1590,7 @@ async function callAiBackend(endpoint, base64Data, clientPrompt) {
         return serverData;
     }
 
-    throw new Error(lastError || 'AI Scanner server se connect nahi ho saka. Live webapp / PWA par scanning kelye Gemini API Key shamil karein.');
+    throw new Error(lastError || 'AI Scanner chalane kelye Google Gemini API Key darj karein.');
 }
 
 // Store Config
@@ -1633,10 +1633,17 @@ window.getCurrentUser = function() {
         if (localAuth) {
             const parsed = JSON.parse(localAuth);
             // Strict 1-Seat Super Admin Check:
-            // Only true when user explicitly logged in through Super Admin Portal with verified admin credentials!
+            // MUST NEVER be true for regular email/password accounts!
+            // Super Admin ONLY applies if:
+            // 1. Explicitly logged in with admin phone login method: 'admin_phone_secure'
+            // 2. Verified admin phone number '03452919634' or uid 'admin_master_03452919634'
+            // 3. AND localStorage flag 'sm_is_admin' is 'true'
+            // 4. AND NO regular user email is in active session!
             const isActualSuperAdmin = Boolean(
-                (parsed.role === 'super_admin' || parsed.loginMethod === 'admin_phone_secure' || parsed.isSuperAdmin === true) && 
-                localStorage.getItem('sm_is_admin') === 'true'
+                parsed.loginMethod === 'admin_phone_secure' && 
+                (parsed.phone === '03452919634' || parsed.uid === 'admin_master_03452919634') &&
+                localStorage.getItem('sm_is_admin') === 'true' &&
+                (!authUser?.email && !parsed.email?.includes('@'))
             );
             
             base = {
@@ -1645,7 +1652,7 @@ window.getCurrentUser = function() {
                 name: base.name || parsed.name || parsed.email?.split('@')[0] || 'User',
                 email: base.email || parsed.email || '',
                 phone: parsed.phone || base.phone || '',
-                role: isActualSuperAdmin ? 'super_admin' : (parsed.role || 'owner'),
+                role: isActualSuperAdmin ? 'super_admin' : 'owner',
                 pharmacyName: parsed.pharmacyName || base.pharmacyName || '',
                 city: parsed.city || base.city || '',
                 isSuperAdmin: isActualSuperAdmin
@@ -2965,8 +2972,8 @@ window.handlePrescriptionScan = async function(event) {
                     </p>
 
                     <!-- Google Gemini Key Input -->
-                    <div class="max-w-sm mx-auto p-3.5 bg-amber-50 border border-amber-300/80 rounded-xl text-left space-y-2 mt-2">
-                        <div class="flex items-center justify-between">
+                    <div class="max-w-sm mx-auto p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-left space-y-2 mt-2 w-full box-border">
+                        <div class="flex items-center justify-between gap-1 flex-wrap">
                             <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
                                 <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Gemini API Key
                             </span>
@@ -2974,9 +2981,9 @@ window.handlePrescriptionScan = async function(event) {
                                 <i data-lucide="key" class="w-3 h-3 text-amber-800"></i> Get API Key ↗
                             </a>
                         </div>
-                        <div class="flex gap-1.5">
-                            <input type="password" id="presc-user-api-key" placeholder="AIzaSy... (Paste Gemini Key)" value="${savedKey}" class="flex-1 px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500">
-                            <button type="button" onclick="window.saveAndRetryPrescriptionScan()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 shadow-xs active:scale-95 transition cursor-pointer">
+                        <div class="flex flex-col sm:flex-row gap-2 w-full">
+                            <input type="password" id="presc-user-api-key" placeholder="AIzaSy... (Paste Gemini Key)" value="${savedKey}" class="flex-1 min-w-0 w-full px-2.5 py-2 bg-white border border-amber-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 box-border">
+                            <button type="button" onclick="window.saveAndRetryPrescriptionScan()" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 shadow-xs active:scale-95 transition cursor-pointer text-center whitespace-nowrap">
                                 Save & Retry
                             </button>
                         </div>
@@ -3302,8 +3309,8 @@ window.handleRealInvoiceOcr = async function(event) {
                 </p>
 
                 <!-- Google Gemini Key Input -->
-                <div class="max-w-sm mx-auto p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-left space-y-2 my-2">
-                    <div class="flex items-center justify-between">
+                <div class="max-w-sm mx-auto p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-left space-y-2 my-2 w-full box-border">
+                    <div class="flex items-center justify-between gap-1 flex-wrap">
                         <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
                             <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i> Gemini API Key
                         </span>
@@ -3311,9 +3318,9 @@ window.handleRealInvoiceOcr = async function(event) {
                             <i data-lucide="key" class="w-3 h-3 text-amber-800"></i> Get API Key ↗
                         </a>
                     </div>
-                    <div class="flex gap-1.5">
-                        <input type="password" id="invoice-user-api-key" placeholder="AIzaSy... (Paste Gemini Key)" value="${savedKey}" class="flex-1 px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500">
-                        <button type="button" onclick="window.saveAndRetryInvoiceScan()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 shadow-xs active:scale-95 transition cursor-pointer">
+                    <div class="flex flex-col sm:flex-row gap-2 w-full">
+                        <input type="password" id="invoice-user-api-key" placeholder="AIzaSy... (Paste Gemini Key)" value="${savedKey}" class="flex-1 min-w-0 w-full px-2.5 py-2 bg-white border border-amber-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 box-border">
+                        <button type="button" onclick="window.saveAndRetryInvoiceScan()" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 shadow-xs active:scale-95 transition cursor-pointer text-center whitespace-nowrap">
                             Save & Retry
                         </button>
                     </div>
@@ -5542,8 +5549,21 @@ window.refreshNetworkList = async function() {
     };
 
     let stores = [];
-    // 1. First priority: Real-time online in-memory stores from Firestore
-    if (Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
+    // 1. Primary priority: Backend online endpoint (Source of truth for registered accounts and strictly excluded deleted/kicked stores)
+    try {
+        const res = await fetch('/api/network/pharmacies');
+        if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.pharmacies)) {
+                stores = data.pharmacies.filter(dp => !isStoreBlacklisted(dp));
+            }
+        }
+    } catch (err) {
+        console.warn('Network pharmacies fetch offline note:', err);
+    }
+
+    // 2. Real-time online stores fallback from Firestore
+    if (stores.length === 0 && Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
         stores = window.onlineNetworkPharmacies.filter(p => 
             !['net_1', 'net_2', 'net_3'].includes(p.id) && 
             String(p.phone || '').replace(/\D/g, '').slice(-10) !== '3452919634' && 
@@ -5552,25 +5572,6 @@ window.refreshNetworkList = async function() {
             !p.name?.includes('Super Admin') &&
             !isStoreBlacklisted(p)
         );
-    }
-
-    // 2. Second priority: Backend online endpoint (Source of truth for deleted/active)
-    try {
-        const res = await fetch('/api/network/pharmacies');
-        if (res.ok) {
-            const data = await res.json();
-            if (data && Array.isArray(data.pharmacies)) {
-                data.pharmacies.forEach(dp => {
-                    const normDpPhone = (dp.phone || '').replace(/\D/g, '').slice(-10);
-                    if (normDpPhone === '3452919634' || dp.phone === '***********' || dp.phone === '03********4' || dp.name?.includes('Super Admin') || isStoreBlacklisted(dp)) return;
-                    if (!stores.some(s => (s.id && s.id === dp.id) || (normDpPhone && (s.phone || '').replace(/\D/g, '').slice(-10) === normDpPhone) || (dp.email && s.email && s.email.toLowerCase() === dp.email.toLowerCase()))) {
-                        stores.push(dp);
-                    }
-                });
-            }
-        }
-    } catch (err) {
-        console.warn('Network pharmacies fetch offline note:', err);
     }
 
     // 3. Third priority: Query Firestore pharmacies directly if list is empty
@@ -7600,9 +7601,19 @@ window.renderAdminStaffTable = async function() {
                     ${(s.phone && !isMaster) ? `<div class="text-[10px] text-slate-400">${escapeHtml(s.phone)}</div>` : ''}
                 </td>
                 <td class="p-2.5 text-center">
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        ● ${escapeHtml(s.status || 'Active')}
-                    </span>
+                    ${s.status === 'Kicked' ? `
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                            ● Kicked
+                        </span>
+                    ` : s.isOnline ? `
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-400 inline-flex items-center gap-1 shadow-2xs">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span> Online Mode
+                        </span>
+                    ` : `
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                            ● Active
+                        </span>
+                    `}
                 </td>
                 <td class="p-2.5 text-center">
                     ${isMaster ? `
@@ -8148,16 +8159,76 @@ window.handleAdminTogglePharmacyStatus = function(idx, id) {
     showToast('Pharmacy verification status active hai!', 'info');
 };
 
-// Auto scroll for Counter Section POS search bar
+// Auto scroll for Counter Section POS search bar & smooth collapse of top action bar (Clear Cart & Scan Nuskha)
 window.scrollPosSearchToTop = function() {
-    const el = document.getElementById('pos-search-wrapper') || document.getElementById('pos-search');
-    if (el) {
-        const rect = el.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const targetY = scrollTop + rect.top - 12;
-        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+    const searchInput = document.getElementById('pos-search');
+    const topBar = document.getElementById('pos-top-action-bar');
+    const searchWrapper = document.getElementById('pos-search-wrapper');
+
+    const hasInput = Boolean(searchInput && searchInput.value && searchInput.value.trim().length > 0);
+
+    if (topBar) {
+        if (hasInput) {
+            topBar.style.maxHeight = '0px';
+            topBar.style.opacity = '0';
+            topBar.style.overflow = 'hidden';
+            topBar.style.paddingTop = '0px';
+            topBar.style.paddingBottom = '0px';
+            topBar.style.marginBottom = '0px';
+            topBar.style.borderBottomWidth = '0px';
+            topBar.style.pointerEvents = 'none';
+        } else {
+            topBar.style.maxHeight = '';
+            topBar.style.opacity = '';
+            topBar.style.overflow = '';
+            topBar.style.paddingTop = '';
+            topBar.style.paddingBottom = '';
+            topBar.style.marginBottom = '';
+            topBar.style.borderBottomWidth = '';
+            topBar.style.pointerEvents = '';
+        }
+    }
+
+    if (searchWrapper) {
+        searchWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 };
+
+// Send real-time heartbeat to maintain Online Mode in Super Admin Control
+window.sendUserHeartbeat = async function() {
+    const user = window.getCurrentUser();
+    if (!user || user.isSuperAdmin || !user.email) return;
+    try {
+        const res = await fetch('/api/users/heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                uid: user.uid,
+                email: user.email,
+                phone: user.phone || '',
+                name: user.name || '',
+                pharmacyName: user.pharmacyName || '',
+                city: user.city || ''
+            })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.isKicked) {
+                window.handleHubLogout();
+                showToast('Aapka account Super Admin ki taraf se kick kar diya gaya hai.', 'error');
+            }
+        }
+    } catch (_) {}
+};
+
+// Periodic heartbeat runner every 30 seconds
+if (typeof window !== 'undefined' && !window._heartbeatTimer) {
+    window._heartbeatTimer = setInterval(() => {
+        if (typeof window.sendUserHeartbeat === 'function') {
+            window.sendUserHeartbeat();
+        }
+    }, 30000);
+}
 
 // Check if current logged in user has been kicked by Super Admin
 window.checkUserKickedStatus = async function() {
@@ -8620,6 +8691,25 @@ window.handleAuthLogin = async function() {
 
         // Connect live listeners
         attachFirestoreSyncListeners(userUid);
+
+        // Register and sync to backend so user shows in Super Admin Control with Online Mode
+        try {
+            await fetch('/api/users/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userUid,
+                    email: email,
+                    phone: authRecord.phone || '',
+                    name: authRecord.name || '',
+                    pharmacyName: authRecord.pharmacyName || config.name || 'My Pharmacy',
+                    city: authRecord.city || config.address || 'Pakistan'
+                })
+            });
+            if (typeof window.sendUserHeartbeat === 'function') {
+                window.sendUserHeartbeat();
+            }
+        } catch(_) {}
 
         window.applyStoreIdentity();
         window.closeAccountHubModal();
@@ -9356,13 +9446,17 @@ window.showHubActiveProfile = function() {
     } else {
         if (superAdminBox) superAdminBox.classList.add('hidden');
         if (storeProfileForm) storeProfileForm.classList.remove('hidden');
-        if (mode === 'authenticated' && user) {
-            if (sessionName) sessionName.innerText = user.name || config.ownerName || 'Store Pharmacist';
-            if (sessionDetail) sessionDetail.innerText = `🟢 Live Sync: ${user.email}`;
-            if (storeNameInput && user.pharmacyName) storeNameInput.value = user.pharmacyName;
-            if (storeOwnerInput && user.name) storeOwnerInput.value = user.name;
-            if (storePhoneInput && user.phone) storePhoneInput.value = user.phone;
-            if (storeAddrInput && user.city) storeAddrInput.value = user.city;
+        if (user && (user.email || user.phone)) {
+            if (sessionName) sessionName.innerText = user.name || user.pharmacyName || config.ownerName || 'Store Pharmacist';
+            if (sessionDetail) sessionDetail.innerText = `🟢 Logged In: ${user.email || user.phone}`;
+            if (storeNameInput) storeNameInput.value = user.pharmacyName || config.name || '';
+            if (storeOwnerInput) storeOwnerInput.value = user.name || config.ownerName || '';
+            if (storePhoneInput) storePhoneInput.value = user.phone || config.phone || '';
+            if (storeAddrInput) storeAddrInput.value = user.city || config.address || '';
+            if (storeLicInput) storeLicInput.value = user.licenseNo || config.licenseNo || '';
+        } else if (mode === 'guest') {
+            if (sessionName) sessionName.innerText = 'Guest Mode (Local Storage)';
+            if (sessionDetail) sessionDetail.innerText = '⚪ Offline Device Storage';
         } else {
             if (sessionName) sessionName.innerText = 'Pharmacy Staff Access';
             if (sessionDetail) sessionDetail.innerText = '⚪ Please Sign Up or Login';

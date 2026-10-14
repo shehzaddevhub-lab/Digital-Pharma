@@ -1151,21 +1151,53 @@ app.get('/api/network/pharmacies', (_req: Request, res: Response) => {
   const seen = new Set<string>();
   const deduplicated: NetworkPharmacy[] = [];
 
+  const isExcluded = (id?: string, phone?: string, email?: string, name?: string) => {
+    const normPh = normalizePhone(phone);
+    const cleanEmail = email ? email.toLowerCase().trim() : '';
+    const cleanName = name ? name.toLowerCase().trim() : '';
+
+    if (normPh === '3452919634' || phone === '***********' || phone === '03********4') return true;
+    if (cleanEmail === 'shzdkhkh01@gmail.com') return true;
+    if (cleanName.includes('super admin')) return true;
+
+    if (id && (deletedPharmacyTokens.includes(id) || kickedUserIds.includes(id))) return true;
+    if (normPh && (deletedPharmacyTokens.includes(normPh) || kickedUserIds.includes(normPh))) return true;
+    if (cleanEmail && (deletedPharmacyTokens.includes(cleanEmail) || kickedUserIds.includes(cleanEmail))) return true;
+    if (cleanName && deletedPharmacyTokens.includes(cleanName)) return true;
+    return false;
+  };
+
+  // 1. Include active registered network pharmacies
   activeNetworkPharmacies.forEach(p => {
-    if (isPhoneAdmin(p.phone) || p.name?.includes('Super Admin')) return;
+    if (isExcluded(p.id, p.phone, p.email, p.name)) return;
     const normPh = normalizePhone(p.phone);
-    if (normPh === '3452919634') return;
-
-    // Check if deleted or kicked
-    const isDeleted = (p.id && deletedPharmacyTokens.includes(p.id)) ||
-      (normPh && deletedPharmacyTokens.includes(normPh)) ||
-      (p.email && deletedPharmacyTokens.includes(p.email.toLowerCase()));
-    if (isDeleted) return;
-
     const key = normPh ? `ph:${normPh}` : (p.email ? `em:${p.email.toLowerCase()}` : `id:${p.id}`);
     if (!seen.has(key)) {
       seen.add(key);
       deduplicated.push(p);
+    }
+  });
+
+  // 2. Automatically include registered IDs (who signed up/logged in)
+  registeredUsers.forEach(u => {
+    if (u.status === 'Kicked') return;
+    if (isExcluded(u.uid, u.phone, u.email, u.name)) return;
+    const normPh = normalizePhone(u.phone);
+    const key = normPh ? `ph:${normPh}` : (u.email ? `em:${u.email.toLowerCase()}` : `id:${u.uid}`);
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduplicated.push({
+        id: u.uid,
+        name: u.pharmacyName || (u.name ? `${u.name}'s Pharmacy` : 'Connected Pharmacy'),
+        ownerName: u.name || 'Pharmacist',
+        city: u.city || 'Pakistan',
+        phone: u.phone || '',
+        email: u.email || '',
+        licenseNo: '',
+        remarks: 'Registered Connected Store',
+        updatedAt: u.registeredAt || new Date().toISOString(),
+        status: 'Active'
+      });
     }
   });
 
@@ -1340,6 +1372,8 @@ interface UserAccount {
   city: string;
   status: 'Active' | 'Kicked';
   role?: string;
+  isOnline?: boolean;
+  lastActive?: string;
   registeredAt: string;
 }
 
@@ -1429,6 +1463,8 @@ app.post('/api/users/register', (req: Request, res: Response): void => {
       pharmacyName: String(pharmacyName || '').trim() || 'My Pharmacy',
       city: String(city || '').trim() || 'Pakistan',
       status: 'Active',
+      isOnline: true,
+      lastActive: new Date().toISOString(),
       registeredAt: idx !== -1 ? registeredUsers[idx].registeredAt : new Date().toISOString()
     };
 
@@ -1442,6 +1478,66 @@ app.post('/api/users/register', (req: Request, res: Response): void => {
     res.json({ success: true, message: 'User registered in backend system', user: account });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Registration failed' });
+  }
+});
+
+// Endpoint: Heartbeat to maintain online status and detect kick/reset in real-time
+app.post('/api/users/heartbeat', (req: Request, res: Response): void => {
+  try {
+    const { uid, email, phone, name, pharmacyName, city } = req.body || {};
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanUid = String(uid || '').trim();
+    if (!cleanEmail && !cleanUid) {
+      res.json({ success: false });
+      return;
+    }
+
+    const normPhone = normalizePhone(phone);
+    const isKicked = kickedUserIds.includes(cleanUid) || 
+      (cleanEmail && kickedUserIds.includes(cleanEmail)) ||
+      (normPhone && kickedUserIds.includes(normPhone));
+
+    const idx = registeredUsers.findIndex(u => 
+      (cleanUid && u.uid === cleanUid) || 
+      (cleanEmail && u.email.toLowerCase() === cleanEmail) ||
+      (normPhone && normalizePhone(u.phone) === normPhone)
+    );
+
+    if (idx !== -1) {
+      registeredUsers[idx].lastActive = new Date().toISOString();
+      registeredUsers[idx].isOnline = !isKicked;
+      if (name && (!registeredUsers[idx].name || registeredUsers[idx].name === cleanEmail.split('@')[0])) {
+        registeredUsers[idx].name = String(name).trim();
+      }
+      if (pharmacyName && (!registeredUsers[idx].pharmacyName || registeredUsers[idx].pharmacyName === 'My Pharmacy')) {
+        registeredUsers[idx].pharmacyName = String(pharmacyName).trim();
+      }
+      if (city && (!registeredUsers[idx].city || registeredUsers[idx].city === 'Pakistan')) {
+        registeredUsers[idx].city = String(city).trim();
+      }
+      if (phone && !registeredUsers[idx].phone) {
+        registeredUsers[idx].phone = String(phone).trim();
+      }
+    } else if (!isKicked) {
+      const newUser: UserAccount = {
+        uid: cleanUid || ('ph_' + Date.now()),
+        email: cleanEmail,
+        phone: String(phone || '').trim(),
+        name: String(name || '').trim() || cleanEmail.split('@')[0] || 'User',
+        pharmacyName: String(pharmacyName || '').trim() || 'My Pharmacy',
+        city: String(city || '').trim() || 'Pakistan',
+        status: 'Active',
+        isOnline: true,
+        lastActive: new Date().toISOString(),
+        registeredAt: new Date().toISOString()
+      };
+      registeredUsers.push(newUser);
+    }
+    saveRegisteredUsers(registeredUsers);
+
+    res.json({ success: true, isOnline: !isKicked, isKicked });
+  } catch (e) {
+    res.status(500).json({ success: false });
   }
 });
 
@@ -1598,14 +1694,21 @@ app.get('/api/admin/users', (_req: Request, res: Response): void => {
     }
   });
 
+  const now = Date.now();
   const list = Array.from(mergedMap.values()).map(u => {
     const norm = normalizePhone(u.phone);
     const isKicked = kickedUserIds.includes(u.uid) || 
       (u.email && kickedUserIds.includes(u.email.toLowerCase())) || 
       (norm && kickedUserIds.includes(norm)) ||
       (u.phone && kickedUserIds.includes(u.phone));
+    
+    // Online if marked online or active within last 5 minutes
+    const lastTime = u.lastActive ? new Date(u.lastActive).getTime() : 0;
+    const isOnline = Boolean(!isKicked && (u.isOnline || (lastTime > 0 && (now - lastTime) < 300000)));
+
     return {
       ...u,
+      isOnline,
       status: isKicked ? ('Kicked' as const) : ('Active' as const)
     };
   });
