@@ -5562,6 +5562,30 @@ window.refreshNetworkList = async function() {
         console.warn('Network pharmacies fetch offline note:', err);
     }
 
+    // Include local registered accounts so they never disappear even if server resets
+    try {
+        const localReg = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+        localReg.forEach(u => {
+            if (isStoreBlacklisted(u)) return;
+            const normP = (u.phone || '').replace(/\D/g, '').slice(-10);
+            const exists = stores.some(s => 
+                (u.uid && s.id === u.uid) ||
+                (u.email && s.email && s.email.toLowerCase() === u.email.toLowerCase()) ||
+                (normP && (s.phone || '').replace(/\D/g, '').slice(-10) === normP)
+            );
+            if (!exists) {
+                stores.push({
+                    id: u.uid || `ph_${Date.now()}`,
+                    name: u.pharmacyName || (u.ownerName ? `${u.ownerName}'s Pharmacy` : 'Connected Pharmacy'),
+                    ownerName: u.ownerName || u.name || 'Store Owner',
+                    city: u.city || 'Pakistan',
+                    phone: u.phone || '',
+                    email: u.email || ''
+                });
+            }
+        });
+    } catch(_) {}
+
     // 2. Real-time online stores fallback from Firestore
     if (stores.length === 0 && Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
         stores = window.onlineNetworkPharmacies.filter(p => 
@@ -5603,9 +5627,49 @@ window.refreshNetworkList = async function() {
         }
     });
 
-    if (countEl) countEl.textContent = String(uniqueStores.length);
+    // Identify user's own store (Self ID)
+    const myConfig = window.getStoreConfig();
+    let authRecord = {};
+    try { authRecord = JSON.parse(localStorage.getItem('sm_auth_user') || '{}'); } catch(_) {}
+    const currentUid = authUser?.uid || currentUser?.uid || authRecord.uid || '';
+    const myEmail = (authUser?.email || currentUser?.email || authRecord.email || '').toLowerCase().trim();
+    const myPhone = String(authRecord.phone || myConfig.phone || currentUser?.phone || '').replace(/\D/g, '').slice(-10);
 
-    if (uniqueStores.length === 0) {
+    const isSelfMatch = (s) => {
+        if (!s) return false;
+        const sNormPhone = String(s.phone || '').replace(/\D/g, '').slice(-10);
+        const sEmail = String(s.email || '').toLowerCase().trim();
+        if (currentUid && s.id === currentUid) return true;
+        if (myEmail && sEmail && sEmail === myEmail) return true;
+        if (myPhone && sNormPhone && sNormPhone === myPhone) return true;
+        return false;
+    };
+
+    let selfStore = uniqueStores.find(isSelfMatch);
+    const otherStores = uniqueStores.filter(s => !isSelfMatch(s));
+
+    // If selfStore not found in fetched list, synthesize from active account details
+    if (!selfStore && (currentUid || myEmail || myPhone)) {
+        selfStore = {
+            id: currentUid || 'self_store',
+            name: authRecord.pharmacyName || myConfig.name || 'My Pharmacy',
+            ownerName: authRecord.name || currentUser?.name || myConfig.ownerName || (myEmail ? myEmail.split('@')[0] : 'Pharmacist'),
+            city: authRecord.city || myConfig.address || 'Pakistan',
+            phone: authRecord.phone || myConfig.phone || currentUser?.phone || '',
+            email: myEmail
+        };
+    } else if (selfStore) {
+        // Overlay current session edits
+        selfStore.name = authRecord.pharmacyName || selfStore.name || myConfig.name || 'My Pharmacy';
+        selfStore.ownerName = authRecord.name || selfStore.ownerName || myConfig.ownerName || (myEmail ? myEmail.split('@')[0] : 'Pharmacist');
+        selfStore.city = authRecord.city || selfStore.city || myConfig.address || 'Pakistan';
+        selfStore.phone = authRecord.phone || selfStore.phone || myConfig.phone || '';
+    }
+
+    const totalCount = (selfStore ? 1 : 0) + otherStores.length;
+    if (countEl) countEl.textContent = String(totalCount);
+
+    if (!selfStore && otherStores.length === 0) {
         grid.innerHTML = `
             <div class="col-span-full p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-2">
                 <div class="w-12 h-12 rounded-2xl bg-brand-50 text-brand-700 flex items-center justify-center mx-auto shadow-xs">
@@ -5619,53 +5683,116 @@ window.refreshNetworkList = async function() {
         return;
     }
 
-    const currentUid = authUser?.uid || currentUser?.uid || '';
-    const myConfig = window.getStoreConfig();
-    const myPhone = String(myConfig.phone || '').replace(/\D/g, '').slice(-10);
+    let html = '';
 
-    grid.innerHTML = uniqueStores.map((s, idx) => {
-        const cleanStorePhone = String(s.phone || '').replace(/\D/g, '').slice(-10);
-        const isMyStore = (currentUid && s.id === currentUid) || (myPhone && cleanStorePhone === myPhone);
-        const canDelete = isMyStore || isSuperAdmin;
+    // STRICT USER REQUIREMENT 1:
+    // Network pharmacy mn apki self id sbse top pe show hni chaye srf name pharmacy name adress aur phone number
+    if (selfStore) {
+        html += `
+            <div class="col-span-full mb-3">
+                <div class="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100/70 p-4 sm:p-5 rounded-2xl border-2 border-emerald-400 shadow-xs relative overflow-hidden">
+                    <div class="flex items-center justify-between pb-3 border-b border-emerald-200/80 mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span class="px-2.5 py-1 bg-emerald-700 text-white text-[11px] font-black rounded-lg uppercase tracking-wider shadow-xs">
+                                👑 Aapka Store (Self ID - Top)
+                            </span>
+                        </div>
+                        <span class="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-3 py-1 rounded-full border border-emerald-300">
+                            Active Self Profile
+                        </span>
+                    </div>
 
-        return `
-        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3 hover:border-emerald-300 transition">
-            <div class="flex items-start justify-between gap-2">
-                <div>
-                    <h4 class="font-black text-slate-800 text-sm sm:text-base leading-tight">${escapeHtml(s.name)}</h4>
-                    <p class="text-[11px] text-slate-500 font-semibold mt-0.5">
-                        ${s.ownerName ? `<span class="text-brand-700 font-bold">${escapeHtml(s.ownerName)}</span> • ` : ''}<span>📍 ${escapeHtml(s.city || 'Pakistan')}</span>
-                    </p>
-                </div>
-                <div class="flex items-center gap-1.5 shrink-0">
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
-                    </span>
-                    ${canDelete ? `
-                        <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition border border-rose-200 cursor-pointer" title="Network se delete karein">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                        </button>
-                    ` : ''}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Pharmacy Name</span>
+                            <strong class="text-slate-900 text-base font-black truncate block mt-0.5">${escapeHtml(selfStore.name || 'My Pharmacy')}</strong>
+                        </div>
+                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Name</span>
+                            <strong class="text-slate-900 text-sm font-black truncate block mt-0.5">${escapeHtml(selfStore.ownerName || 'Pharmacist')}</strong>
+                        </div>
+                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Address</span>
+                            <strong class="text-slate-900 text-sm font-black truncate block mt-0.5">📍 ${escapeHtml(selfStore.city || 'Pakistan')}</strong>
+                        </div>
+                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Phone Number</span>
+                            <strong class="text-emerald-700 text-sm font-black truncate block mt-0.5 font-mono">📞 ${escapeHtml(selfStore.phone || 'N/A')}</strong>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="text-[11px] text-slate-600 flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <span class="font-bold text-slate-500 uppercase text-[9px]">Status / Info:</span>
-                <strong class="text-brand-700 truncate max-w-[200px]">${escapeHtml(s.remarks || 'Active Digital Pharma Network Member')}</strong>
+        `;
+    }
+
+    // STRICT USER REQUIREMENT 2:
+    // baqi others connected pharmacy nechy show hni chaye list me (srf name, pharmacy name, address, aur phone number)
+    if (otherStores.length > 0) {
+        html += `
+            <div class="col-span-full flex items-center justify-between pt-2 pb-1">
+                <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <i data-lucide="network" class="w-4 h-4 text-emerald-600"></i> Baqi Connected Pharmacies (${otherStores.length})
+                </h4>
+                <span class="text-[11px] text-slate-500 font-semibold">Other Connected Stores</span>
             </div>
-            <div class="flex items-center gap-2">
-                <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Pharmacy: ' + s.name + ')')}" target="_blank" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition">
-                    <i data-lucide="message-square" class="w-3.5 h-3.5"></i> WhatsApp (${escapeHtml(s.phone)})
-                </a>
-                ${canDelete ? `
-                    <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer" title="Apni pharmacy network se hatao">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
-                    </button>
+        `;
+
+        html += otherStores.map((s, idx) => {
+            return `
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3 hover:border-emerald-300 transition">
+                <div class="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
+                    <div>
+                        <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Pharmacy Name</span>
+                        <h4 class="font-black text-slate-800 text-base leading-tight mt-0.5">${escapeHtml(s.name)}</h4>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
+                        </span>
+                        ${isSuperAdmin ? `
+                            <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition border border-rose-200 cursor-pointer" title="Network se delete karein">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                        <span class="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Name</span>
+                        <strong class="text-slate-800 font-bold truncate block mt-0.5">${escapeHtml(s.ownerName || 'Store Owner')}</strong>
+                    </div>
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                        <span class="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Address</span>
+                        <strong class="text-slate-800 font-bold truncate block mt-0.5">📍 ${escapeHtml(s.city || 'Pakistan')}</strong>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <span class="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Phone Number</span>
+                    <strong class="text-emerald-700 font-black truncate block mt-0.5 font-mono text-xs">📞 ${escapeHtml(s.phone || 'N/A')}</strong>
+                </div>
+
+                ${s.phone ? `
+                    <div class="pt-1">
+                        <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Pharmacy: ' + s.name + ')')}" target="_blank" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition">
+                            <i data-lucide="message-square" class="w-3.5 h-3.5"></i> WhatsApp (${escapeHtml(s.phone)})
+                        </a>
+                    </div>
                 ` : ''}
             </div>
-        </div>
+            `;
+        }).join('');
+    } else {
+        html += `
+            <div class="col-span-full p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-slate-500">
+                Koi doosri connected pharmacy abhi network par mojood nahi hai.
+            </div>
         `;
-    }).join('');
+    }
 
+    grid.innerHTML = html;
     safeCreateIcons();
 };
 
@@ -7535,6 +7662,77 @@ window.renderAdminStaffTable = async function() {
         }
     });
 
+    // Merge with registered accounts from localStorage (Strict User Requirement: Registered ID must always show in admin list)
+    try {
+        const localReg = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+        localReg.forEach(r => {
+            const rNorm = (r.phone || '').replace(/\D/g, '').slice(-10);
+            const rEmail = (r.email || '').toLowerCase().trim();
+            if (rEmail === 'shzdkhkh01@gmail.com' || rNorm === '3452919634') return;
+            const exists = users.some(u => 
+                (r.uid && u.uid === r.uid) ||
+                (rEmail && u.email && u.email.toLowerCase() === rEmail) ||
+                (rNorm && (u.phone || '').replace(/\D/g, '').slice(-10) === rNorm)
+            );
+            if (!exists) {
+                users.push({
+                    uid: r.uid || ('usr_' + Date.now()),
+                    name: r.ownerName || r.name || (rEmail ? rEmail.split('@')[0] : 'Registered User'),
+                    email: r.email || '-',
+                    phone: r.phone || '',
+                    pharmacyName: r.pharmacyName || 'Registered Pharmacy',
+                    city: r.city || 'Pakistan',
+                    status: 'Active',
+                    isOnline: true,
+                    isFixedAdmin: false
+                });
+
+                // Proactively sync to backend
+                fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        uid: r.uid,
+                        email: r.email,
+                        phone: r.phone,
+                        name: r.ownerName || r.name,
+                        pharmacyName: r.pharmacyName || 'Registered Pharmacy',
+                        city: r.city || 'Pakistan'
+                    })
+                }).catch(() => {});
+            }
+        });
+    } catch(_) {}
+
+    // Merge currently logged in user session if regular account
+    try {
+        const currentAuth = JSON.parse(localStorage.getItem('sm_auth_user') || '{}');
+        if (currentAuth.email && !currentAuth.isSuperAdmin && currentAuth.email !== 'shzdkhkh01@gmail.com') {
+            const aNorm = (currentAuth.phone || '').replace(/\D/g, '').slice(-10);
+            const aEmail = (currentAuth.email || '').toLowerCase().trim();
+            if (aNorm !== '3452919634') {
+                const exists = users.some(u => 
+                    (currentAuth.uid && u.uid === currentAuth.uid) ||
+                    (aEmail && u.email && u.email.toLowerCase() === aEmail) ||
+                    (aNorm && (u.phone || '').replace(/\D/g, '').slice(-10) === aNorm)
+                );
+                if (!exists) {
+                    users.push({
+                        uid: currentAuth.uid || ('usr_' + Date.now()),
+                        name: currentAuth.name || (aEmail ? aEmail.split('@')[0] : 'Active Pharmacist'),
+                        email: currentAuth.email,
+                        phone: currentAuth.phone || '',
+                        pharmacyName: currentAuth.pharmacyName || 'Registered Pharmacy',
+                        city: currentAuth.city || 'Pakistan',
+                        status: 'Active',
+                        isOnline: true,
+                        isFixedAdmin: false
+                    });
+                }
+            }
+        }
+    } catch(_) {}
+
     // Also include connected pharmacies from in-memory / Firestore
     if (Array.isArray(window.onlineNetworkPharmacies)) {
         window.onlineNetworkPharmacies.forEach(p => {
@@ -8454,19 +8652,26 @@ window.handleAuthSignup = async function() {
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.setItem('sm_user_mode', 'authenticated');
 
-        // Save to registered accounts list
+        // Save to registered accounts list in localStorage
         try {
             const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
-            if (!regUsers.some(u => u.email === email)) {
-                regUsers.push({
-                    email,
-                    uid: userUid,
-                    ownerName,
-                    phone,
-                    passwordHash: btoa(pass)
-                });
-                localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
+            const existingIdx = regUsers.findIndex(u => u.email && u.email.toLowerCase() === email);
+            const userObj = {
+                email,
+                uid: userUid,
+                ownerName,
+                name: ownerName,
+                phone,
+                pharmacyName: 'My Pharmacy',
+                city: 'Pakistan',
+                passwordHash: btoa(pass)
+            };
+            if (existingIdx !== -1) {
+                regUsers[existingIdx] = { ...regUsers[existingIdx], ...userObj };
+            } else {
+                regUsers.push(userObj);
             }
+            localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
         } catch(eReg) {}
 
         // Save to backend system & server registry
@@ -8483,6 +8688,25 @@ window.handleAuthSignup = async function() {
                     city: 'Pakistan'
                 })
             });
+            await fetch('/api/network/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: userUid,
+                    name: 'My Pharmacy',
+                    ownerName: ownerName,
+                    city: 'Pakistan',
+                    phone: phone,
+                    email: email,
+                    remarks: 'Active Digital Pharma Connected Pharmacy'
+                })
+            });
+            if (typeof window.sendUserHeartbeat === 'function') {
+                window.sendUserHeartbeat();
+            }
+            if (typeof window.refreshNetworkList === 'function') {
+                window.refreshNetworkList();
+            }
         } catch(_) {}
 
         // Connect live listeners
@@ -8692,7 +8916,28 @@ window.handleAuthLogin = async function() {
         // Connect live listeners
         attachFirestoreSyncListeners(userUid);
 
-        // Register and sync to backend so user shows in Super Admin Control with Online Mode
+        // Ensure user is recorded in sm_registered_users
+        try {
+            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            const existingIdx = regUsers.findIndex(u => u.email && u.email.toLowerCase() === email);
+            const userObj = {
+                email,
+                uid: userUid,
+                ownerName: authRecord.name || config.ownerName || '',
+                name: authRecord.name || config.ownerName || '',
+                phone: authRecord.phone || config.phone || '',
+                pharmacyName: authRecord.pharmacyName || config.name || 'My Pharmacy',
+                city: authRecord.city || config.address || 'Pakistan'
+            };
+            if (existingIdx !== -1) {
+                regUsers[existingIdx] = { ...regUsers[existingIdx], ...userObj };
+            } else {
+                regUsers.push(userObj);
+            }
+            localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
+        } catch(eReg) {}
+
+        // Register and sync to backend so user shows in Super Admin Control with Online Mode & in Network Pharmacies
         try {
             await fetch('/api/users/register', {
                 method: 'POST',
@@ -8706,8 +8951,24 @@ window.handleAuthLogin = async function() {
                     city: authRecord.city || config.address || 'Pakistan'
                 })
             });
+            await fetch('/api/network/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: userUid,
+                    name: authRecord.pharmacyName || config.name || 'My Pharmacy',
+                    ownerName: authRecord.name || config.ownerName || '',
+                    city: authRecord.city || config.address || 'Pakistan',
+                    phone: authRecord.phone || config.phone || '',
+                    email: email,
+                    remarks: 'Active Digital Pharma Connected Pharmacy'
+                })
+            });
             if (typeof window.sendUserHeartbeat === 'function') {
                 window.sendUserHeartbeat();
+            }
+            if (typeof window.refreshNetworkList === 'function') {
+                window.refreshNetworkList();
             }
         } catch(_) {}
 
@@ -8819,7 +9080,29 @@ window.handleSaveFirstTimeStoreDetails = async function() {
             } catch(e) {}
         }
 
-        // 4. Register with backend network
+        // Update sm_registered_users with store details
+        try {
+            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            const uEmail = (user?.email || '').toLowerCase().trim();
+            const existingIdx = regUsers.findIndex(u => (uEmail && u.email && u.email.toLowerCase() === uEmail) || (u.uid && u.uid === userUid));
+            const userObj = {
+                uid: userUid,
+                email: uEmail,
+                name: ownerName,
+                ownerName: ownerName,
+                pharmacyName: storeName,
+                city: city,
+                phone: phone
+            };
+            if (existingIdx !== -1) {
+                regUsers[existingIdx] = { ...regUsers[existingIdx], ...userObj };
+            } else {
+                regUsers.push(userObj);
+            }
+            localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
+        } catch(_) {}
+
+        // 4. Register with backend network & users registry
         try {
             await fetch('/api/network/register', {
                 method: 'POST',
@@ -8835,6 +9118,21 @@ window.handleSaveFirstTimeStoreDetails = async function() {
                     remarks: 'Verified Digital Pharma Live Member'
                 })
             });
+            await fetch('/api/users/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userUid,
+                    email: user?.email || '',
+                    phone: phone,
+                    name: ownerName,
+                    pharmacyName: storeName,
+                    city: city
+                })
+            });
+            if (typeof window.sendUserHeartbeat === 'function') {
+                window.sendUserHeartbeat();
+            }
         } catch(e) {}
 
         // 5. Live sync stock with network

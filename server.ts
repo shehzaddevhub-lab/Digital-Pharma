@@ -1435,33 +1435,33 @@ app.post('/api/users/register', (req: Request, res: Response): void => {
       return;
     }
 
-    // STRICT USER REQUIREMENT: 1 Gmail ID pe sirf 1 account create hona chahiye
-    const existingByEmail = registeredUsers.find(u => u.email.toLowerCase() === cleanEmail);
-    if (existingByEmail && cleanUid && existingByEmail.uid !== cleanUid) {
-      res.status(409).json({
-        success: false,
-        error: 'Is Gmail ID par pehle se account mojood hai! 1 Gmail ID par sirf 1 account create ho sakta hai.'
-      });
-      return;
-    }
+    // Strict 1 Account per Gmail ID: If account exists by email/uid/phone, update it rather than 409 error
+    const cleanEmailLower = cleanEmail.toLowerCase();
+    const normPhone = normalizePhone(cleanPhone);
 
-    // Check if previously kicked; unkick if registering again with valid intent
-    kickedUserIds = kickedUserIds.filter(id => id !== cleanUid && id !== cleanEmail && id !== cleanPhone);
+    // Unkick if registering/logging in
+    kickedUserIds = kickedUserIds.filter(id => 
+      id !== cleanUid && 
+      id !== cleanEmailLower && 
+      id !== cleanPhone && 
+      id !== normPhone
+    );
     saveKickedUsers(kickedUserIds);
 
     const idx = registeredUsers.findIndex(u => 
+      (cleanEmailLower && u.email && u.email.toLowerCase() === cleanEmailLower) ||
       (cleanUid && u.uid === cleanUid) || 
-      (cleanEmail && u.email.toLowerCase() === cleanEmail) ||
-      (cleanPhone && u.phone.replace(/\D/g, '') === cleanPhone)
+      (normPhone && normalizePhone(u.phone) === normPhone)
     );
 
+    const effectiveUid = cleanUid || (idx !== -1 ? registeredUsers[idx].uid : ('ph_' + Date.now()));
     const account: UserAccount = {
-      uid: cleanUid || (idx !== -1 ? registeredUsers[idx].uid : ('ph_' + Date.now())),
-      email: cleanEmail,
+      uid: effectiveUid,
+      email: cleanEmailLower,
       phone: String(phone || '').trim(),
-      name: String(name || '').trim() || cleanEmail.split('@')[0],
-      pharmacyName: String(pharmacyName || '').trim() || 'My Pharmacy',
-      city: String(city || '').trim() || 'Pakistan',
+      name: String(name || '').trim() || (idx !== -1 && registeredUsers[idx].name ? registeredUsers[idx].name : cleanEmailLower.split('@')[0]),
+      pharmacyName: String(pharmacyName || '').trim() || (idx !== -1 && registeredUsers[idx].pharmacyName ? registeredUsers[idx].pharmacyName : 'My Pharmacy'),
+      city: String(city || '').trim() || (idx !== -1 && registeredUsers[idx].city ? registeredUsers[idx].city : 'Pakistan'),
       status: 'Active',
       isOnline: true,
       lastActive: new Date().toISOString(),
@@ -1474,6 +1474,35 @@ app.post('/api/users/register', (req: Request, res: Response): void => {
       registeredUsers.push(account);
     }
     saveRegisteredUsers(registeredUsers);
+
+    // Also auto-sync to activeNetworkPharmacies so it instantly appears in Network Pharmacy list!
+    if (!isPhoneAdmin(account.phone) && normPhone !== '3452919634' && account.email !== 'shzdkhkh01@gmail.com') {
+      deletedPharmacyTokens = deletedPharmacyTokens.filter(t => t !== effectiveUid && t !== normPhone && t !== cleanEmailLower);
+      saveDeletedPharmacies(deletedPharmacyTokens);
+
+      const netIdx = activeNetworkPharmacies.findIndex(p => 
+        (effectiveUid && p.id === effectiveUid) ||
+        (cleanEmailLower && p.email && p.email.toLowerCase() === cleanEmailLower) ||
+        (normPhone && normalizePhone(p.phone) === normPhone)
+      );
+      const netRecord: NetworkPharmacy = {
+        id: effectiveUid,
+        name: account.pharmacyName || (account.name ? `${account.name}'s Pharmacy` : 'Connected Pharmacy'),
+        ownerName: account.name || 'Store Owner',
+        city: account.city || 'Pakistan',
+        phone: account.phone || '',
+        email: account.email || '',
+        licenseNo: '',
+        remarks: 'Active Digital Pharma Connected Pharmacy',
+        updatedAt: new Date().toISOString()
+      };
+      if (netIdx !== -1) {
+        activeNetworkPharmacies[netIdx] = netRecord;
+      } else {
+        activeNetworkPharmacies.unshift(netRecord);
+      }
+      saveNetworkPharmacies(activeNetworkPharmacies);
+    }
 
     res.json({ success: true, message: 'User registered in backend system', user: account });
   } catch (e) {
