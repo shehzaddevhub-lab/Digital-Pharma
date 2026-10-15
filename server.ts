@@ -1707,6 +1707,63 @@ app.get('/api/users/list', (_req: Request, res: Response): void => {
   });
 });
 
+// User Data Storage Tied to Registered Login ID
+const USER_DATA_DIR = path.resolve(__dirname, 'user_data');
+if (!fs.existsSync(USER_DATA_DIR)) {
+  try { fs.mkdirSync(USER_DATA_DIR, { recursive: true }); } catch (_) {}
+}
+
+function getUserDataFilePath(userId: string) {
+  const safeId = userId.replace(/[^a-zA-Z0-9_\-]/g, '_');
+  return path.join(USER_DATA_DIR, `data_${safeId}.json`);
+}
+
+// Endpoint: Persist user medicines and sales tied to their login account
+app.post('/api/users/sync-data', (req: Request, res: Response): void => {
+  try {
+    const { userId, email, medicines, sales, config } = req.body || {};
+    const targetId = userId || (email ? email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : null);
+    if (!targetId) {
+      res.status(400).json({ success: false, error: 'User identifier required' });
+      return;
+    }
+    const filePath = getUserDataFilePath(targetId);
+    const payload = {
+      userId: targetId,
+      email: email || '',
+      medicines: Array.isArray(medicines) ? medicines : [],
+      sales: Array.isArray(sales) ? sales : [],
+      config: config || {},
+      updatedAt: new Date().toISOString()
+    };
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+    res.json({ success: true, countMeds: payload.medicines.length, countSales: payload.sales.length });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to sync user data' });
+  }
+});
+
+// Endpoint: Restore user medicines and sales upon login
+app.get('/api/users/user-data', (req: Request, res: Response): void => {
+  try {
+    const qUser = String(req.query.userId || req.query.uid || req.query.email || '').trim();
+    if (!qUser) {
+      res.json({ success: false, medicines: [], sales: [] });
+      return;
+    }
+    const safeId = qUser.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const filePath = getUserDataFilePath(safeId);
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      res.json({ success: true, ...data });
+      return;
+    }
+    res.json({ success: true, medicines: [], sales: [] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to read user data' });
+  }
+});
+
 // Endpoint: Check if specific user is kicked / banned by admin
 app.get('/api/user/check-status', (req: Request, res: Response): void => {
   const qUid = String(req.query.uid || '').trim();
@@ -1937,6 +1994,17 @@ app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
     if (normPhone) {
       networkMedicineStocks = networkMedicineStocks.filter(s => normalizePhone(s.phone) !== normPhone);
     }
+
+    // Wipe persisted user data file upon kick
+    const idsToWipe = [cleanUid, cleanEmail ? cleanEmail.replace(/[^a-zA-Z0-9]/g, '_') : null].filter(Boolean);
+    idsToWipe.forEach(id => {
+      if (id) {
+        const p = getUserDataFilePath(id);
+        if (fs.existsSync(p)) {
+          try { fs.unlinkSync(p); } catch(_) {}
+        }
+      }
+    });
 
     res.json({
       success: true,

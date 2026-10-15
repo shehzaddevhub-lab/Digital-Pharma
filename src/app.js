@@ -82,9 +82,11 @@ function initFirebase() {
                 const cloudMeds = [];
                 snapshot.forEach(docSnap => cloudMeds.push(docSnap.data()));
                 medicines = cloudMeds;
+                localStorage.setItem('sm_medicines_' + user.uid, JSON.stringify(medicines));
                 localStorage.setItem('sm_medicines', JSON.stringify(medicines));
                 renderInventoryTable();
                 renderDashboardMetrics();
+                if (typeof renderPosItems === 'function') renderPosItems();
             }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/medicines`));
 
             // 2. Sync User-Owned Sales Invoices
@@ -94,16 +96,26 @@ function initFirebase() {
                 const cloudSales = [];
                 snapshot.forEach(docSnap => cloudSales.push(docSnap.data()));
                 sales = cloudSales;
+                localStorage.setItem('sm_sales_' + user.uid, JSON.stringify(sales));
                 localStorage.setItem('sm_sales', JSON.stringify(sales));
                 renderDashboardMetrics();
             }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}/sales`));
 
-            // Note: Registration to Connected Network happens explicitly when store profile is configured,
-            // not automatically on every reload to avoid resurrecting deleted profiles.
+            // 3. Also load user data from server backup
+            if (typeof window.loadUserDataForUser === 'function') {
+                window.loadUserDataForUser(user.uid, user.email);
+            }
         } else {
             authUser = null;
             if (unsubscribeMeds) unsubscribeMeds();
             if (unsubscribeSales) unsubscribeSales();
+            const localAuth = localStorage.getItem('sm_auth_user');
+            if (!localAuth) {
+                medicines = [];
+                sales = [];
+                renderInventoryTable();
+                renderDashboardMetrics();
+            }
         }
 
         window.applyStoreIdentity();
@@ -5012,8 +5024,11 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
     resultsEl.classList.remove('hidden');
     safeCreateIcons();
 
-    // Async Live Network Central Lookup from server if online
-    if (query.length >= 3) {
+    // Async Live Network Central Lookup from server across connected pharmacies
+    if (query.length >= 2) {
+        const myStorePhone = (window.getStoreConfig ? window.getStoreConfig()?.phone : '') || (currentUser?.phone || '');
+        const normMyPhone = myStorePhone.replace(/\D/g, '').slice(-10);
+
         fetch(`/api/network/medicine-lookup?q=${encodeURIComponent(query)}`)
             .then(res => res.json())
             .then(data => {
@@ -5021,30 +5036,40 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                 const serverResults = (data && Array.isArray(data.results)) ? data.results : [];
                 if (serverResults.length === 0) return;
 
-                // Filter out any already shown by phone/name
-                const newServerMatches = serverResults.filter(sr => 
-                    !verifiedPartnerMatches.some(vm => vm.pharmacy?.phone === sr.phone)
-                );
+                // Filter out any already shown by phone/name or belonging to own store
+                const newServerMatches = serverResults.filter(sr => {
+                    const srNorm = String(sr.phone || '').replace(/\D/g, '').slice(-10);
+                    if (normMyPhone && srNorm === normMyPhone) return false;
+                    return !verifiedPartnerMatches.some(vm => {
+                        const vmNorm = String(vm.pharmacy?.phone || '').replace(/\D/g, '').slice(-10);
+                        return vmNorm === srNorm;
+                    });
+                });
                 if (newServerMatches.length === 0) return;
 
-                let extraHtml = `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Central Live Network Availability:</span><span>${newServerMatches.length} stores</span></div>`;
-                extraHtml += newServerMatches.map(r => `
-                    <div class="p-3 hover:bg-emerald-50/40 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white mt-1">
+                let extraHtml = `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between border border-emerald-200"><span>Connected Pharmacies Network (${newServerMatches.length} Stores ke pas Stock Available):</span><span>Direct WhatsApp Ready</span></div>`;
+                extraHtml += newServerMatches.map(r => {
+                    const cleanPhone = String(r.phone).replace(/\D/g, '').replace(/^0/, '').slice(-10);
+                    const waMsg = `Assalam-o-Alaikum! Digital Pharma Network se aapke pas "${r.medicineName}" ka stock dekh kar rabta kiya hai. Barah-e-karam confirmation dein ke yeh medicine available hai? Shukriya.`;
+                    return `
+                    <div class="p-3 hover:bg-emerald-50/50 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white mt-1 border border-emerald-100/60 shadow-xs">
                         <div class="flex items-start justify-between gap-2">
                             <div>
                                 <strong class="text-slate-900 text-xs sm:text-sm font-black">${escapeHtml(r.medicineName)}</strong>
-                                <span class="text-[11px] text-slate-500 font-medium block mt-0.5"><span class="text-emerald-700 font-bold">🏪 ${escapeHtml(r.storeName)}</span> • <span class="text-slate-500 font-mono text-[10px]">${escapeHtml(r.city)}</span></span>
+                                <span class="text-[11px] text-slate-500 font-medium block mt-0.5"><span class="text-emerald-700 font-bold">🏪 ${escapeHtml(r.storeName)}</span> • <span class="text-slate-500 font-mono text-[10px]">📍 ${escapeHtml(r.city)}</span></span>
                             </div>
-                            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available (${r.stockQty} ${escapeHtml(r.type || 'Packs')})</span>
+                            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full border border-emerald-300">Available (${r.stockQty} ${escapeHtml(r.type || 'Packs')})</span>
                         </div>
-                        <div class="flex items-center justify-between pt-1">
-                            <span class="text-[10px] text-slate-500 font-medium">Live Partner Stock</span>
-                            <a href="https://wa.me/92${String(r.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma Network se aap ke paas "' + r.medicineName + '" ka stock check karne ke liye rabta kiya hai. Barah-e-karam confirmation dein.')}" target="_blank" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs active:scale-95 transition">
-                                <i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp
+                        <div class="flex items-center justify-between pt-1 border-t border-slate-50">
+                            <span class="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Connected Pharmacy
+                            </span>
+                            <a href="https://wa.me/92${cleanPhone}?text=${encodeURIComponent(waMsg)}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer" title="Direct WhatsApp Message Bhejein">
+                                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> WhatsApp Rabta ↗
                             </a>
                         </div>
                     </div>
-                `).join('');
+                `;}).join('');
 
                 resultsEl.innerHTML = html + extraHtml;
                 safeCreateIcons();
@@ -7511,54 +7536,175 @@ window.deleteSaleInvoicePrompt = function() {
     });
 };
 
+// Helper to get active logged-in user identifiers
+window.getActiveUserIdentifiers = function() {
+    const currUser = window.getCurrentUser?.();
+    const activeUid = authUser?.uid || currUser?.uid || (currUser?.email ? `ph_${btoa(unescape(encodeURIComponent(currUser.email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)}` : null);
+    const activeEmail = authUser?.email || currUser?.email || '';
+    return { activeUid, activeEmail };
+};
+
+// Debounced User Data Server Sync
+let userDataSyncTimer = null;
+window.debounceSyncUserData = function(uid, email) {
+    if (!uid && !email) return;
+    if (userDataSyncTimer) clearTimeout(userDataSyncTimer);
+    userDataSyncTimer = setTimeout(async () => {
+        try {
+            const config = window.getStoreConfig ? window.getStoreConfig() : {};
+            await fetch('/api/users/sync-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: uid,
+                    email: email,
+                    medicines: window.medicines || medicines || [],
+                    sales: window.sales || sales || [],
+                    config: config
+                })
+            });
+        } catch (_) {}
+    }, 800);
+};
+
+// Restore user-specific data upon login
+window.loadUserDataForUser = async function(userUid, userEmail) {
+    if (!userUid && !userEmail) return;
+    const key = userUid || userEmail.replace(/[^a-zA-Z0-9]/g, '_');
+
+    // 1. Restore from local user-scoped storage immediately
+    let loadedFromLocal = false;
+    const localMeds = localStorage.getItem('sm_medicines_' + key);
+    if (localMeds) {
+        try {
+            const parsed = JSON.parse(localMeds);
+            if (Array.isArray(parsed)) {
+                medicines = parsed;
+                localStorage.setItem('sm_medicines', localMeds);
+                loadedFromLocal = true;
+            }
+        } catch (_) {}
+    }
+    const localSales = localStorage.getItem('sm_sales_' + key);
+    if (localSales) {
+        try {
+            const parsed = JSON.parse(localSales);
+            if (Array.isArray(parsed)) {
+                sales = parsed;
+                localStorage.setItem('sm_sales', localSales);
+            }
+        } catch (_) {}
+    }
+
+    if (loadedFromLocal) {
+        renderInventoryTable();
+        renderDashboardMetrics();
+        if (typeof renderPosItems === 'function') renderPosItems();
+    }
+
+    // 2. Fetch from backend server backup
+    try {
+        const res = await fetch(`/api/users/user-data?userId=${encodeURIComponent(userUid || '')}&email=${encodeURIComponent(userEmail || '')}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.success) {
+                if (Array.isArray(data.medicines) && data.medicines.length > 0) {
+                    medicines = data.medicines;
+                    localStorage.setItem('sm_medicines_' + key, JSON.stringify(medicines));
+                    localStorage.setItem('sm_medicines', JSON.stringify(medicines));
+                }
+                if (Array.isArray(data.sales) && data.sales.length > 0) {
+                    sales = data.sales;
+                    localStorage.setItem('sm_sales_' + key, JSON.stringify(sales));
+                    localStorage.setItem('sm_sales', JSON.stringify(sales));
+                }
+                renderInventoryTable();
+                renderDashboardMetrics();
+                if (typeof renderPosItems === 'function') renderPosItems();
+            }
+        }
+    } catch (_) {}
+
+    // 3. Sync stock to network so other pharmacies can see available stock
+    window.syncStockWithNetwork?.();
+};
+
 async function saveMedicineToStore(med) {
     const idx = medicines.findIndex(m => m.id === med.id);
     if (idx !== -1) medicines[idx] = med; else medicines.push(med);
+    
+    const { activeUid, activeEmail } = window.getActiveUserIdentifiers();
+    if (activeUid) {
+        localStorage.setItem('sm_medicines_' + activeUid, JSON.stringify(medicines));
+    }
     localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-    if (db && authUser) {
+
+    if (db && activeUid) {
         try {
-            await setDoc(doc(db, 'users', authUser.uid, 'medicines', med.id), med);
+            await setDoc(doc(db, 'users', activeUid, 'medicines', med.id), med);
         } catch(e) {
-            handleFirestoreError(e, 'write', `users/${authUser.uid}/medicines/${med.id}`);
+            handleFirestoreError(e, 'write', `users/${activeUid}/medicines/${med.id}`);
         }
     }
+    window.debounceSyncUserData(activeUid, activeEmail);
+    window.syncStockWithNetwork?.();
 }
 
 async function deleteMedicineFromStore(id) {
     medicines = medicines.filter(m => m.id !== id);
+    const { activeUid, activeEmail } = window.getActiveUserIdentifiers();
+    if (activeUid) {
+        localStorage.setItem('sm_medicines_' + activeUid, JSON.stringify(medicines));
+    }
     localStorage.setItem('sm_medicines', JSON.stringify(medicines));
-    if (db && authUser) {
+
+    if (db && activeUid) {
         try {
-            await deleteDoc(doc(db, 'users', authUser.uid, 'medicines', id));
+            await deleteDoc(doc(db, 'users', activeUid, 'medicines', id));
         } catch(e) {
-            handleFirestoreError(e, 'delete', `users/${authUser.uid}/medicines/${id}`);
+            handleFirestoreError(e, 'delete', `users/${activeUid}/medicines/${id}`);
         }
     }
+    window.debounceSyncUserData(activeUid, activeEmail);
+    window.syncStockWithNetwork?.();
 }
 
 async function saveSaleToStore(sale) {
     const idx = sales.findIndex(s => s.id === sale.id);
     if (idx !== -1) sales[idx] = sale; else sales.push(sale);
+    
+    const { activeUid, activeEmail } = window.getActiveUserIdentifiers();
+    if (activeUid) {
+        localStorage.setItem('sm_sales_' + activeUid, JSON.stringify(sales));
+    }
     localStorage.setItem('sm_sales', JSON.stringify(sales));
-    if (db && authUser) {
+
+    if (db && activeUid) {
         try {
-            await setDoc(doc(db, 'users', authUser.uid, 'sales', sale.id), sale);
+            await setDoc(doc(db, 'users', activeUid, 'sales', sale.id), sale);
         } catch(e) {
-            handleFirestoreError(e, 'write', `users/${authUser.uid}/sales/${sale.id}`);
+            handleFirestoreError(e, 'write', `users/${activeUid}/sales/${sale.id}`);
         }
     }
+    window.debounceSyncUserData(activeUid, activeEmail);
 }
 
 async function deleteSaleFromStore(id) {
     sales = sales.filter(s => s.id !== id);
+    const { activeUid, activeEmail } = window.getActiveUserIdentifiers();
+    if (activeUid) {
+        localStorage.setItem('sm_sales_' + activeUid, JSON.stringify(sales));
+    }
     localStorage.setItem('sm_sales', JSON.stringify(sales));
-    if (db && authUser) {
+
+    if (db && activeUid) {
         try {
-            await deleteDoc(doc(db, 'users', authUser.uid, 'sales', id));
+            await deleteDoc(doc(db, 'users', activeUid, 'sales', id));
         } catch(e) {
-            handleFirestoreError(e, 'delete', `users/${authUser.uid}/sales/${id}`);
+            handleFirestoreError(e, 'delete', `users/${activeUid}/sales/${id}`);
         }
     }
+    window.debounceSyncUserData(activeUid, activeEmail);
 }
 
 // Super Admin & Staff Management (Protected Super Admin Portal - Fully Masked Phone)
@@ -9207,8 +9353,11 @@ window.handleAuthLogin = async function() {
         if (finalCity && finalCity !== 'Pakistan') config.address = finalCity;
         localStorage.setItem('sm_store_config', JSON.stringify(config));
 
-        // Connect live listeners
+        // Connect live listeners and restore user's medicines and sales
         attachFirestoreSyncListeners(userUid);
+        if (typeof window.loadUserDataForUser === 'function') {
+            window.loadUserDataForUser(userUid, email);
+        }
 
         // Ensure user is recorded in sm_registered_users with their complete details
         try {
@@ -10125,20 +10274,73 @@ window.saveAccountHubStoreProfile = async function() {
 };
 
 window.handleHubLogout = async function() {
+    const localAuth = localStorage.getItem('sm_auth_user');
+    let lastUid = null;
+    let lastEmail = null;
+    try {
+        if (localAuth) {
+            const u = JSON.parse(localAuth);
+            lastUid = u?.uid;
+            lastEmail = u?.email;
+        }
+    } catch(_) {}
+    if (!lastUid && authUser?.uid) lastUid = authUser.uid;
+    if (!lastEmail && authUser?.email) lastEmail = authUser.email;
+
+    // 1. Save user's data to their personal backup key before wiping memory
+    if (lastUid) {
+        try {
+            localStorage.setItem('sm_medicines_' + lastUid, JSON.stringify(medicines));
+            localStorage.setItem('sm_sales_' + lastUid, JSON.stringify(sales));
+            // Immediate sync to server before logout
+            fetch('/api/users/sync-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: lastUid,
+                    email: lastEmail,
+                    medicines: window.medicines || medicines || [],
+                    sales: window.sales || sales || [],
+                    config: window.getStoreConfig ? window.getStoreConfig() : {}
+                })
+            }).catch(() => {});
+        } catch(_) {}
+    }
+
+    // 2. Detach live Firestore listeners so no background updates happen
+    if (unsubscribeMeds) { unsubscribeMeds(); unsubscribeMeds = null; }
+    if (unsubscribeSales) { unsubscribeSales(); unsubscribeSales = null; }
+
+    // 3. Sign out of Firebase Auth
     if (auth && typeof signOut === 'function') {
         try {
             await signOut(auth);
         } catch(e) {}
     }
+
+    // 4. Wipe active session keys and generic data from localStorage so mobile shows nothing from logged-out account
     localStorage.removeItem('sm_auth_user');
     localStorage.removeItem('sm_user_mode');
     localStorage.removeItem('sm_profile_pic');
     localStorage.removeItem('sm_is_admin');
+    localStorage.removeItem('sm_medicines');
+    localStorage.removeItem('sm_sales');
     authUser = null;
+
+    // 5. Completely clear in-memory arrays
+    medicines = [];
+    sales = [];
+    cart = [];
+
+    // 6. Reset UI views to blank / logged-out state
+    renderInventoryTable();
+    renderDashboardMetrics();
+    if (typeof renderPosItems === 'function') renderPosItems();
+    if (typeof updateCartUI === 'function') updateCartUI();
 
     window.applyStoreIdentity();
     window.showHubChoiceSection();
-    showToast('Logout ho gaye hain. Naya mode ya account chunein.', 'info');
+    showToast('Logout ho gaye hain. Aapka data mehfooz kar diya gaya hai aur screen se hata diya gaya hai.', 'info');
 };
 
 // Network Online/Offline Dot Indicator
@@ -10166,36 +10368,44 @@ window.addEventListener('offline', () => {
 
 function initApp() {
     try {
-        const savedMeds = localStorage.getItem('sm_medicines');
-        if (savedMeds) {
-            const parsed = JSON.parse(savedMeds);
-            // Purge fake mock data (med_1, med_2, med_3, med_4)
-            const isMockData = Array.isArray(parsed) && parsed.length > 0 && parsed.every(m => ['med_1', 'med_2', 'med_3', 'med_4'].includes(m.id));
-            if (isMockData) {
+        const localAuth = localStorage.getItem('sm_auth_user');
+        const activeUser = localAuth ? JSON.parse(localAuth) : null;
+        const userUid = activeUser?.uid || null;
+
+        if (userUid) {
+            // User is logged in: restore their personal data
+            const userMeds = localStorage.getItem('sm_medicines_' + userUid) || localStorage.getItem('sm_medicines');
+            if (userMeds) {
+                try {
+                    const parsed = JSON.parse(userMeds);
+                    const isMockData = Array.isArray(parsed) && parsed.length > 0 && parsed.every(m => ['med_1', 'med_2', 'med_3', 'med_4'].includes(m.id));
+                    medicines = isMockData ? [] : parsed;
+                } catch(_) { medicines = []; }
+            } else {
                 medicines = [];
-                localStorage.removeItem('sm_medicines');
-            } else {
-                medicines = parsed;
             }
-        } else {
-            medicines = [];
-        }
 
-        const savedSales = localStorage.getItem('sm_sales');
-        if (savedSales) {
-            const parsedSales = JSON.parse(savedSales);
-            const isMockSale = Array.isArray(parsedSales) && parsedSales.length > 0 && parsedSales.some(s => s.id && (s.id.includes('mock') || s.id.includes('fake') || s.customer === 'Walk-in Customer Test'));
-            if (isMockSale) {
+            const userSales = localStorage.getItem('sm_sales_' + userUid) || localStorage.getItem('sm_sales');
+            if (userSales) {
+                try {
+                    const parsedSales = JSON.parse(userSales);
+                    sales = Array.isArray(parsedSales) ? parsedSales : [];
+                } catch(_) { sales = []; }
+            } else {
                 sales = [];
-                localStorage.removeItem('sm_sales');
-            } else {
-                sales = parsedSales;
             }
+
+            // Sync from server user-data
+            window.loadUserDataForUser(userUid, activeUser.email);
         } else {
+            // User is NOT logged in: strictly empty data, do not display old user's inventory
+            medicines = [];
             sales = [];
+            localStorage.removeItem('sm_medicines');
+            localStorage.removeItem('sm_sales');
         }
 
-        // Permanent elimination of local storage for connected network (Pure Online)
+        // Pure Online in-memory network pharmacies
         try {
             localStorage.removeItem('sm_network_stores');
             window.onlineNetworkPharmacies = [];
