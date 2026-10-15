@@ -32,7 +32,7 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '35mb' }));
 app.use(express.urlencoded({ limit: '35mb', extended: true }));
 
-const APP_BUILD_TIMESTAMP = 'dp-build-' + Date.now();
+const APP_BUILD_TIMESTAMP = 'dp-v2.1.2';
 
 // Static PWA & Asset routes with strict freshness headers
 app.get('/manifest.json', (_req, res) => {

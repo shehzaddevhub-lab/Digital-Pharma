@@ -444,52 +444,42 @@ window.addEventListener('beforeinstallprompt', (e) => {
     updateInstallUiState();
 });
 
-// Live PWA Auto-Updater & Service Worker Registration
+// Live PWA Service Worker Registration & Cache Management
 function initPwaLiveAutoUpdater() {
     if (!('serviceWorker' in navigator)) return;
 
-    // Register modern Service Worker with cache-busting
-    navigator.serviceWorker.register('/sw.js?v=' + Date.now(), { updateViaCache: 'none' })
-        .then((reg) => {
-            // Listen for waiting or newly installed worker
-            reg.addEventListener('updatefound', () => {
-                const newWorker = reg.installing;
-                if (!newWorker) return;
-                newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        newWorker.postMessage({ type: 'SKIP_WAITING' });
-                    }
-                });
+    // Purge old legacy caches on startup to prevent stale loading screens
+    if ('caches' in window) {
+        caches.keys().then(keys => {
+            keys.forEach(k => {
+                if (k.includes('v6') || k.includes('ocr') || (k.startsWith('digital-pharma-') && k !== 'digital-pharma-v2.1.2')) {
+                    caches.delete(k);
+                }
             });
+        }).catch(() => {});
+    }
 
-            // Periodic check for SW update (every 45s)
+    // Register modern Service Worker cleanly without query string to prevent reload loops
+    navigator.serviceWorker.register('/sw.js')
+        .then((reg) => {
+            // Periodic background check for SW updates (every 2 minutes)
             setInterval(() => {
                 reg.update().catch(() => {});
-            }, 45000);
+            }, 120000);
 
             // Check on app resume or focus
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
                     reg.update().catch(() => {});
-                    checkForAppVersionUpdate();
                 }
             });
         })
         .catch((err) => {
             console.warn('SW registration note:', err);
         });
-
-    // Auto-reload when new controller takes over
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!refreshing) {
-            refreshing = true;
-            window.location.reload();
-        }
-    });
 }
 
-// Live App Version Poller (Auto-updates without uninstalling)
+// Live App Version Poller (Silent Background Sync, No Disruptive Auto-Reload)
 async function checkForAppVersionUpdate() {
     try {
         const res = await fetch('/api/app-version', { cache: 'no-store' });
@@ -501,21 +491,16 @@ async function checkForAppVersionUpdate() {
                 localStorage.setItem('dp_installed_app_version', data.version);
             } else if (currentSaved !== data.version) {
                 localStorage.setItem('dp_installed_app_version', data.version);
-                showToast('Naya App Update dastyab hai! Live update ho raha hai...', 'info');
                 if ('caches' in window) {
                     const keys = await caches.keys();
-                    await Promise.all(keys.map(k => caches.delete(k)));
+                    await Promise.all(keys.filter(k => k !== 'digital-pharma-v2.1.2').map(k => caches.delete(k)));
                 }
-                setTimeout(() => {
-                    window.location.reload();
-                }, 800);
             }
         }
     } catch(e) {}
 }
 
 initPwaLiveAutoUpdater();
-setInterval(checkForAppVersionUpdate, 30000);
 
 window.openAppInstallModal = function() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
@@ -10430,7 +10415,7 @@ function initApp() {
     window.checkUserKickedStatus();
     setInterval(() => {
         window.checkUserKickedStatus();
-    }, 3000);
+    }, 25000);
 }
 
 // Instant startup without waiting for full window.load
