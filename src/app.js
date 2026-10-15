@@ -189,14 +189,14 @@ window.safeCreateIcons = safeCreateIcons;
 
 export function customConfirm(title, message, onConfirm) {
     const modal = document.createElement('div');
-    modal.className = 'custom-confirm-modal fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4';
+    modal.className = 'custom-confirm-modal fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[80] flex items-center justify-center p-4';
     modal.innerHTML = `
-        <div class="bg-white rounded-2xl max-w-xs w-full p-4 shadow-2xl flex flex-col gap-3">
+        <div class="bg-white rounded-2xl max-w-xs w-full p-4 shadow-2xl flex flex-col gap-3 border border-slate-200">
             <h4 class="font-black text-slate-800 text-sm">${title}</h4>
-            <p class="text-xs text-slate-600">${message}</p>
-            <div class="flex gap-2 pt-2 border-t">
-                <button id="cancel-confirm-btn" class="flex-1 py-1.5 border rounded-xl text-xs font-bold text-slate-600">Nahi</button>
-                <button id="ok-confirm-btn" class="flex-1 py-1.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow">Haan</button>
+            <p class="text-xs text-slate-600 leading-relaxed">${message}</p>
+            <div class="flex gap-2 pt-2 border-t border-slate-100">
+                <button id="cancel-confirm-btn" class="flex-1 py-2 border rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition active:scale-95 cursor-pointer">Nahi (Cancel)</button>
+                <button id="ok-confirm-btn" class="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer">Haan (Delete)</button>
             </div>
         </div>
     `;
@@ -213,6 +213,31 @@ export function customConfirm(title, message, onConfirm) {
     };
 }
 window.customConfirm = customConfirm;
+
+export function customAlert(title, message, onOk) {
+    const modal = document.createElement('div');
+    modal.className = 'custom-alert-modal fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[90] flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl max-w-sm w-full p-4.5 shadow-2xl flex flex-col gap-3 border border-slate-200">
+            <h4 class="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i> ${title}
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">${message}</p>
+            <div class="flex pt-2 border-t border-slate-100">
+                <button id="ok-alert-btn" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition cursor-pointer">Theek Hai (OK)</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    syncModalScrollLock();
+    safeCreateIcons();
+    modal.querySelector('#ok-alert-btn').onclick = () => {
+        modal.remove();
+        syncModalScrollLock();
+        if (typeof onOk === 'function') onOk();
+    };
+}
+window.customAlert = customAlert;
 
 // ==========================================
 // EXPIRY DATE HELPERS (Strictly MM / YY, Zero DD, Zero YYYY, Auto-Formatting)
@@ -3681,15 +3706,27 @@ function renderAiScannedTable() {
             <td class="p-2 text-right bg-emerald-50/50 min-w-[80px]">
                 <input type="number" step="0.01" placeholder="Box MRP" value="${item.mrp || ''}" onchange="window.updateScannedItem(${idx}, 'mrp', this.value)" class="w-20 px-1.5 py-1 border border-emerald-300 rounded-md text-xs text-right font-black text-emerald-800 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500">
             </td>
-            <td class="p-2 text-center whitespace-nowrap min-w-[70px]">
-                <div class="flex items-center justify-center gap-1">
-                    <button type="button" onclick="window.openEditScannedItemModal(${idx})" class="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition active:scale-95 cursor-pointer" title="Dawai Details Edit / Manual Update">
-                        <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <button type="button" onclick="window.removeAiScannedRow(${idx})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition active:scale-95 cursor-pointer" title="Delete Row">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                    </button>
-                </div>
+            <td class="p-2 text-center whitespace-nowrap min-w-[80px]">
+                ${(window.pendingDeleteScannedIdx === idx) ? `
+                    <div class="inline-flex items-center gap-1 bg-rose-50 border border-rose-300 rounded-lg p-1 shadow-xs animate-in fade-in">
+                        <span class="text-[10px] font-black text-rose-900 truncate max-w-[100px]" title="${escapeHtml(item.name)}">Delete "${escapeHtml(item.name)}"?</span>
+                        <button type="button" onclick="window.confirmDeleteAiScannedRow(${idx})" class="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded font-black text-[10px] shadow-xs transition active:scale-95 cursor-pointer" title="Delete Confirm">
+                            Haan
+                        </button>
+                        <button type="button" onclick="window.cancelDeleteAiScannedRow()" class="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-bold text-[10px] transition active:scale-95 cursor-pointer" title="Cancel">
+                            Nahi
+                        </button>
+                    </div>
+                ` : `
+                    <div class="flex items-center justify-center gap-1">
+                        <button type="button" onclick="window.openEditScannedItemModal(${idx})" class="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition active:scale-95 cursor-pointer" title="Dawai Details Edit / Manual Update">
+                            <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button type="button" onclick="window.askDeleteAiScannedRow(${idx})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition active:scale-95 cursor-pointer" title="Delete Item (Haan ya Nahi option)">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                `}
             </td>
         </tr>
         `;
@@ -3917,9 +3954,29 @@ window.updateScannedItem = function(idx, field, value) {
     }
 };
 
-window.removeAiScannedRow = function(idx) {
-    aiExtractedBuffer.splice(idx, 1);
+window.pendingDeleteScannedIdx = null;
+
+window.askDeleteAiScannedRow = function(idx) {
+    window.pendingDeleteScannedIdx = idx;
     renderAiScannedTable();
+};
+
+window.cancelDeleteAiScannedRow = function() {
+    window.pendingDeleteScannedIdx = null;
+    renderAiScannedTable();
+};
+
+window.confirmDeleteAiScannedRow = function(idx) {
+    const item = aiExtractedBuffer[idx];
+    const itemName = item?.name || `Item ${idx + 1}`;
+    aiExtractedBuffer.splice(idx, 1);
+    window.pendingDeleteScannedIdx = null;
+    renderAiScannedTable();
+    showToast(`"${itemName}" bill se delete ho gaya.`, 'info');
+};
+
+window.removeAiScannedRow = function(idx) {
+    window.askDeleteAiScannedRow(idx);
 };
 
 window.applyDistributorToAllScanned = function() {
@@ -3932,7 +3989,9 @@ window.applyDistributorToAllScanned = function() {
 
 window.closeAiScanModal = function() {
     document.getElementById('ai-scan-modal')?.classList.add('hidden');
+    document.getElementById('ai-scan-done-overlay')?.remove();
     aiExtractedBuffer = [];
+    window.pendingDeleteScannedIdx = null;
     syncModalScrollLock();
 };
 
@@ -3941,8 +4000,14 @@ window.closeAiPrescModal = function() {
     syncModalScrollLock();
 };
 
+window.isSavingAiScannedItems = false;
 window.saveAiScannedItemsToInventory = async function() {
-    if (aiExtractedBuffer.length === 0) return;
+    if (window.isSavingAiScannedItems) return;
+    if (!aiExtractedBuffer || aiExtractedBuffer.length === 0) {
+        showToast('Bill mein koi item mojood nahi hai.', 'warning');
+        return;
+    }
+
     const dist = document.getElementById('ai-bill-distributor')?.value.trim() || 'Distributor';
     if (dist && dist.toLowerCase() !== 'distributor') window.rememberDistributor(dist);
 
@@ -3952,49 +4017,127 @@ window.saveAiScannedItemsToInventory = async function() {
         return;
     }
 
-    for (const item of aiExtractedBuffer) {
-        const itemDist = item.distributor || dist;
-        if (itemDist && itemDist.toLowerCase() !== 'distributor') window.rememberDistributor(itemDist);
-
-        const existing = medicines.find(m => m.name.toLowerCase() === item.name.toLowerCase() && m.batch === item.batch);
-        if (existing) {
-            existing.stock += item.qty;
-            existing.buyRate = item.buyRate;
-            existing.mrp = item.mrp;
-            existing.distributor = itemDist;
-            if (item.generic) existing.generic = item.generic;
-            if (item.type) existing.type = item.type;
-            if (item.expiry) existing.expiry = item.expiry;
-            if (item.packSize) existing.packSize = item.packSize;
-            if (item.location) existing.location = item.location;
-            if (item.minStock) existing.minStock = Number(item.minStock);
-            await saveMedicineToStore(existing);
-        } else {
-            const newMed = {
-                id: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                name: item.name,
-                generic: item.generic || '',
-                type: item.type || 'tab',
-                distributor: itemDist,
-                packSize: item.packSize || '20',
-                batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
-                expiry: item.expiry || '',
-                buyRate: Number(item.buyRate),
-                mrp: Number(item.mrp),
-                stock: Number(item.qty),
-                location: item.location || '',
-                minStock: Number(item.minStock) || 5,
-                updatedAt: new Date().toISOString()
-            };
-            await saveMedicineToStore(newMed);
-        }
+    const saveBtn = document.getElementById('btn-save-ai-scanned-inventory');
+    const originalBtnText = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.className = "flex-1 py-3 bg-emerald-800 text-white font-black rounded-xl text-xs shadow flex items-center justify-center gap-1.5 cursor-wait";
+        saveBtn.innerHTML = `<span class="inline-block animate-spin mr-1.5">⏳</span> Inventory Mein Add Ho Raha Hai...`;
     }
+    window.isSavingAiScannedItems = true;
 
-    window.closeAiScanModal();
-    showToast('Stock inventory mein shamil ho gaya!', 'success');
-    renderInventoryTable();
-    renderDashboardMetrics();
-    window.syncStockWithNetwork();
+    // Freeze buffer copy and clear original immediately to strictly prevent repeated additions
+    const itemsToSave = [...aiExtractedBuffer];
+    aiExtractedBuffer = [];
+
+    try {
+        const totalAddedItems = itemsToSave.length;
+        let totalAddedQty = 0;
+
+        for (const item of itemsToSave) {
+            const itemDist = item.distributor || dist;
+            if (itemDist && itemDist.toLowerCase() !== 'distributor') window.rememberDistributor(itemDist);
+
+            const existing = medicines.find(m => m.name.toLowerCase() === item.name.toLowerCase() && m.batch === item.batch);
+            if (existing) {
+                existing.stock += item.qty;
+                existing.buyRate = item.buyRate;
+                existing.mrp = item.mrp;
+                existing.distributor = itemDist;
+                if (item.generic) existing.generic = item.generic;
+                if (item.type) existing.type = item.type;
+                if (item.expiry) existing.expiry = item.expiry;
+                if (item.packSize) existing.packSize = item.packSize;
+                if (item.location) existing.location = item.location;
+                if (item.minStock) existing.minStock = Number(item.minStock);
+                await saveMedicineToStore(existing);
+            } else {
+                const newMed = {
+                    id: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    name: item.name,
+                    generic: item.generic || '',
+                    type: item.type || 'tab',
+                    distributor: itemDist,
+                    packSize: item.packSize || '20',
+                    batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
+                    expiry: item.expiry || '',
+                    buyRate: Number(item.buyRate),
+                    mrp: Number(item.mrp),
+                    stock: Number(item.qty),
+                    location: item.location || '',
+                    minStock: Number(item.minStock) || 5,
+                    updatedAt: new Date().toISOString()
+                };
+                await saveMedicineToStore(newMed);
+            }
+            totalAddedQty += (Number(item.qty) || 1);
+        }
+
+        // STRICT USER REQUIREMENT 1:
+        // "Scan bill add to inventory btn pe click krny se ye ni pta chlta items add hogye ya ni jb add krdya jaya to done hojna chaye"
+        // 1. Prominent Done state on button
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.className = "flex-1 py-3 bg-emerald-700 text-white font-black rounded-xl text-xs shadow-lg flex items-center justify-center gap-2 cursor-default";
+            saveBtn.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-200"></i> ✓ DONE! ${totalAddedItems} Items Added to Inventory`;
+        }
+
+        // 2. Prominent In-Modal Success Banner right in front of user's eyes
+        const contentDiv = document.getElementById('ai-scan-content');
+        if (contentDiv) {
+            document.getElementById('ai-scan-done-overlay')?.remove();
+            const banner = document.createElement('div');
+            banner.id = 'ai-scan-done-overlay';
+            banner.className = 'p-4 sm:p-5 bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white rounded-2xl shadow-xl flex flex-col items-center justify-center text-center gap-2.5 animate-in fade-in my-2 border border-emerald-500';
+            banner.innerHTML = `
+                <div class="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center text-2xl font-black shadow-inner">
+                    ✓
+                </div>
+                <div>
+                    <h3 class="text-sm sm:text-base font-black tracking-wide text-white">✓ DONE! Inventory Mein Kamyabi Se Shamil Ho Gaye!</h3>
+                    <p class="text-xs text-emerald-100 mt-0.5 max-w-sm mx-auto font-medium">
+                        Tamam <strong>${totalAddedItems} Items (${totalAddedQty} Packs)</strong> stock inventory mein add ho chuke hain.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" onclick="window.closeAiScanModal(); window.switchTab('inventory');" class="px-5 py-2 bg-white hover:bg-emerald-50 text-emerald-950 font-black rounded-xl text-xs shadow transition active:scale-95 cursor-pointer">
+                        Theek Hai (Done ✓ - Stock Dekhein)
+                    </button>
+                </div>
+            `;
+            contentDiv.prepend(banner);
+        }
+
+        renderInventoryTable();
+        renderDashboardMetrics();
+        window.syncStockWithNetwork();
+        safeCreateIcons();
+
+        showToast(`✓ Done! ${totalAddedItems} items stock inventory mein kamyabi se add ho gaye!`, 'success');
+
+        // Automatically close modal after 1.8s and show inventory tab
+        setTimeout(() => {
+            window.closeAiScanModal();
+            window.switchTab('inventory');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.className = "flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer";
+                saveBtn.innerHTML = originalBtnText;
+            }
+        }, 1800);
+    } catch(err) {
+        console.error('Save scanned items error:', err);
+        showToast('Items save karne mein masla aya: ' + (err?.message || err), 'error');
+        // Restore buffer on error so user doesn't lose items
+        aiExtractedBuffer = itemsToSave;
+        renderAiScannedTable();
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnText;
+        }
+    } finally {
+        window.isSavingAiScannedItems = false;
+    }
 };
 
 // AI Margin Bill Scan
@@ -4242,17 +4385,13 @@ window.searchMedicineForPos = function() {
     } else {
         results.innerHTML = matches.map(m => {
             const packInfo = parsePackSize(m.packSize);
-            const formulaClass = window.getMedicineFormulaClass(m.name, m.generic);
+            const cleanGen = (m.generic || '').replace(/[\s\-_]*(kelye|ke liye|k liye)[\s\-_]*/gi, '').replace(/^(dawa|dawai|use|purpose|category|indication)[\s:–—-]*/gi, '').trim();
+            const displayGen = (/^(bukhar|dard|jalan|matli|khansi|infection|tezabiyat|sozish|allergy|sugar|bp|pressure|ilaj|maror|qabz|gas)/i.test(cleanGen) || cleanGen.includes('kelye')) ? '' : cleanGen;
             return `
                 <div tabindex="0" onclick="window.selectMedicineForPos('${m.id}')" class="pos-result-row p-2.5 hover:bg-brand-50 outline-none cursor-pointer flex justify-between items-center text-xs transition border-b border-slate-100 last:border-0">
                     <div class="space-y-0.5">
                         <strong class="text-slate-800 text-xs">${m.name}</strong>
-                        <span class="text-[10px] text-slate-400 block">${m.generic ? m.generic + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
-                        <div class="mt-0.5">
-                            <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50/90 border border-amber-200/80 px-1.5 py-0.5 rounded">
-                                🔬 ${formulaClass}
-                            </span>
-                        </div>
+                        <span class="text-[10px] text-slate-500 block">${displayGen ? displayGen + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
                     </div>
                     <span class="font-black text-emerald-700 text-xs shrink-0 ml-2">Rs. ${Number(m.mrp).toFixed(2)}</span>
                 </div>
@@ -4275,12 +4414,10 @@ window.selectMedicineForPos = function(id) {
     document.getElementById('pos-search-results')?.classList.add('hidden');
     document.getElementById('pos-search').value = '';
     
-    // Display Formula Class on Selected Item Banner
-    const formulaClass = window.getMedicineFormulaClass(med.name, med.generic);
+    // Hide clinical use / category badge in stock options as requested
     const useBadge = document.getElementById('pos-selected-use-hint');
     if (useBadge) {
-        useBadge.innerText = '🔬 ' + formulaClass;
-        useBadge.classList.remove('hidden');
+        useBadge.classList.add('hidden');
     }
 
     const unitSelect = document.getElementById('pos-unit-type');
@@ -4722,6 +4859,9 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                 ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available (${m.stock} Packs)</span>`
                 : `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">Shelf Par Khatam (Out of Stock)</span>`;
 
+            const cleanGen = (m.generic || '').replace(/[\s\-_]*(kelye|ke liye|k liye)[\s\-_]*/gi, '').replace(/^(dawa|dawai|use|purpose|category|indication)[\s:–—-]*/gi, '').trim();
+            const displayGen = (/^(bukhar|dard|jalan|matli|khansi|infection|tezabiyat|sozish|allergy|sugar|bp|pressure|ilaj|maror|qabz|gas)/i.test(cleanGen) || cleanGen.includes('kelye')) ? '' : cleanGen;
+
             return `
                 <div class="p-3 hover:bg-slate-50 border-b border-slate-100 transition rounded-xl flex flex-col gap-2">
                     <div class="flex items-start justify-between gap-2">
@@ -4733,12 +4873,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                                     <i data-lucide="package" class="w-3 h-3"></i> 📦 ${packInfo.displayText}
                                 </span>
                             </div>
-                            <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
-                            <div class="mt-1">
-                                <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50/90 border border-amber-200/80 px-2 py-0.5 rounded-md">
-                                    🔬 ${window.getMedicineFormulaClass(m.name, m.generic)}
-                                </span>
-                            </div>
+                            <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${displayGen ? displayGen + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span></span>
                         </div>
                         <div class="text-right shrink-0">
                             <span class="text-[10px] text-slate-400 font-bold uppercase block">Retail MRP</span>
@@ -5057,6 +5192,13 @@ function renderInventoryTable() {
                 const packInfo = parsePackSize(m.packSize);
                 const typeLabel = (m.type || 'tab').toUpperCase();
                 const isCriticallyLow = (Number(m.stock) || 0) <= (Number(m.minStock) || 5);
+                // STRICT USER REQUIREMENT 4: Stock inventory mn ye chz na lkhi hwi aye ke ye medicine eske kelye hai, no medicine use or category
+                const cleanGen = (m.generic || '')
+                    .replace(/[\s\-_]*(kelye|ke liye|k liye)[\s\-_]*/gi, '')
+                    .replace(/^(dawa|dawai|use|purpose|category|indication)[\s:–—-]*/gi, '')
+                    .trim();
+                const displayFormula = (/^(bukhar|dard|jalan|matli|khansi|infection|tezabiyat|sozish|allergy|sugar|bp|pressure|ilaj|maror|qabz|gas)/i.test(cleanGen) || cleanGen.includes('kelye')) ? '' : cleanGen;
+
                 return `
                     <tr class="hover:bg-slate-50 border-b border-slate-100">
                         <td class="p-3">
@@ -5065,9 +5207,8 @@ function renderInventoryTable() {
                                 <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-50 text-amber-900 border border-amber-200/80">${typeLabel}</span>
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                <span class="text-[10px] text-slate-500">${m.generic || 'Formula'}</span>
+                                ${displayFormula ? `<span class="text-[10px] text-slate-500 font-medium">${escapeHtml(displayFormula)}</span>` : ''}
                                 <span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-mono font-medium">📍 ${m.location ? m.location : 'None'}</span>
-                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-900 bg-amber-50 border border-amber-200">${cleanShortUse(window.getMedicineShortUse(m.name, m.generic))}</span>
                             </div>
                         </td>
                         <td class="p-3 text-slate-600 font-semibold">${m.distributor || 'General'}</td>
@@ -5110,6 +5251,12 @@ function renderInventoryTable() {
                 const packInfo = parsePackSize(m.packSize);
                 const typeLabel = (m.type || 'tab').toUpperCase();
                 const isCriticallyLow = (Number(m.stock) || 0) <= (Number(m.minStock) || 5);
+                const cleanGen = (m.generic || '')
+                    .replace(/[\s\-_]*(kelye|ke liye|k liye)[\s\-_]*/gi, '')
+                    .replace(/^(dawa|dawai|use|purpose|category|indication)[\s:–—-]*/gi, '')
+                    .trim();
+                const displayFormula = (/^(bukhar|dard|jalan|matli|khansi|infection|tezabiyat|sozish|allergy|sugar|bp|pressure|ilaj|maror|qabz|gas)/i.test(cleanGen) || cleanGen.includes('kelye')) ? '' : cleanGen;
+
                 return `
                     <div class="bg-white p-3.5 rounded-2xl border ${isCriticallyLow ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-200'} shadow-xs space-y-2.5">
                         <div class="flex items-start justify-between gap-2">
@@ -5118,12 +5265,7 @@ function renderInventoryTable() {
                                     <h4 class="font-black text-sm text-slate-900 leading-tight break-words">${m.name}</h4>
                                     <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-50 text-amber-900 border border-amber-200/80">${typeLabel}</span>
                                 </div>
-                                <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${m.generic ? m.generic + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
-                                <div class="mt-1">
-                                    <span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-md">
-                                        ${cleanShortUse(window.getMedicineShortUse(m.name, m.generic))}
-                                    </span>
-                                </div>
+                                <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${displayFormula ? displayFormula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
                             </div>
                             <span class="shrink-0 px-2.5 py-1 rounded-full font-black text-xs ${isCriticallyLow ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
                                 ${m.stock} Packs
@@ -7894,42 +8036,58 @@ window.renderAdminKickedTable = async function() {
         return;
     }
 
-    tbody.innerHTML = kickedList.map((m, idx) => `
+    tbody.innerHTML = kickedList.map((m, idx) => {
+        const removeCount = Number(m.removedCount) || 1;
+        const timeStr = m.lastRemovedAt ? new Date(m.lastRemovedAt).toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        return `
         <tr class="hover:bg-rose-50/40 border-b border-rose-100 transition text-xs">
             <td class="p-2.5">
                 <div class="flex items-center gap-2">
-                    <div class="w-7 h-7 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0">
-                        🚫
+                    <div class="w-8 h-8 rounded-full ${removeCount > 1 ? 'bg-rose-600 text-white' : 'bg-rose-100 text-rose-700'} flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                        ${removeCount > 1 ? '⚠️' : '🚫'}
                     </div>
                     <div>
-                        <strong class="text-slate-900 font-bold block leading-tight">${escapeHtml(m.name || 'Removed User')}</strong>
-                        <span class="text-[10px] text-slate-500">${escapeHtml(m.pharmacyName || m.type || 'Removed Member')}</span>
+                        <strong class="text-slate-900 font-bold block leading-tight text-xs">${escapeHtml(m.name || 'Removed User')}</strong>
+                        <span class="text-[10px] text-slate-500 block">${escapeHtml(m.pharmacyName || m.type || 'Removed Pharmacy')}</span>
+                        <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${removeCount > 1 ? 'bg-rose-600 text-white shadow-2xs' : 'bg-rose-100 text-rose-800 border border-rose-300'}">
+                                ${removeCount > 1 ? `⚠️ ${removeCount} Baar Remove Kiya Gya (${removeCount}x Removed)` : '1 Baar Remove Kiya Gya'}
+                            </span>
+                        </div>
                     </div>
                 </div>
             </td>
-            <td class="p-2.5 font-mono text-[11px] text-slate-600">
-                ${escapeHtml(m.email || '-')}
+            <td class="p-2.5 font-mono text-[11px] text-slate-700">
+                <div class="font-bold text-slate-900">${escapeHtml(m.email || '-')}</div>
+                ${timeStr ? `<div class="text-[9px] text-slate-400 font-sans mt-0.5">Waqt: ${timeStr}</div>` : ''}
             </td>
             <td class="p-2.5 font-mono text-[11px] text-slate-600">
-                ${escapeHtml(m.phone || '-')}
+                ${m.phone && m.phone !== '-' ? `
+                    <div class="font-bold text-slate-800">${escapeHtml(m.phone)}</div>
+                    <a href="https://wa.me/92${m.phone.replace(/\D/g, '').slice(-10)}" target="_blank" rel="noopener" class="text-[9px] text-emerald-700 font-bold hover:underline inline-flex items-center gap-0.5">
+                        WhatsApp ↗
+                    </a>
+                ` : '<span class="text-slate-400">-</span>'}
             </td>
             <td class="p-2.5 text-center">
                 <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
                     ● ${escapeHtml(m.status || 'Kicked / Data Wiped')}
                 </span>
+                ${removeCount > 1 ? `<div class="text-[9px] text-rose-700 font-black mt-0.5">Repeated (${removeCount}x)</div>` : ''}
             </td>
             <td class="p-2.5 text-center">
                 <div class="flex items-center justify-center gap-1.5 flex-wrap">
                     <button type="button" onclick="window.handleAdminKeepKickedMemberByIndex(${idx})" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer" title="Restore and keep user active">
                         <i data-lucide="check" class="w-3 h-3 inline"></i> Restore / Keep
                     </button>
-                    <button type="button" onclick="window.handleAdminDeleteKickedMemberPermanentlyByIndex(${idx})" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer shadow-xs" title="Permanently delete record">
+                    <button type="button" onclick="window.handleAdminDeleteKickedMemberPermanentlyByIndex(${idx})" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer shadow-xs" title="Permanently delete record from history">
                         <i data-lucide="trash" class="w-3 h-3 inline"></i> Delete Record
                     </button>
                 </div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
     safeCreateIcons();
 };
 
@@ -7950,7 +8108,7 @@ window.handleAdminDeleteKickedMemberPermanentlyByIndex = function(idx) {
             await fetch('/api/admin/delete-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: m.id, email: m.email, phone: m.phone, name: m.name })
+                body: JSON.stringify({ uid: m.id, email: m.email, phone: m.phone, name: m.name, deleteHistory: true })
             });
         } catch(_) {}
         showToast('Record permanently delete ho gaya!', 'info');
@@ -8081,10 +8239,13 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
         let kickSuccess = false;
         let kickMsg = '';
         try {
+            const targetPharmName = window.adminStaffUsersList?.find(u => u.uid === cleanUid)?.pharmacyName || 
+                window.adminNetworkStoresList?.find(u => u.id === cleanUid)?.name || 
+                displayName;
             const res = await fetch('/api/admin/kick-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone || '', name: displayName })
+                body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone || '', name: displayName, pharmacyName: targetPharmName })
             });
             let data = null;
             try { data = await res.json(); } catch(_) {}

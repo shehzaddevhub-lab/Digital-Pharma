@@ -1419,8 +1419,89 @@ function saveKickedUsers(list: string[]) {
   }
 }
 
+interface RemovedMemberRecord {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  pharmacyName: string;
+  removedCount: number;
+  lastRemovedAt: string;
+  firstRemovedAt: string;
+  status: string;
+  type?: string;
+}
+
+const REMOVED_MEMBERS_FILE = path.resolve(__dirname, 'removed_members.json');
+
+function loadRemovedMembers(): RemovedMemberRecord[] {
+  try {
+    if (fs.existsSync(REMOVED_MEMBERS_FILE)) {
+      const data = fs.readFileSync(REMOVED_MEMBERS_FILE, 'utf-8');
+      const list = JSON.parse(data);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (e) {
+    console.error('Error loading removed members:', e);
+  }
+  return [];
+}
+
+function saveRemovedMembers(list: RemovedMemberRecord[]) {
+  try {
+    fs.writeFileSync(REMOVED_MEMBERS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error saving removed members:', e);
+  }
+}
+
 let registeredUsers: UserAccount[] = loadRegisteredUsers();
 let kickedUserIds: string[] = loadKickedUsers();
+let removedMembersList: RemovedMemberRecord[] = loadRemovedMembers();
+
+function recordRemoval(uid?: string, email?: string, phone?: string, name?: string, pharmacyName?: string): RemovedMemberRecord {
+  const rawEmail = String(email || '').trim().toLowerCase();
+  const cleanEmail = (rawEmail && rawEmail !== '-') ? rawEmail : '';
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  const normPhone = normalizePhone(cleanPhone);
+  const cleanUid = String(uid || '').trim();
+  const cleanName = (name && name !== '-') ? String(name).trim() : '';
+  const cleanPharm = (pharmacyName && pharmacyName !== '-') ? String(pharmacyName).trim() : '';
+
+  const existing = removedMembersList.find(r => 
+    (cleanEmail && r.email && r.email.toLowerCase() === cleanEmail) ||
+    (normPhone && normalizePhone(r.phone) === normPhone) ||
+    (cleanUid && r.id === cleanUid)
+  );
+
+  if (existing) {
+    existing.removedCount = (existing.removedCount || 1) + 1;
+    existing.lastRemovedAt = new Date().toISOString();
+    existing.status = 'Kicked / Data Wiped';
+    if (cleanName && (!existing.name || existing.name === 'Removed User' || existing.name.includes('@'))) existing.name = cleanName;
+    if (cleanEmail && (!existing.email || existing.email === '-')) existing.email = cleanEmail;
+    if (cleanPhone && (!existing.phone || existing.phone === '-')) existing.phone = cleanPhone;
+    if (cleanPharm && (!existing.pharmacyName || existing.pharmacyName === 'Removed Member' || existing.pharmacyName === 'Removed Pharmacy')) existing.pharmacyName = cleanPharm;
+    saveRemovedMembers(removedMembersList);
+    return existing;
+  } else {
+    const newRecord: RemovedMemberRecord = {
+      id: cleanUid || ('rem_' + Date.now()),
+      name: cleanName || (cleanEmail ? cleanEmail.split('@')[0] : 'Removed Member'),
+      email: cleanEmail || '-',
+      phone: cleanPhone || normPhone || '-',
+      pharmacyName: cleanPharm || (cleanName ? `${cleanName}'s Pharmacy` : 'Removed Member'),
+      status: 'Kicked / Data Wiped',
+      type: 'Removed Account',
+      removedCount: 1,
+      lastRemovedAt: new Date().toISOString(),
+      firstRemovedAt: new Date().toISOString()
+    };
+    removedMembersList.unshift(newRecord);
+    saveRemovedMembers(removedMembersList);
+    return newRecord;
+  }
+}
 
 // Endpoint: Register or sync a registered user (Strict 1 Account per Gmail ID)
 app.post('/api/users/register', (req: Request, res: Response): void => {
@@ -1662,31 +1743,36 @@ app.get('/api/admin/kicked-list', (_req: Request, res: Response): void => {
   const kickedMembers: any[] = [];
   const seenKeys = new Set<string>();
 
-  // 1. From registeredUsers marked as Kicked
-  registeredUsers.filter(u => u.status === 'Kicked').forEach(u => {
-    const key = u.email ? `em:${u.email.toLowerCase()}` : `id:${u.uid}`;
+  // 1. Primary source: persistent removedMembersList with strict removedCount tracking
+  removedMembersList.forEach(r => {
+    if (!r.email && !r.phone && !r.id) return;
+    const key = r.email && r.email !== '-' ? `em:${r.email.toLowerCase()}` : `id:${r.id}`;
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       kickedMembers.push({
-        id: u.uid,
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        pharmacyName: u.pharmacyName,
-        status: 'Kicked / Data Wiped',
-        type: 'Registered User'
+        id: r.id,
+        name: r.name || 'Removed User',
+        email: r.email || '-',
+        phone: r.phone || '-',
+        pharmacyName: r.pharmacyName || 'Removed Member',
+        status: r.status || 'Kicked / Data Wiped',
+        type: r.type || 'Removed Account',
+        removedCount: Number(r.removedCount) || 1,
+        lastRemovedAt: r.lastRemovedAt || new Date().toISOString(),
+        firstRemovedAt: r.firstRemovedAt || r.lastRemovedAt || new Date().toISOString()
       });
     }
   });
 
-  // 2. From kickedUserIds or deletedPharmacyTokens
+  // 2. Also include any remaining tokens from kickedUserIds
   kickedUserIds.forEach(id => {
     if (!id || isPhoneAdmin(id) || id === 'shzdkhkh01@gmail.com') return;
     const isEmail = id.includes('@');
     const isPhone = /^\d{10,11}$/.test(id);
-    const key = `raw:${id}`;
-    if (!seenKeys.has(key) && !seenKeys.has(`em:${id.toLowerCase()}`)) {
+    const key = isEmail ? `em:${id.toLowerCase()}` : `id:${id}`;
+    if (!seenKeys.has(key) && !seenKeys.has(`raw:${id}`)) {
       seenKeys.add(key);
+      seenKeys.add(`raw:${id}`);
       kickedMembers.push({
         id: id,
         name: isEmail ? id.split('@')[0] : (isPhone ? ('User ' + id) : 'Removed Account'),
@@ -1694,7 +1780,10 @@ app.get('/api/admin/kicked-list', (_req: Request, res: Response): void => {
         phone: isPhone ? id : '-',
         pharmacyName: 'Removed Member',
         status: 'Kicked / Data Wiped',
-        type: 'Blacklist Record'
+        type: 'Blacklist Record',
+        removedCount: 1,
+        lastRemovedAt: new Date().toISOString(),
+        firstRemovedAt: new Date().toISOString()
       });
     }
   });
@@ -1791,6 +1880,26 @@ app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
       return;
     }
 
+    // Look up existing user/pharmacy details before deletion to record rich removal data
+    const existingUser = registeredUsers.find(u => 
+      (cleanUid && u.uid === cleanUid) ||
+      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
+      (normPhone && normalizePhone(u.phone) === normPhone)
+    );
+    const existingPharm = activeNetworkPharmacies.find(p => 
+      (cleanUid && p.id === cleanUid) ||
+      (cleanEmail && p.email && p.email.toLowerCase() === cleanEmail) ||
+      (normPhone && normalizePhone(p.phone) === normPhone)
+    );
+
+    const recordName = cleanName || existingUser?.name || existingPharm?.ownerName || existingPharm?.name || (cleanEmail ? cleanEmail.split('@')[0] : 'Removed Member');
+    const recordEmail = cleanEmail || existingUser?.email || existingPharm?.email || '';
+    const recordPhone = cleanPhone || existingUser?.phone || existingPharm?.phone || '';
+    const recordPharm = (req.body && req.body.pharmacyName) || existingUser?.pharmacyName || existingPharm?.name || 'Removed Store';
+
+    // Record removal with persistent removedCount tracking (Strict User Requirement: Count how many times removed)
+    const removalRec = recordRemoval(cleanUid, recordEmail, recordPhone, recordName, recordPharm);
+
     // Add identifiers to kicked list
     if (cleanUid && !kickedUserIds.includes(cleanUid)) kickedUserIds.push(cleanUid);
     if (cleanEmail && !kickedUserIds.includes(cleanEmail)) kickedUserIds.push(cleanEmail);
@@ -1831,8 +1940,9 @@ app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
 
     res.json({
       success: true,
-      message: `User "${cleanName || cleanEmail || cleanPhone}" kick ho gaya! App reset signal send kar diya gaya hai.`,
-      kickedCount: kickedUserIds.length
+      message: `User "${cleanName || cleanEmail || cleanPhone}" kick ho gaya! (${removalRec.removedCount} baar remove kiya ja chuka hai). App reset signal send kar diya gaya hai.`,
+      kickedCount: kickedUserIds.length,
+      removal: removalRec
     });
   } catch (e) {
     res.status(500).json({ success: false, error: 'User kick karne mein server error aya' });
@@ -1950,6 +2060,20 @@ app.post('/api/admin/delete-user', (req: Request, res: Response): void => {
     if (normPhone && !deletedPharmacyTokens.includes(normPhone)) deletedPharmacyTokens.push(normPhone);
     if (cleanEmail && !deletedPharmacyTokens.includes(cleanEmail)) deletedPharmacyTokens.push(cleanEmail);
     saveDeletedPharmacies(deletedPharmacyTokens);
+
+    if (req.body?.deleteHistory) {
+      // Remove from removed history
+      removedMembersList = removedMembersList.filter(r => {
+        if (cleanUid && r.id === cleanUid) return false;
+        if (cleanEmail && r.email && r.email.toLowerCase() === cleanEmail) return false;
+        if (normPhone && normalizePhone(r.phone) === normPhone) return false;
+        return true;
+      });
+      saveRemovedMembers(removedMembersList);
+    } else {
+      // Record removal in removed members
+      recordRemoval(cleanUid, cleanEmail, cleanPhone, req.body?.name, req.body?.pharmacyName);
+    }
 
     res.json({ success: true, message: 'User permanently system se delete ho gaya.' });
   } catch (e) {

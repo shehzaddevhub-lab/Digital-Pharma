@@ -1461,7 +1461,7 @@
                     <button onclick="window.closeAiScanModal()" class="flex-1 py-2 border rounded-xl font-bold text-slate-600 text-xs">
                         Cancel
                     </button>
-                    <button onclick="window.saveAiScannedItemsToInventory()" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow flex items-center justify-center gap-1.5 active:scale-95">
+                    <button type="button" id="btn-save-ai-scanned-inventory" onclick="window.saveAiScannedItemsToInventory()" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer">
                         <i data-lucide="check" class="w-4 h-4"></i> Save to Stock Inventory
                     </button>
                 </div>
