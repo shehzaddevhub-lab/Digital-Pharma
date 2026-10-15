@@ -1886,6 +1886,9 @@ window.switchTab = function(tabName) {
         window.switchCalculatorTab('simple');
     }
     if (tabName === 'network') window.refreshNetworkList();
+    if (typeof window.checkUserKickedStatus === 'function') {
+        window.checkUserKickedStatus();
+    }
 
     // Footer control: strictly hide developer footer on simple calculator page
     const appFooter = document.getElementById('app-main-footer');
@@ -5683,40 +5686,53 @@ window.refreshNetworkList = async function() {
 
     let html = '';
 
-    // STRICT USER REQUIREMENT 1:
-    // Network pharmacy mn apki self id sbse top pe show hni chaye srf name pharmacy name adress aur phone number
+    // STRICT USER REQUIREMENT 1 & 2:
+    // Connected network pharmacy section mn sb connected pharmacy list bilkul smartly choti si jga pe ho 
+    // top pe apni medical store name nechy chota sa name phr contact WhatsApp send message btn oper WhatsApp number lkha ho esi trh sb pharmacy wlo ka
     if (selfStore) {
+        const selfNormDigits = String(selfStore.phone || '').replace(/^0/, '').replace(/\D/g, '');
         html += `
-            <div class="col-span-full mb-3">
-                <div class="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100/70 p-4 sm:p-5 rounded-2xl border-2 border-emerald-400 shadow-xs relative overflow-hidden">
-                    <div class="flex items-center justify-between pb-3 border-b border-emerald-200/80 mb-3">
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span class="px-2.5 py-1 bg-emerald-700 text-white text-[11px] font-black rounded-lg uppercase tracking-wider shadow-xs">
-                                👑 Aapka Store (Self ID - Top)
+            <div class="col-span-full mb-2">
+                <div class="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100/80 p-3 sm:p-3.5 rounded-2xl border-2 border-emerald-400 shadow-xs relative overflow-hidden">
+                    <div class="flex items-center justify-between pb-2 border-b border-emerald-200/80 mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span class="px-2 py-0.5 bg-emerald-700 text-white text-[10px] font-black rounded-md uppercase tracking-wider shadow-2xs">
+                                👑 Aapka Medical Store (Self ID)
                             </span>
                         </div>
-                        <span class="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-3 py-1 rounded-full border border-emerald-300">
-                            Active Self Profile
+                        <span class="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300">
+                            📍 ${escapeHtml(selfStore.city || 'Pakistan')}
                         </span>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
-                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Pharmacy Name</span>
-                            <strong class="text-slate-900 text-base font-black truncate block mt-0.5">${escapeHtml(selfStore.name || 'My Pharmacy')}</strong>
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div class="min-w-0 flex-1">
+                            <!-- Top pe apni medical store name -->
+                            <h3 class="text-sm sm:text-base font-black text-slate-900 leading-tight truncate">
+                                ${escapeHtml(selfStore.name || 'My Pharmacy')}
+                            </h3>
+                            <!-- Nechy chota sa name -->
+                            <p class="text-[11px] text-slate-600 font-semibold flex items-center gap-1 mt-0.5 truncate">
+                                <i data-lucide="user" class="w-3 h-3 text-slate-400 shrink-0"></i> ${escapeHtml(selfStore.ownerName || 'Pharmacist')}
+                            </p>
                         </div>
-                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
-                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Name</span>
-                            <strong class="text-slate-900 text-sm font-black truncate block mt-0.5">${escapeHtml(selfStore.ownerName || 'Pharmacist')}</strong>
-                        </div>
-                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
-                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Address</span>
-                            <strong class="text-slate-900 text-sm font-black truncate block mt-0.5">📍 ${escapeHtml(selfStore.city || 'Pakistan')}</strong>
-                        </div>
-                        <div class="bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
-                            <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Phone Number</span>
-                            <strong class="text-emerald-700 text-sm font-black truncate block mt-0.5 font-mono">📞 ${escapeHtml(selfStore.phone || 'N/A')}</strong>
+
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                            <!-- Oper WhatsApp number lkha ho -->
+                            <div class="bg-white/95 px-2.5 py-1.5 rounded-xl border border-emerald-300 shadow-2xs flex items-center justify-between sm:justify-start gap-2 text-xs">
+                                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                    <i data-lucide="phone" class="w-3 h-3 text-emerald-600"></i> WhatsApp
+                                </span>
+                                <span class="font-mono font-black text-emerald-800 text-xs">${escapeHtml(selfStore.phone || 'N/A')}</span>
+                            </div>
+
+                            <!-- Contact WhatsApp send message btn -->
+                            ${selfStore.phone ? `
+                                <a href="https://wa.me/92${selfNormDigits}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Store: ' + selfStore.name + ')')}" target="_blank" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition">
+                                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> WhatsApp Send Message
+                                </a>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -5724,61 +5740,69 @@ window.refreshNetworkList = async function() {
         `;
     }
 
-    // STRICT USER REQUIREMENT 2:
-    // baqi others connected pharmacy nechy show hni chaye list me (srf name, pharmacy name, address, aur phone number)
     if (otherStores.length > 0) {
         html += `
-            <div class="col-span-full flex items-center justify-between pt-2 pb-1">
+            <div class="col-span-full flex items-center justify-between pt-1 pb-1">
                 <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    <i data-lucide="network" class="w-4 h-4 text-emerald-600"></i> Baqi Connected Pharmacies (${otherStores.length})
+                    <i data-lucide="network" class="w-4 h-4 text-emerald-600"></i> Connected Partner Pharmacies (${otherStores.length})
                 </h4>
-                <span class="text-[11px] text-slate-500 font-semibold">Other Connected Stores</span>
+                <span class="text-[10px] text-slate-400 font-medium">Smart Compact View</span>
             </div>
         `;
 
         html += otherStores.map((s, idx) => {
+            const sNormDigits = String(s.phone || '').replace(/^0/, '').replace(/\D/g, '');
             return `
-            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3 hover:border-emerald-300 transition">
-                <div class="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
-                    <div>
-                        <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Pharmacy Name</span>
-                        <h4 class="font-black text-slate-800 text-base leading-tight mt-0.5">${escapeHtml(s.name)}</h4>
+            <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between gap-2.5 hover:border-emerald-400 hover:shadow-xs transition">
+                <div>
+                    <div class="flex items-start justify-between gap-1.5">
+                        <!-- Top pe medical store name -->
+                        <h4 class="font-black text-slate-900 text-xs sm:text-sm leading-snug truncate flex-1" title="${escapeHtml(s.name)}">
+                            ${escapeHtml(s.name)}
+                        </h4>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500" title="Connected"></span>
+                            ${isSuperAdmin ? `
+                                <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="p-1 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition border border-rose-200 cursor-pointer" title="Network se delete karein">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            ` : ''}
+                        </div>
                     </div>
-                    <div class="flex items-center gap-1 shrink-0">
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected
+
+                    <!-- Nechy chota sa name -->
+                    <p class="text-[11px] text-slate-500 font-medium truncate flex items-center gap-1 mt-0.5">
+                        <i data-lucide="user" class="w-2.5 h-2.5 text-slate-400 shrink-0"></i> ${escapeHtml(s.ownerName || 'Store Owner')}
+                    </p>
+
+                    <!-- City / Address tag -->
+                    <div class="mt-1">
+                        <span class="text-[9px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md font-semibold inline-block truncate max-w-full">
+                            📍 ${escapeHtml(s.city || 'Pakistan')}
                         </span>
-                        ${isSuperAdmin ? `
-                            <button type="button" onclick="window.removePharmacyFromNetwork('${s.id || ''}', '${escapeHtml(s.name)}', '${escapeHtml(s.phone || '')}', ${idx})" class="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition border border-rose-200 cursor-pointer" title="Network se delete karein">
-                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                            </button>
-                        ` : ''}
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <span class="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Name</span>
-                        <strong class="text-slate-800 font-bold truncate block mt-0.5">${escapeHtml(s.ownerName || 'Store Owner')}</strong>
+                <div class="space-y-1.5 pt-1.5 border-t border-slate-100">
+                    <!-- Oper WhatsApp number lkha ho -->
+                    <div class="bg-emerald-50/70 border border-emerald-100 px-2 py-1 rounded-xl flex items-center justify-between text-[11px]">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                            <i data-lucide="phone" class="w-2.5 h-2.5 text-emerald-600"></i> WhatsApp
+                        </span>
+                        <span class="font-mono font-black text-emerald-800 text-xs">${escapeHtml(s.phone || 'N/A')}</span>
                     </div>
-                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <span class="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Address</span>
-                        <strong class="text-slate-800 font-bold truncate block mt-0.5">📍 ${escapeHtml(s.city || 'Pakistan')}</strong>
-                    </div>
-                </div>
 
-                <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <span class="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Phone Number</span>
-                    <strong class="text-emerald-700 font-black truncate block mt-0.5 font-mono text-xs">📞 ${escapeHtml(s.phone || 'N/A')}</strong>
-                </div>
-
-                ${s.phone ? `
-                    <div class="pt-1">
-                        <a href="https://wa.me/92${String(s.phone).replace(/^0/, '').replace(/\D/g, '')}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Pharmacy: ' + s.name + ')')}" target="_blank" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition">
-                            <i data-lucide="message-square" class="w-3.5 h-3.5"></i> WhatsApp (${escapeHtml(s.phone)})
+                    <!-- Contact WhatsApp send message btn -->
+                    ${s.phone ? `
+                        <a href="https://wa.me/92${sNormDigits}?text=${encodeURIComponent('Assalam-o-Alaikum, Digital Pharma system se rabta kiya hai. (Store: ' + s.name + ')')}" target="_blank" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-2xs transition">
+                            <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> WhatsApp Send Message
                         </a>
-                    </div>
-                ` : ''}
+                    ` : `
+                        <button disabled class="w-full py-1.5 bg-slate-100 text-slate-400 rounded-xl font-semibold text-[11px] cursor-not-allowed">
+                            No WhatsApp
+                        </button>
+                    `}
+                </div>
             </div>
             `;
         }).join('');
@@ -8008,7 +8032,7 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
             localStorage.removeItem('sm_network_stores');
         } catch(_) {}
 
-        // 2. Remove from local staff members list if present
+        // 2. Remove from local staff members list and registered users list if present
         try {
             let staff = window.getRegisteredStaffList();
             staff = staff.filter(s => {
@@ -8018,6 +8042,17 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
                 return true;
             });
             localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        } catch(_) {}
+
+        try {
+            let reg = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            reg = reg.filter(u => {
+                if (cleanUid && u.uid === cleanUid) return false;
+                if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return false;
+                if (normPhone && (u.phone || '').replace(/\D/g, '').slice(-10) === normPhone) return false;
+                return true;
+            });
+            localStorage.setItem('sm_registered_users', JSON.stringify(reg));
         } catch(_) {}
 
         // 3. Permanent delete in Firestore if connected
@@ -8475,6 +8510,12 @@ window.checkUserKickedStatus = async function() {
 // Auto wipe inventory, sales, profile and reset app when kicked by Super Admin
 window.triggerKickedAppReset = function() {
     try {
+        if (typeof signOut === 'function' && auth) {
+            signOut(auth).catch(() => {});
+        }
+    } catch(_) {}
+
+    try {
         localStorage.clear();
         sessionStorage.clear();
     } catch(_) {}
@@ -8498,15 +8539,15 @@ window.triggerKickedAppReset = function() {
     updateAuthUI();
 
     customAlert(
-        'Account Removed & App Reset',
-        'Aapka account Super Admin ki taraf se kick / remove kar diya gaya hai. Aapki app, inventory aur profile reset kar di gayi hai.'
+        'Account Removed & Data Wiped',
+        'Aapka account Super Admin ki taraf se kick / remove kar diya gaya hai aur tamam data delete ho gaya hai. Session logout ho gaya hai. Dobara istemal kelye pehle Sign Up kar ke naya account register karein.'
     );
 
     window.switchTab('dashboard');
     setTimeout(() => {
         window.openAccountHubModal();
-        window.switchHubAuthTab('login');
-    }, 1200);
+        window.switchHubAuthTab('signup');
+    }, 1000);
 };
 
 // Account Hub & Authentication Management (3 Clear Options: Sign Up, Login & Super Admin 1-Seat Portal)
@@ -8790,6 +8831,23 @@ window.handleAuthLogin = async function() {
         let authRecord = null;
         let isRegistered = false;
 
+        // PRE-CHECK: Check if account was kicked / banned by Super Admin
+        try {
+            const preKickRes = await fetch(`/api/user/check-status?email=${encodeURIComponent(email)}`);
+            if (preKickRes.ok) {
+                const pkData = await preKickRes.json();
+                if (pkData.kicked) {
+                    if (auth && typeof signOut === 'function') { signOut(auth).catch(() => {}); }
+                    showToast('Aapka account Super Admin ki taraf se remove / kick kar diya gaya hai! Direct login nahi ho sakta. Barah-e-karam dobara Sign Up kar ke naya account register karein.', 'error');
+                    window.switchHubAuthTab('signup');
+                    const suEmail = document.getElementById('auth-signup-email');
+                    if (suEmail) suEmail.value = email;
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                    return;
+                }
+            }
+        } catch(_) {}
+
         // 1. Try Firebase Auth sign in
         try {
             const userCred = await signInWithEmailAndPassword(auth, email, pass);
@@ -8883,7 +8941,11 @@ window.handleAuthLogin = async function() {
             if (kickRes.ok) {
                 const kData = await kickRes.json();
                 if (kData.kicked) {
-                    showToast('Aapka account Super Admin ki taraf se remove / kick kar diya gaya hai. Login nahi kiya ja sakta.', 'error');
+                    if (auth && typeof signOut === 'function') { signOut(auth).catch(() => {}); }
+                    showToast('Aapka account Super Admin ki taraf se remove / kick kar diya gaya hai! Direct login nahi ho sakta. Barah-e-karam dobara Sign Up kar ke naya account register karein.', 'error');
+                    window.switchHubAuthTab('signup');
+                    const suEmail = document.getElementById('auth-signup-email');
+                    if (suEmail) suEmail.value = email;
                     if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
                     return;
                 }
@@ -8903,6 +8965,15 @@ window.handleAuthLogin = async function() {
             const chkRes = await fetch(`/api/users/check?email=${encodeURIComponent(email)}`);
             if (chkRes.ok) {
                 const chkData = await chkRes.json();
+                if (chkData?.kicked) {
+                    if (auth && typeof signOut === 'function') { signOut(auth).catch(() => {}); }
+                    showToast('Aapka account Super Admin ki taraf se remove / kick kar diya gaya hai! Direct login nahi ho sakta. Barah-e-karam dobara Sign Up kar ke naya account register karein.', 'error');
+                    window.switchHubAuthTab('signup');
+                    const suEmail = document.getElementById('auth-signup-email');
+                    if (suEmail) suEmail.value = email;
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+                    return;
+                }
                 if (chkData?.exists && chkData.user) {
                     serverUser = chkData.user;
                 }
@@ -8918,6 +8989,17 @@ window.handleAuthLogin = async function() {
                     firestoreData = snap.data();
                 }
             } catch(e) {}
+        }
+
+        // Strict: If not found on server AND not in local registry AND not in Firestore, account does not exist / was deleted
+        if (!serverUser && !existingReg && !firestoreData) {
+            if (auth && typeof signOut === 'function') { signOut(auth).catch(() => {}); }
+            showToast('Aapka account pehle se mojood nahi hai ya delete ho chuka hai! Barah-e-karam dobara Sign Up karein.', 'error');
+            window.switchHubAuthTab('signup');
+            const suEmail = document.getElementById('auth-signup-email');
+            if (suEmail) suEmail.value = email;
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+            return;
         }
 
         const config = window.getStoreConfig();
@@ -8987,41 +9069,8 @@ window.handleAuthLogin = async function() {
             localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
         } catch(eReg) {}
 
-        // Un-blacklist user identifiers from client-side deleted stores list
+        // Send heartbeat to indicate live presence
         try {
-            let blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
-            const uNormPhone = finalPhone.replace(/\D/g, '').slice(-10);
-            blacklist = blacklist.filter(t => t !== userUid && t !== email && t !== uNormPhone && t !== finalPhone);
-            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
-        } catch(_) {}
-
-        // Register and sync to backend so user shows in Super Admin Control with Online Mode & in Network Pharmacies
-        try {
-            await fetch('/api/users/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    uid: userUid,
-                    email: email,
-                    phone: finalPhone,
-                    name: finalOwner,
-                    pharmacyName: finalPharmName,
-                    city: finalCity
-                })
-            });
-            await fetch('/api/network/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: userUid,
-                    name: finalPharmName,
-                    ownerName: finalOwner,
-                    city: finalCity,
-                    phone: finalPhone,
-                    email: email,
-                    remarks: 'Active Digital Pharma Connected Pharmacy'
-                })
-            });
             if (typeof window.sendUserHeartbeat === 'function') {
                 window.sendUserHeartbeat();
             }
@@ -10010,7 +10059,7 @@ function initApp() {
     window.checkUserKickedStatus();
     setInterval(() => {
         window.checkUserKickedStatus();
-    }, 8000);
+    }, 3000);
 }
 
 // Instant startup without waiting for full window.load

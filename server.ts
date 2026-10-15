@@ -1578,7 +1578,16 @@ app.get('/api/users/check', (req: Request, res: Response): void => {
     return;
   }
 
-  const foundUser = registeredUsers.find(u => u.email.toLowerCase() === qEmail);
+  // Check if kicked / banned
+  const isKicked = kickedUserIds.some(k => k && k.toLowerCase() === qEmail) ||
+    deletedPharmacyTokens.some(t => t && t.toLowerCase() === qEmail);
+
+  if (isKicked) {
+    res.json({ exists: false, kicked: true, error: 'User is kicked' });
+    return;
+  }
+
+  const foundUser = registeredUsers.find(u => u.email && u.email.toLowerCase() === qEmail && u.status !== 'Kicked');
   const foundPharm = activeNetworkPharmacies.find(p => p.email && p.email.toLowerCase() === qEmail);
 
   if (foundUser || foundPharm) {
@@ -1592,19 +1601,20 @@ app.get('/api/users/check', (req: Request, res: Response): void => {
       status: foundUser?.status || foundPharm?.status || 'Active',
       isOnline: foundUser?.isOnline ?? true
     };
-    res.json({ exists: true, user });
+    res.json({ exists: true, user, kicked: false });
     return;
   }
 
-  res.json({ exists: false });
+  res.json({ exists: false, kicked: false });
 });
 
 // Endpoint: List all registered accounts (Strict check for login & forgot password)
 app.get('/api/users/list', (_req: Request, res: Response): void => {
+  const activeList = registeredUsers.filter(u => u.status !== 'Kicked' && !kickedUserIds.includes(u.uid) && (!u.email || !kickedUserIds.includes(u.email.toLowerCase())));
   res.json({
     success: true,
-    count: registeredUsers.length,
-    users: registeredUsers.map(u => ({
+    count: activeList.length,
+    users: activeList.map(u => ({
       uid: u.uid,
       email: u.email,
       phone: u.phone,
@@ -1620,13 +1630,26 @@ app.get('/api/users/list', (_req: Request, res: Response): void => {
 app.get('/api/user/check-status', (req: Request, res: Response): void => {
   const qUid = String(req.query.uid || '').trim();
   const qEmail = String(req.query.email || '').trim().toLowerCase();
-  const qPhone = String(req.query.phone || '').replace(/\D/g, '');
+  const rawPhone = String(req.query.phone || '').trim();
+  const cleanPhone = rawPhone.replace(/\D/g, '');
+  const normPhone = normalizePhone(cleanPhone);
 
-  const isKicked = kickedUserIds.some(k => 
-    (qUid && k === qUid) || 
-    (qEmail && k === qEmail) || 
-    (qPhone && k === qPhone)
-  );
+  const isKicked = kickedUserIds.some(k => {
+    if (!k) return false;
+    const kLower = k.toLowerCase();
+    if (qUid && k === qUid) return true;
+    if (qEmail && (kLower === qEmail || kLower === qEmail.split('@')[0])) return true;
+    if (cleanPhone && k === cleanPhone) return true;
+    if (normPhone && (k === normPhone || normalizePhone(k) === normPhone)) return true;
+    return false;
+  }) || deletedPharmacyTokens.some(t => {
+    if (!t) return false;
+    const tLower = t.toLowerCase();
+    if (qUid && t === qUid) return true;
+    if (qEmail && tLower === qEmail) return true;
+    if (normPhone && (t === normPhone || normalizePhone(t) === normPhone)) return true;
+    return false;
+  });
 
   res.json({
     success: true,
@@ -1782,13 +1805,12 @@ app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
     if (cleanName && !deletedPharmacyTokens.includes(cleanName.toLowerCase())) deletedPharmacyTokens.push(cleanName.toLowerCase());
     saveDeletedPharmacies(deletedPharmacyTokens);
 
-    // Update status in registered users
-    registeredUsers.forEach(u => {
-      if ((cleanUid && u.uid === cleanUid) || 
-          (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || 
-          (normPhone && normalizePhone(u.phone) === normPhone)) {
-        u.status = 'Kicked';
-      }
+    // Completely wipe and remove user from registeredUsers with delete data
+    registeredUsers = registeredUsers.filter(u => {
+      if (cleanUid && u.uid === cleanUid) return false;
+      if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return false;
+      if (normPhone && normalizePhone(u.phone) === normPhone) return false;
+      return true;
     });
     saveRegisteredUsers(registeredUsers);
 
