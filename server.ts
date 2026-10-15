@@ -1582,13 +1582,15 @@ app.get('/api/users/check', (req: Request, res: Response): void => {
   const foundPharm = activeNetworkPharmacies.find(p => p.email && p.email.toLowerCase() === qEmail);
 
   if (foundUser || foundPharm) {
-    const user = foundUser || {
-      uid: foundPharm?.id || '',
-      email: foundPharm?.email || qEmail,
-      phone: foundPharm?.phone || '',
-      name: foundPharm?.ownerName || foundPharm?.name || 'Pharmacy Owner',
-      pharmacyName: foundPharm?.name || 'My Pharmacy',
-      status: foundPharm?.status || 'Active'
+    const user = {
+      uid: foundUser?.uid || foundPharm?.id || '',
+      email: foundUser?.email || foundPharm?.email || qEmail,
+      phone: foundUser?.phone || foundPharm?.phone || '',
+      name: foundUser?.name || foundPharm?.ownerName || foundPharm?.name || 'Pharmacy Owner',
+      pharmacyName: foundUser?.pharmacyName || foundPharm?.name || 'My Pharmacy',
+      city: foundUser?.city || foundPharm?.city || 'Pakistan',
+      status: foundUser?.status || foundPharm?.status || 'Active',
+      isOnline: foundUser?.isOnline ?? true
     };
     res.json({ exists: true, user });
     return;
@@ -1833,15 +1835,45 @@ app.post('/api/admin/keep-user', (req: Request, res: Response): void => {
     deletedPharmacyTokens = deletedPharmacyTokens.filter(t => t !== cleanUid && t !== cleanEmail && t !== normPhone);
     saveDeletedPharmacies(deletedPharmacyTokens);
 
-    // Update status in registered users
-    registeredUsers.forEach(u => {
-      if ((cleanUid && u.uid === cleanUid) || 
-          (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || 
-          (normPhone && normalizePhone(u.phone) === normPhone)) {
-        u.status = 'Active';
+    // Update status in registered users and re-activate in activeNetworkPharmacies
+    const keptUser = registeredUsers.find(u => 
+      (cleanUid && u.uid === cleanUid) || 
+      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || 
+      (normPhone && normalizePhone(u.phone) === normPhone)
+    );
+    if (keptUser) {
+      keptUser.status = 'Active';
+      saveRegisteredUsers(registeredUsers);
+
+      const netIdx = activeNetworkPharmacies.findIndex(p => 
+        (keptUser.uid && p.id === keptUser.uid) ||
+        (keptUser.email && p.email && p.email.toLowerCase() === keptUser.email.toLowerCase()) ||
+        (normPhone && normalizePhone(p.phone) === normPhone)
+      );
+      if (netIdx === -1) {
+        activeNetworkPharmacies.unshift({
+          id: keptUser.uid,
+          name: keptUser.pharmacyName || 'Connected Pharmacy',
+          ownerName: keptUser.name || 'Owner',
+          city: keptUser.city || 'Pakistan',
+          phone: keptUser.phone || '',
+          email: keptUser.email || '',
+          licenseNo: '',
+          remarks: 'Active Digital Pharma Connected Pharmacy',
+          updatedAt: new Date().toISOString()
+        });
+        saveNetworkPharmacies(activeNetworkPharmacies);
       }
-    });
-    saveRegisteredUsers(registeredUsers);
+    } else {
+      registeredUsers.forEach(u => {
+        if ((cleanUid && u.uid === cleanUid) || 
+            (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || 
+            (normPhone && normalizePhone(u.phone) === normPhone)) {
+          u.status = 'Active';
+        }
+      });
+      saveRegisteredUsers(registeredUsers);
+    }
 
     res.json({
       success: true,

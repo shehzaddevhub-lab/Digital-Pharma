@@ -5540,11 +5540,9 @@ window.refreshNetworkList = async function() {
         if (tokens.length === 0) return false;
         const normP = (s.phone || '').replace(/\D/g, '').slice(-10);
         const sEmail = (s.email && s.email !== '-') ? s.email.toLowerCase().trim() : '';
-        const sName = (s.name || '').toLowerCase().trim();
         if (s.id && tokens.includes(s.id)) return true;
         if (normP && tokens.includes(normP)) return true;
         if (sEmail && tokens.includes(sEmail)) return true;
-        if (sName && tokens.includes(sName)) return true;
         return false;
     };
 
@@ -7629,11 +7627,9 @@ window.renderAdminStaffTable = async function() {
         const tokens = getLocalDeletedTokens();
         const normP = (phone || '').replace(/\D/g, '').slice(-10);
         const sEmail = (email && email !== '-') ? email.toLowerCase().trim() : '';
-        const sName = (name || '').toLowerCase().trim();
         if (id && tokens.includes(id)) return true;
         if (normP && tokens.includes(normP)) return true;
         if (sEmail && tokens.includes(sEmail)) return true;
-        if (sName && tokens.includes(sName)) return true;
         return false;
     };
 
@@ -8243,11 +8239,9 @@ window.renderAdminNetworkTable = async function() {
         if (tokens.length === 0) return false;
         const normP = (s.phone || '').replace(/\D/g, '').slice(-10);
         const sEmail = (s.email && s.email !== '-') ? s.email.toLowerCase().trim() : '';
-        const sName = (s.name || '').toLowerCase().trim();
         if (s.id && tokens.includes(s.id)) return true;
         if (normP && tokens.includes(normP)) return true;
         if (sEmail && tokens.includes(sEmail)) return true;
-        if (sName && tokens.includes(sName)) return true;
         return false;
     };
 
@@ -8292,6 +8286,33 @@ window.renderAdminNetworkTable = async function() {
             window.onlineNetworkPharmacies = [...stores];
         } catch(_) {}
     }
+
+    // Merge with registered accounts from localStorage so registered stores always appear in admin network table
+    try {
+        const localReg = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+        localReg.forEach(r => {
+            const rNorm = (r.phone || '').replace(/\D/g, '').slice(-10);
+            const rEmail = (r.email || '').toLowerCase().trim();
+            if (rEmail === 'shzdkhkh01@gmail.com' || rNorm === '3452919634') return;
+            if (isBlacklisted({ id: r.uid, phone: r.phone, email: r.email })) return;
+            const exists = stores.some(s => 
+                (r.uid && s.id === r.uid) ||
+                (rEmail && s.email && s.email.toLowerCase() === rEmail) ||
+                (rNorm && (s.phone || '').replace(/\D/g, '').slice(-10) === rNorm)
+            );
+            if (!exists) {
+                stores.push({
+                    id: r.uid || ('net_' + Date.now()),
+                    name: r.pharmacyName || (r.ownerName ? `${r.ownerName}'s Pharmacy` : 'Connected Pharmacy'),
+                    ownerName: r.ownerName || r.name || 'Store Owner',
+                    city: r.city || 'Pakistan',
+                    phone: r.phone || '',
+                    email: r.email || '',
+                    status: 'Active'
+                });
+            }
+        });
+    } catch(_) {}
 
     // STRICT DEDUPLICATION: Maximum 1 entry per pharmacy
     const seen = new Set();
@@ -8652,6 +8673,14 @@ window.handleAuthSignup = async function() {
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.setItem('sm_user_mode', 'authenticated');
 
+        // Un-blacklist user identifiers from client-side deleted stores list
+        try {
+            let blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+            const uNormPhone = phone.replace(/\D/g, '').slice(-10);
+            blacklist = blacklist.filter(t => t !== userUid && t !== email && t !== uNormPhone && t !== phone);
+            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+        } catch(_) {}
+
         // Save to registered accounts list in localStorage
         try {
             const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
@@ -8861,73 +8890,94 @@ window.handleAuthLogin = async function() {
             }
         } catch(_) {}
 
-        // Fetch Firestore profile if not loaded
-        if (!authRecord) {
+        // 1. Fetch existing profile from local registry
+        const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+        const existingReg = regUsers.find(u => 
+            (u.email && u.email.toLowerCase() === email) || 
+            (userUid && u.uid === userUid)
+        );
+
+        // 2. Fetch existing profile from backend server
+        let serverUser = null;
+        try {
+            const chkRes = await fetch(`/api/users/check?email=${encodeURIComponent(email)}`);
+            if (chkRes.ok) {
+                const chkData = await chkRes.json();
+                if (chkData?.exists && chkData.user) {
+                    serverUser = chkData.user;
+                }
+            }
+        } catch(_) {}
+
+        // 3. Fetch Firestore profile if not loaded
+        let firestoreData = null;
+        if (db) {
             try {
                 const snap = await getDoc(doc(db, 'users', userUid));
                 if (snap.exists()) {
-                    const data = snap.data();
-                    authRecord = {
-                        name: data.ownerName || data.name || email.split('@')[0],
-                        email: email,
-                        phone: data.phone || '',
-                        city: data.city || '',
-                        pharmacyName: data.pharmacyName || (email.split('@')[0].toUpperCase() + ' Pharmacy'),
-                        uid: userUid,
-                        loginMethod: 'email_password',
-                        isLiveSync: true
-                    };
+                    firestoreData = snap.data();
                 }
             } catch(e) {}
         }
 
-        if (!authRecord) {
-            const config = window.getStoreConfig();
-            authRecord = {
-                name: config.ownerName || email.split('@')[0],
-                email: email,
-                phone: config.phone || '',
-                city: config.address || '',
-                pharmacyName: config.name || (email.split('@')[0].toUpperCase() + ' Pharmacy'),
-                uid: userUid,
-                loginMethod: 'email_password',
-                isLiveSync: true
-            };
-        }
+        const config = window.getStoreConfig();
 
-        authRecord.isSuperAdmin = false;
-        authRecord.role = 'owner';
+        // Check if store was already set up previously
+        const isSetupCompleted = localStorage.getItem('sm_store_setup_done_' + email.toLowerCase()) === 'true' ||
+            localStorage.getItem('sm_store_setup_completed') === 'true';
+
+        const storedPharmName = firestoreData?.pharmacyName || existingReg?.pharmacyName || serverUser?.pharmacyName || (config.name && config.name !== 'Digital Pharma' && config.name !== 'My Pharmacy' ? config.name : '');
+        const storedCity = firestoreData?.city || existingReg?.city || serverUser?.city || (config.address && config.address !== 'Pakistan' ? config.address : '');
+        const storedOwner = firestoreData?.ownerName || firestoreData?.name || existingReg?.ownerName || existingReg?.name || serverUser?.name || config.ownerName || email.split('@')[0];
+        const storedPhone = firestoreData?.phone || existingReg?.phone || serverUser?.phone || config.phone || '';
+
+        const finalPharmName = (storedPharmName && storedPharmName !== 'My Pharmacy') ? storedPharmName : (authRecord?.pharmacyName || (storedCity ? `${storedOwner}'s Pharmacy` : 'My Pharmacy'));
+        const finalCity = (storedCity && storedCity !== 'Pakistan') ? storedCity : (authRecord?.city || 'Pakistan');
+        const finalOwner = storedOwner || authRecord?.name || 'Pharmacist';
+        const finalPhone = storedPhone || authRecord?.phone || '';
+
+        authRecord = {
+            name: finalOwner,
+            email: email,
+            phone: finalPhone,
+            city: finalCity,
+            pharmacyName: finalPharmName,
+            uid: userUid,
+            role: 'owner',
+            isSuperAdmin: false,
+            loginMethod: 'email_password',
+            isLiveSync: true
+        };
+
         authUser = {
             uid: userUid,
             email: email,
-            displayName: authRecord.name
+            displayName: finalOwner
         };
         localStorage.removeItem('sm_is_admin');
         localStorage.setItem('sm_auth_user', JSON.stringify(authRecord));
         localStorage.setItem('sm_user_mode', 'authenticated');
 
-        const config = window.getStoreConfig();
-        if (authRecord.pharmacyName) config.name = authRecord.pharmacyName;
-        if (authRecord.name) config.ownerName = authRecord.name;
-        if (authRecord.phone) config.phone = authRecord.phone;
-        if (authRecord.city) config.address = authRecord.city;
+        if (finalPharmName && finalPharmName !== 'My Pharmacy') config.name = finalPharmName;
+        if (finalOwner) config.ownerName = finalOwner;
+        if (finalPhone) config.phone = finalPhone;
+        if (finalCity && finalCity !== 'Pakistan') config.address = finalCity;
         localStorage.setItem('sm_store_config', JSON.stringify(config));
 
         // Connect live listeners
         attachFirestoreSyncListeners(userUid);
 
-        // Ensure user is recorded in sm_registered_users
+        // Ensure user is recorded in sm_registered_users with their complete details
         try {
-            const regUsers = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
-            const existingIdx = regUsers.findIndex(u => u.email && u.email.toLowerCase() === email);
+            const existingIdx = regUsers.findIndex(u => (u.email && u.email.toLowerCase() === email) || (u.uid && u.uid === userUid));
             const userObj = {
                 email,
                 uid: userUid,
-                ownerName: authRecord.name || config.ownerName || '',
-                name: authRecord.name || config.ownerName || '',
-                phone: authRecord.phone || config.phone || '',
-                pharmacyName: authRecord.pharmacyName || config.name || 'My Pharmacy',
-                city: authRecord.city || config.address || 'Pakistan'
+                ownerName: finalOwner,
+                name: finalOwner,
+                phone: finalPhone,
+                pharmacyName: finalPharmName,
+                city: finalCity
             };
             if (existingIdx !== -1) {
                 regUsers[existingIdx] = { ...regUsers[existingIdx], ...userObj };
@@ -8937,6 +8987,14 @@ window.handleAuthLogin = async function() {
             localStorage.setItem('sm_registered_users', JSON.stringify(regUsers));
         } catch(eReg) {}
 
+        // Un-blacklist user identifiers from client-side deleted stores list
+        try {
+            let blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+            const uNormPhone = finalPhone.replace(/\D/g, '').slice(-10);
+            blacklist = blacklist.filter(t => t !== userUid && t !== email && t !== uNormPhone && t !== finalPhone);
+            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+        } catch(_) {}
+
         // Register and sync to backend so user shows in Super Admin Control with Online Mode & in Network Pharmacies
         try {
             await fetch('/api/users/register', {
@@ -8945,10 +9003,10 @@ window.handleAuthLogin = async function() {
                 body: JSON.stringify({
                     uid: userUid,
                     email: email,
-                    phone: authRecord.phone || '',
-                    name: authRecord.name || '',
-                    pharmacyName: authRecord.pharmacyName || config.name || 'My Pharmacy',
-                    city: authRecord.city || config.address || 'Pakistan'
+                    phone: finalPhone,
+                    name: finalOwner,
+                    pharmacyName: finalPharmName,
+                    city: finalCity
                 })
             });
             await fetch('/api/network/register', {
@@ -8956,10 +9014,10 @@ window.handleAuthLogin = async function() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id: userUid,
-                    name: authRecord.pharmacyName || config.name || 'My Pharmacy',
-                    ownerName: authRecord.name || config.ownerName || '',
-                    city: authRecord.city || config.address || 'Pakistan',
-                    phone: authRecord.phone || config.phone || '',
+                    name: finalPharmName,
+                    ownerName: finalOwner,
+                    city: finalCity,
+                    phone: finalPhone,
                     email: email,
                     remarks: 'Active Digital Pharma Connected Pharmacy'
                 })
@@ -8975,22 +9033,32 @@ window.handleAuthLogin = async function() {
         window.applyStoreIdentity();
         window.closeAccountHubModal();
 
-        const hasConfiguredStore = authRecord.pharmacyName && authRecord.city && authRecord.pharmacyName !== 'My Pharmacy';
+        // STRICT FIX: If details were already entered previously, NEVER show the setup modal again!
+        const hasConfiguredStore = Boolean(
+            isSetupCompleted ||
+            (finalPharmName && finalPharmName !== 'My Pharmacy' && finalCity && finalCity !== 'Pakistan') ||
+            (existingReg && existingReg.pharmacyName && existingReg.pharmacyName !== 'My Pharmacy' && existingReg.city && existingReg.city !== 'Pakistan') ||
+            (serverUser && serverUser.pharmacyName && serverUser.pharmacyName !== 'My Pharmacy' && serverUser.city && serverUser.city !== 'Pakistan')
+        );
+
+        const storeModal = document.getElementById('store-details-setup-modal');
         if (!hasConfiguredStore) {
-            // First-time prompt for store details
-            const storeModal = document.getElementById('store-details-setup-modal');
+            // First-time prompt for store details only if truly unconfigured
             if (storeModal) {
                 storeModal.classList.remove('hidden');
                 const fOwner = document.getElementById('first-store-owner');
-                if (fOwner) fOwner.value = authRecord.name || '';
+                if (fOwner) fOwner.value = finalOwner;
                 const fPhone = document.getElementById('first-store-phone');
-                if (fPhone) fPhone.value = authRecord.phone || '';
+                if (fPhone) fPhone.value = finalPhone;
             }
             showToast(`Khush Amdeed! Apne medical store ki maloomat darj karein.`, 'info');
         } else {
+            // Ensure modal stays hidden if details are already registered
+            if (storeModal) storeModal.classList.add('hidden');
+            localStorage.setItem('sm_store_setup_done_' + email.toLowerCase(), 'true');
             window.syncStockWithNetwork();
             window.refreshNetworkList();
-            showToast(`Khush Amdeed! Aapki pharmacy (${authRecord.pharmacyName}) live connect ho gayi!`, 'success');
+            showToast(`Khush Amdeed! Aapki pharmacy (${finalPharmName}) live connect ho gayi!`, 'success');
         }
     } catch(err) {
         console.error('Login error:', err);
@@ -9135,6 +9203,21 @@ window.handleSaveFirstTimeStoreDetails = async function() {
             }
         } catch(e) {}
 
+        // Mark store setup as completed persistently so modal NEVER opens again on subsequent logins
+        const uEmailClean = (user?.email || '').toLowerCase().trim();
+        if (uEmailClean) {
+            localStorage.setItem('sm_store_setup_done_' + uEmailClean, 'true');
+        }
+        localStorage.setItem('sm_store_setup_completed', 'true');
+
+        // Un-blacklist user identifiers from client-side deleted stores list
+        try {
+            let blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
+            const uNormP = phone.replace(/\D/g, '').slice(-10);
+            blacklist = blacklist.filter(t => t !== userUid && t !== uEmailClean && t !== uNormP && t !== phone);
+            localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
+        } catch(_) {}
+
         // 5. Live sync stock with network
         window.syncStockWithNetwork();
 
@@ -9154,6 +9237,11 @@ window.handleSaveFirstTimeStoreDetails = async function() {
             submitBtn.innerHTML = originalText;
         }
     }
+};
+
+window.closeStoreSetupModal = function() {
+    const storeModal = document.getElementById('store-details-setup-modal');
+    if (storeModal) storeModal.classList.add('hidden');
 };
 
 // Cross-Store Medicine Live Stock Sync to Network Registry
