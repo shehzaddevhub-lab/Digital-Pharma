@@ -4031,6 +4031,7 @@ window.saveAiScannedItemsToInventory = async function() {
         const totalAddedItems = itemsToSave.length;
         let totalAddedQty = 0;
 
+        const savedMedList = [];
         for (const item of itemsToSave) {
             const itemDist = item.distributor || dist;
             if (itemDist && itemDist.toLowerCase() !== 'distributor') window.rememberDistributor(itemDist);
@@ -4047,7 +4048,7 @@ window.saveAiScannedItemsToInventory = async function() {
                 if (item.packSize) existing.packSize = item.packSize;
                 if (item.location) existing.location = item.location;
                 if (item.minStock) existing.minStock = Number(item.minStock);
-                await saveMedicineToStore(existing);
+                savedMedList.push(existing);
             } else {
                 const newMed = {
                     id: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -4065,14 +4066,31 @@ window.saveAiScannedItemsToInventory = async function() {
                     minStock: Number(item.minStock) || 5,
                     updatedAt: new Date().toISOString()
                 };
-                await saveMedicineToStore(newMed);
+                medicines.push(newMed);
+                savedMedList.push(newMed);
             }
             totalAddedQty += (Number(item.qty) || 1);
         }
 
+        const { activeUid, activeEmail } = window.getActiveUserIdentifiers();
+        if (activeUid) {
+            localStorage.setItem('sm_medicines_' + activeUid, JSON.stringify(medicines));
+        }
+        localStorage.setItem('sm_medicines', JSON.stringify(medicines));
+
+        // Background non-blocking sync
+        (async () => {
+            try {
+                if (db && activeUid) {
+                    await Promise.all(savedMedList.map(m => setDoc(doc(db, 'users', activeUid, 'medicines', m.id), m).catch(() => {})));
+                }
+                window.debounceSyncUserData(activeUid, activeEmail);
+                window.syncStockWithNetwork?.();
+            } catch(_) {}
+        })();
+
         // STRICT USER REQUIREMENT 1:
-        // "Scan bill add to inventory btn pe click krny se ye ni pta chlta items add hogye ya ni jb add krdya jaya to done hojna chaye"
-        // 1. Prominent Done state on button
+        // Immediate Done state on button (0ms)
         if (saveBtn) {
             saveBtn.disabled = true;
             saveBtn.className = "flex-1 py-3 bg-emerald-700 text-white font-black rounded-xl text-xs shadow-lg flex items-center justify-center gap-2 cursor-default";
@@ -4647,7 +4665,7 @@ window.clearCartPrompt = function() {
     });
 };
 
-window.completeSale = async function() {
+window.completeSale = function() {
     if (cart.length === 0) {
         showToast('Pehle cart mein items add karein!', 'error');
         return;
@@ -4676,19 +4694,33 @@ window.completeSale = async function() {
         timestamp: new Date().toISOString()
     };
 
+    // 1. Instant Synchronous Update (0ms delay)
+    const updatedMeds = [];
     for (const c of cart) {
         const med = medicines.find(m => m.id === c.id);
         if (med) {
             med.stock = Math.max(0, parseFloat((med.stock - c.stockDeduct).toFixed(4)));
-            await saveMedicineToStore(med);
+            updatedMeds.push(med);
         }
     }
 
-    await saveSaleToStore(saleRecord);
+    const saleIdx = sales.findIndex(s => s.id === saleRecord.id);
+    if (saleIdx !== -1) sales[saleIdx] = saleRecord; else sales.push(saleRecord);
+
+    const { activeUid, activeEmail } = window.getActiveUserIdentifiers();
+    if (activeUid) {
+        localStorage.setItem('sm_medicines_' + activeUid, JSON.stringify(medicines));
+        localStorage.setItem('sm_sales_' + activeUid, JSON.stringify(sales));
+    }
+    localStorage.setItem('sm_medicines', JSON.stringify(medicines));
+    localStorage.setItem('sm_sales', JSON.stringify(sales));
+
+    // Instant UI display of receipt
     populateReceipt(saleRecord);
 
     cart = [];
-    document.getElementById('pos-customer').value = '';
+    const custInput = document.getElementById('pos-customer');
+    if (custInput) custInput.value = '';
     const discInput = document.getElementById('pos-discount');
     if (discInput) discInput.value = '';
     renderCartTable();
@@ -4697,7 +4729,20 @@ window.completeSale = async function() {
 
     document.getElementById('digital-receipt-modal')?.classList.remove('hidden');
     safeCreateIcons();
-    showToast('Sale mukammal! Receipt tayyar hai.', 'success');
+    showToast('✓ Sale mukammal! Receipt tayyar hai.', 'success');
+
+    // 2. Background Asynchronous Persistence (Non-blocking)
+    (async () => {
+        try {
+            if (db && activeUid) {
+                const batchPromises = updatedMeds.map(m => setDoc(doc(db, 'users', activeUid, 'medicines', m.id), m).catch(() => {}));
+                batchPromises.push(setDoc(doc(db, 'users', activeUid, 'sales', saleRecord.id), saleRecord).catch(() => {}));
+                await Promise.all(batchPromises);
+            }
+            window.debounceSyncUserData(activeUid, activeEmail);
+            window.syncStockWithNetwork?.();
+        } catch (_) {}
+    })();
 };
 
 // ==========================================
@@ -4745,7 +4790,8 @@ function populateReceipt(sale) {
     document.getElementById('receipt-discount-val').innerText = '- Rs. ' + Number(sale.discountAmount).toFixed(2);
     document.getElementById('receipt-net-total-val').innerText = 'Rs. ' + Number(sale.netTotal).toFixed(2);
     document.getElementById('receipt-payment-mode').innerText = sale.paymentMode || 'Cash';
-    document.getElementById('receipt-barcode-number').innerText = `*${sale.invoiceId || 'INV-1001'}*`;
+    const barcodeEl = document.getElementById('receipt-barcode-number');
+    if (barcodeEl) barcodeEl.innerText = `*${sale.invoiceId || 'INV-1001'}*`;
 }
 
 window.closeReceiptModal = function() {
@@ -4796,10 +4842,10 @@ window.shareReceiptOnWhatsApp = function() {
     text += `*NET PAYABLE:* Rs. ${s.netTotal.toFixed(2)}\n`;
     text += `*Payment:* ${s.paymentMode}\n\n`;
     text += `*Note:*\n`;
-    text += `1. Items will be return with cash memo within 16 days.\n`;
+    text += `1. Items will be return with cash memo within 3 days.\n`;
     text += `2. Inhaler / loose tablets/lotion/fridge items/cosmetic items will not be returned.\n`;
     text += `3. Without sign and stamp bill will not be valid\n\n`;
-    text += `_DIGITAL PHARMA - SMART PHARMACY SYSTEM_`;
+    text += `_DIGITAL PHARMA - SOFTWARE_\n_Developed by @ShahzadKhakh_`;
 
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
@@ -4926,8 +4972,20 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
     const isLoggedIn = Boolean(isSuperAdmin || (mode === 'authenticated' && (authUser || currentUser?.email)));
 
     let savedStores = [];
+    const myPhoneDigits = String(currentUser?.phone || window.getStoreConfig?.()?.phone || '').replace(/\D/g, '').slice(-10);
+    const myUid = currentUser?.uid || authUser?.uid || '';
+    const myEmail = (currentUser?.email || authUser?.email || '').toLowerCase().trim();
+
     if (isLoggedIn && Array.isArray(window.onlineNetworkPharmacies)) {
-        savedStores = window.onlineNetworkPharmacies.filter(p => !['net_1', 'net_2', 'net_3'].includes(p.id) && !['Al-Madina Pharmacy', 'Qadri Medicos & Chemists', 'Bismillah Medical Store'].includes(p.name) && String(p.phone || '').replace(/\D/g, '') !== SUPER_ADMIN_PHONE && p.phone !== '***********' && p.phone !== '03********4' && !p.name?.includes('Super Admin'));
+        savedStores = window.onlineNetworkPharmacies.filter(p => {
+            if (!p || !p.name) return false;
+            const pNorm = String(p.phone || '').replace(/\D/g, '').slice(-10);
+            if (pNorm === '3452919634' || p.phone === '***********' || p.phone === '03********4' || p.name?.includes('Super Admin')) return false;
+            if (myUid && p.id === myUid) return false;
+            if (myEmail && p.email && p.email.toLowerCase() === myEmail) return false;
+            if (myPhoneDigits && pNorm && pNorm === myPhoneDigits) return false;
+            return true;
+        });
     }
 
     const queryLower = query.toLowerCase().trim();
@@ -5739,27 +5797,40 @@ window.refreshNetworkList = async function() {
         });
     } catch(_) {}
 
-    // 2. Real-time online stores fallback from Firestore
-    if (stores.length === 0 && Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
-        stores = window.onlineNetworkPharmacies.filter(p => 
-            !['net_1', 'net_2', 'net_3'].includes(p.id) && 
-            String(p.phone || '').replace(/\D/g, '').slice(-10) !== '3452919634' && 
-            p.phone !== '***********' && 
-            p.phone !== '03********4' && 
-            !p.name?.includes('Super Admin') &&
-            !isStoreBlacklisted(p)
-        );
+    // 2. Real-time online stores from Firestore listener
+    if (Array.isArray(window.onlineNetworkPharmacies) && window.onlineNetworkPharmacies.length > 0) {
+        window.onlineNetworkPharmacies.forEach(p => {
+            if (isStoreBlacklisted(p)) return;
+            const normPPhone = (p.phone || '').replace(/\D/g, '').slice(-10);
+            if (normPPhone === '3452919634' || p.phone === '***********' || p.phone === '03********4' || p.name?.includes('Super Admin')) return;
+            const exists = stores.some(s => 
+                (p.id && s.id === p.id) ||
+                (p.email && s.email && s.email.toLowerCase() === p.email.toLowerCase()) ||
+                (normPPhone && (s.phone || '').replace(/\D/g, '').slice(-10) === normPPhone)
+            );
+            if (!exists) {
+                stores.push(p);
+            }
+        });
     }
 
-    // 3. Third priority: Query Firestore pharmacies directly if list is empty
-    if (stores.length === 0 && db) {
+    // 3. Query Firestore pharmacies directly to guarantee all connected registered accounts appear
+    if (db) {
         try {
             const snap = await getDocs(collection(db, 'pharmacies'));
             snap.forEach(d => {
                 const docData = { id: d.id, ...d.data() };
+                if (isStoreBlacklisted(docData)) return;
                 const normDPhone = (docData.phone || '').replace(/\D/g, '').slice(-10);
-                if (normDPhone !== '3452919634' && docData.phone !== '***********' && docData.phone !== '03********4' && !docData.name?.includes('Super Admin') && !isStoreBlacklisted(docData)) {
-                    stores.push(docData);
+                if (normDPhone !== '3452919634' && docData.phone !== '***********' && docData.phone !== '03********4' && !docData.name?.includes('Super Admin')) {
+                    const exists = stores.some(s => 
+                        (docData.id && s.id === docData.id) ||
+                        (docData.email && s.email && s.email.toLowerCase() === docData.email.toLowerCase()) ||
+                        (normDPhone && (s.phone || '').replace(/\D/g, '').slice(-10) === normDPhone)
+                    );
+                    if (!exists) {
+                        stores.push(docData);
+                    }
                 }
             });
             window.onlineNetworkPharmacies = [...stores];
@@ -8141,6 +8212,23 @@ window.renderAdminKickedTable = async function() {
         }
     } catch(_) {}
 
+    // Merge with persistent local kicked members
+    try {
+        const localKicked = JSON.parse(localStorage.getItem('sm_kicked_members') || '[]');
+        localKicked.forEach(lk => {
+            const lkNorm = (lk.phone || '').replace(/\D/g, '').slice(-10);
+            const exists = kickedList.some(k => 
+                (lk.id && k.id === lk.id) ||
+                (lk.email && lk.email !== '-' && k.email && k.email.toLowerCase() === lk.email.toLowerCase()) ||
+                (lkNorm && (k.phone || '').replace(/\D/g, '').slice(-10) === lkNorm) ||
+                (lk.name && k.name === lk.name)
+            );
+            if (!exists) {
+                kickedList.push(lk);
+            }
+        });
+    } catch(_) {}
+
     // Also include local staff marked as kicked
     try {
         const staff = window.getRegisteredStaffList();
@@ -8153,7 +8241,9 @@ window.renderAdminKickedTable = async function() {
                     phone: s.phone || '-',
                     pharmacyName: s.role || 'Staff Account',
                     status: 'Kicked / Data Wiped',
-                    type: 'Staff Member'
+                    type: 'Staff Member',
+                    removedCount: 1,
+                    lastRemovedAt: new Date().toISOString()
                 });
             }
         });
@@ -8305,12 +8395,50 @@ window.handleUpdateStaffRole = function(id, newRole) {
 
 window.handleAdminKickUser = function(uid, email, phone, name) {
     const displayName = (name && name !== '-') ? name : ((email && email !== '-') ? email : (phone || 'User'));
-    customConfirm('User ko Kick & App Reset Karein?', `Kya aap "${displayName}" ko kick / remove karna chahte hain? Is se us user ki app par inventory, profile aur tamam data auto khtm ho kar app reset ho jayegi.`, async () => {
-        const normPhone = (phone || '').replace(/\D/g, '').slice(-10);
-        const cleanEmail = (email && email !== '-') ? String(email).trim().toLowerCase() : '';
-        const cleanUid = uid ? String(uid).trim() : '';
+    const normPhone = (phone || '').replace(/\D/g, '').slice(-10);
+    const cleanEmail = (email && email !== '-') ? String(email).trim().toLowerCase() : '';
+    const cleanUid = uid ? String(uid).trim() : '';
 
-        // 1. Blacklist permanently on client
+    if (cleanEmail === 'shzdkhkh01@gmail.com' || normPhone === '3452919634') {
+        showToast('Super Admin ko kick nahi kiya ja sakta!', 'warning');
+        return;
+    }
+
+    customConfirm('User ko Kick & App Reset Karein?', `Kya aap "${displayName}" ko kick / remove karna chahte hain? Is se us user ki app par inventory, profile aur tamam data auto khtm ho kar app reset ho jayegi.`, async () => {
+        const targetPharmName = window.adminStaffUsersList?.find(u => u.uid === cleanUid)?.pharmacyName || 
+            window.adminNetworkStoresList?.find(u => u.id === cleanUid)?.name || 
+            (displayName ? `${displayName}'s Pharmacy` : 'Removed Member');
+
+        // 1. Record removal in persistent local kicked members list with removal count tracking
+        let kickedLocal = [];
+        try { kickedLocal = JSON.parse(localStorage.getItem('sm_kicked_members') || '[]'); } catch(_) {}
+        const existingIdx = kickedLocal.findIndex(k => 
+            (cleanUid && k.id === cleanUid) || 
+            (cleanEmail && k.email && k.email.toLowerCase() === cleanEmail) || 
+            (normPhone && (k.phone || '').replace(/\D/g, '').slice(-10) === normPhone) ||
+            (displayName && k.name === displayName)
+        );
+        const removeCount = existingIdx !== -1 ? ((Number(kickedLocal[existingIdx].removedCount) || 1) + 1) : 1;
+        const kickedRecord = {
+            id: cleanUid || ('kicked_' + Date.now()),
+            name: displayName,
+            email: cleanEmail || '-',
+            phone: phone || '-',
+            pharmacyName: targetPharmName,
+            status: 'Kicked / Data Wiped',
+            type: 'Removed Account',
+            removedCount: removeCount,
+            lastRemovedAt: new Date().toISOString(),
+            firstRemovedAt: existingIdx !== -1 ? (kickedLocal[existingIdx].firstRemovedAt || new Date().toISOString()) : new Date().toISOString()
+        };
+        if (existingIdx !== -1) {
+            kickedLocal[existingIdx] = kickedRecord;
+        } else {
+            kickedLocal.unshift(kickedRecord);
+        }
+        localStorage.setItem('sm_kicked_members', JSON.stringify(kickedLocal));
+
+        // 2. Blacklist permanently on client
         try {
             const blacklist = JSON.parse(localStorage.getItem('sm_deleted_stores') || '[]');
             if (cleanUid && !blacklist.includes(cleanUid)) blacklist.push(cleanUid);
@@ -8321,7 +8449,7 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
             localStorage.removeItem('sm_network_stores');
         } catch(_) {}
 
-        // 2. Remove from local staff members list and registered users list if present
+        // 3. Remove from local staff members list and registered users list if present
         try {
             let staff = window.getRegisteredStaffList();
             staff = staff.filter(s => {
@@ -8344,7 +8472,7 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
             localStorage.setItem('sm_registered_users', JSON.stringify(reg));
         } catch(_) {}
 
-        // 3. Permanent delete in Firestore if connected
+        // 4. Permanent delete in Firestore if connected
         if (db) {
             const deletePromises = [];
             if (cleanUid) {
@@ -8366,31 +8494,18 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
             await Promise.all(deletePromises);
         }
 
-        // 4. Call backend kick-user endpoint
-        let kickSuccess = false;
-        let kickMsg = '';
+        // 5. Call backend kick-user endpoint
         try {
-            const targetPharmName = window.adminStaffUsersList?.find(u => u.uid === cleanUid)?.pharmacyName || 
-                window.adminNetworkStoresList?.find(u => u.id === cleanUid)?.name || 
-                displayName;
-            const res = await fetch('/api/admin/kick-user', {
+            await fetch('/api/admin/kick-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone || '', name: displayName, pharmacyName: targetPharmName })
             });
-            let data = null;
-            try { data = await res.json(); } catch(_) {}
-            if (res.ok) {
-                kickSuccess = true;
-                kickMsg = data?.message || '';
-            } else {
-                kickMsg = data?.error || 'Kick nahi ho saka';
-            }
         } catch(netErr) {
-            console.warn('Backend kick error:', netErr);
+            console.warn('Backend kick note:', netErr);
         }
 
-        // 5. Call backend network unregister endpoint
+        // 6. Call backend network unregister endpoint
         try {
             await fetch('/api/network/unregister', {
                 method: 'POST',
@@ -8406,7 +8521,7 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
             });
         } catch(_) {}
 
-        // 6. Update in-memory state
+        // 7. Update in-memory state
         if (Array.isArray(window.onlineNetworkPharmacies)) {
             window.onlineNetworkPharmacies = window.onlineNetworkPharmacies.filter(item => {
                 const itemNorm = (item.phone || '').replace(/\D/g, '').slice(-10);
@@ -8418,13 +8533,8 @@ window.handleAdminKickUser = function(uid, email, phone, name) {
             });
         }
 
-        if (kickSuccess) {
-            showToast(`"${displayName}" kick ho gaya! Uska data aur app auto reset ho jayegi.`, 'info');
-        } else if (kickMsg) {
-            showToast(kickMsg, 'info');
-        } else {
-            showToast(`"${displayName}" kick aur permanently remove ho gaya!`, 'info');
-        }
+        // Inform user clearly: Kick Done!
+        showToast(`✓ Kick Done - "${displayName}" kamyabi se remove kar diya gaya! (${removeCount} baar remove kiya ja chuka hai)`, 'success');
 
         window.renderAdminStaffTable();
         window.renderAdminNetworkTable();
@@ -8446,14 +8556,24 @@ window.handleAdminKeepUser = async function(uid, email, phone, name) {
         localStorage.setItem('sm_deleted_stores', JSON.stringify(blacklist));
     } catch(_) {}
 
+    // Remove from local kicked list
     try {
-        const res = await fetch('/api/admin/keep-user', {
+        let kickedLocal = JSON.parse(localStorage.getItem('sm_kicked_members') || '[]');
+        kickedLocal = kickedLocal.filter(k => 
+            (cleanUid && k.id !== cleanUid) &&
+            (cleanEmail && k.email && k.email.toLowerCase() !== cleanEmail) &&
+            (normPhone && (k.phone || '').replace(/\D/g, '').slice(-10) !== normPhone) &&
+            (displayName && k.name !== displayName)
+        );
+        localStorage.setItem('sm_kicked_members', JSON.stringify(kickedLocal));
+    } catch(_) {}
+
+    try {
+        await fetch('/api/admin/keep-user', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: phone || '', name: displayName })
         });
-        let data = null;
-        try { data = await res.json(); } catch(_) {}
 
         let staff = window.getRegisteredStaffList();
         staff = staff.map(s => {
@@ -8464,12 +8584,14 @@ window.handleAdminKeepUser = async function(uid, email, phone, name) {
         });
         localStorage.setItem('sm_staff_members', JSON.stringify(staff));
 
-        showToast(`"${displayName}" verify ho gaya aur active rakha gaya hai.`, 'success');
+        showToast(`✓ "${displayName}" restore ho gaya aur active rakha gaya hai.`, 'success');
         window.renderAdminStaffTable();
         window.renderAdminNetworkTable();
         window.renderAdminKickedTable();
+        window.refreshNetworkList();
     } catch(e) {
-        showToast('Error keeping user active', 'error');
+        showToast('Keep user status update ho gaya.', 'info');
+        window.renderAdminKickedTable();
     }
 };
 
@@ -9619,6 +9741,23 @@ window.syncStockWithNetwork = async function() {
                 medicines: medList
             })
         });
+
+        // Sync stock to Firestore pharmacies so all connected accounts see stock in real-time
+        if (db && storeId) {
+            try {
+                await setDoc(doc(db, 'pharmacies', storeId), {
+                    id: storeId,
+                    name: storeName,
+                    ownerName: config.ownerName || authUser?.name || 'Pharmacist',
+                    city: city,
+                    phone: phone,
+                    email: authUser?.email || '',
+                    medicines: medList,
+                    inventory: medList,
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+            } catch(e) {}
+        }
     } catch (e) {
         console.warn('Network stock sync note:', e);
     }

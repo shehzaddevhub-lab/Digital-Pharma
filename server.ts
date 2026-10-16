@@ -1067,7 +1067,31 @@ interface SharedMedicineStock {
   stockQty: number;
   lastUpdated: string;
 }
-let networkMedicineStocks: SharedMedicineStock[] = [];
+
+const NETWORK_STOCKS_FILE = path.resolve(__dirname, 'network_medicine_stocks.json');
+
+function loadNetworkStocks(): SharedMedicineStock[] {
+  try {
+    if (fs.existsSync(NETWORK_STOCKS_FILE)) {
+      const data = fs.readFileSync(NETWORK_STOCKS_FILE, 'utf-8');
+      const list = JSON.parse(data);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (e) {
+    console.error('Error loading network medicine stocks:', e);
+  }
+  return [];
+}
+
+function saveNetworkStocks(list: SharedMedicineStock[]) {
+  try {
+    fs.writeFileSync(NETWORK_STOCKS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error saving network medicine stocks:', e);
+  }
+}
+
+let networkMedicineStocks: SharedMedicineStock[] = loadNetworkStocks();
 
 app.post('/api/network/sync-stock', (req: Request, res: Response): void => {
   try {
@@ -1080,7 +1104,7 @@ app.post('/api/network/sync-stock', (req: Request, res: Response): void => {
       res.json({ success: true, message: 'Admin stock excluded' });
       return;
     }
-    networkMedicineStocks = networkMedicineStocks.filter(s => s.phone !== phone);
+    networkMedicineStocks = networkMedicineStocks.filter(s => normalizePhone(s.phone) !== normalizePhone(phone));
     medicines.forEach((m: any) => {
       if (m && m.name && Number(m.stock) > 0) {
         networkMedicineStocks.push({
@@ -1095,6 +1119,7 @@ app.post('/api/network/sync-stock', (req: Request, res: Response): void => {
         });
       }
     });
+    saveNetworkStocks(networkMedicineStocks);
     res.json({ success: true, synced: medicines.length });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Stock sync failed' });
@@ -1993,6 +2018,7 @@ app.post('/api/admin/kick-user', (req: Request, res: Response): void => {
     // Remove from shared medicine stocks
     if (normPhone) {
       networkMedicineStocks = networkMedicineStocks.filter(s => normalizePhone(s.phone) !== normPhone);
+      saveNetworkStocks(networkMedicineStocks);
     }
 
     // Wipe persisted user data file upon kick
