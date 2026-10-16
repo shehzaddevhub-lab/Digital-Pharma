@@ -1063,7 +1063,10 @@ interface SharedMedicineStock {
   city: string;
   phone: string;
   medicineName: string;
+  generic?: string;
   type: string;
+  packSize?: string;
+  mrp: number;
   stockQty: number;
   lastUpdated: string;
 }
@@ -1107,13 +1110,17 @@ app.post('/api/network/sync-stock', (req: Request, res: Response): void => {
     networkMedicineStocks = networkMedicineStocks.filter(s => normalizePhone(s.phone) !== normalizePhone(phone));
     medicines.forEach((m: any) => {
       if (m && m.name && Number(m.stock) > 0) {
+        const itemMrp = Number(m.mrp != null && m.mrp !== '' ? m.mrp : (m.retailPrice != null && m.retailPrice !== '' ? m.retailPrice : (m.price || 0))) || 0;
         networkMedicineStocks.push({
           storeId: storeId || phone,
           storeName: storeName || 'Partner Pharmacy',
           city: city || 'Pakistan',
           phone: phone,
           medicineName: String(m.name).trim(),
+          generic: String(m.generic || '').trim(),
           type: String(m.type || 'tab').toLowerCase(),
+          packSize: String(m.packSize || '20'),
+          mrp: itemMrp,
           stockQty: Number(m.stock),
           lastUpdated: new Date().toISOString()
         });
@@ -1133,7 +1140,7 @@ app.get('/api/network/medicine-lookup', (req: Request, res: Response): void => {
     return;
   }
   const matches = networkMedicineStocks.filter(s => 
-    s.medicineName.toLowerCase().includes(query) && !isPhoneAdmin(s.phone)
+    (s.medicineName.toLowerCase().includes(query) || (s.generic && s.generic.toLowerCase().includes(query))) && !isPhoneAdmin(s.phone)
   ).slice(0, 30);
   res.json({
     success: true,
@@ -1226,10 +1233,34 @@ app.get('/api/network/pharmacies', (_req: Request, res: Response) => {
     }
   });
 
+  // Attach synced medicines to each pharmacy so quick search and network inventory have full MRP & stock data
+  const pharmaciesWithInventory = deduplicated.map(p => {
+    const pNorm = normalizePhone(p.phone);
+    const storeStocks = networkMedicineStocks.filter(s => {
+      const sNorm = normalizePhone(s.phone);
+      return (s.storeId && p.id && s.storeId === p.id) || (sNorm && pNorm && sNorm === pNorm);
+    }).map(s => ({
+      name: s.medicineName,
+      generic: s.generic,
+      type: s.type,
+      packSize: s.packSize,
+      mrp: s.mrp,
+      retailPrice: s.mrp,
+      price: s.mrp,
+      stock: s.stockQty,
+      qty: s.stockQty
+    }));
+    return {
+      ...p,
+      inventory: storeStocks,
+      medicines: storeStocks
+    };
+  });
+
   res.json({
     success: true,
-    count: deduplicated.length,
-    pharmacies: deduplicated
+    count: pharmaciesWithInventory.length,
+    pharmacies: pharmaciesWithInventory
   });
 });
 

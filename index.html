@@ -160,7 +160,11 @@
         }
         @media print {
             body * { visibility: hidden !important; }
-            #receipt-card-capture, #receipt-card-capture * { visibility: visible !important; }
+            #receipt-card-capture, #receipt-card-capture * { 
+                visibility: visible !important; 
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             #receipt-card-capture {
                 position: absolute !important;
                 left: 0 !important;
@@ -176,6 +180,12 @@
                 font-family: inherit !important;
                 height: auto !important;
                 page-break-inside: avoid !important;
+            }
+            #receipt-qr-code-img {
+                display: block !important;
+                width: 56px !important;
+                height: 56px !important;
+                object-fit: contain !important;
             }
         }
 
@@ -1178,13 +1188,23 @@
                     <p id="receipt-store-phone" class="text-[10px] text-slate-700">Phone/WhatsApp: 0300-1234567</p>
                     <p id="receipt-store-license" class="text-[9px] text-slate-600 font-bold mt-0.5">D.S.L #: 14-B/PB-2024</p>
                     
-                    <div class="mt-2 pt-1 border-t border-dotted border-slate-400 flex justify-between text-[9px] text-slate-700">
-                        <span id="receipt-invoice-no" class="font-bold">INV: #INV-1001</span>
-                        <span id="receipt-date-time">25/09/2026 08:30 PM</span>
-                    </div>
-                    <div class="flex justify-between text-[9px] text-slate-700 mt-0.5">
-                        <span>Customer: <strong id="receipt-customer-name">Walk-in</strong></span>
-                        <span>Cashier: Counter 01</span>
+                    <!-- Invoice Info & Verification QR Code Side-by-Side (Top Header Area) -->
+                    <div class="mt-2 pt-1.5 border-t border-dotted border-slate-400 flex items-center justify-between gap-2 text-[9px] text-slate-800">
+                        <div class="text-left space-y-0.5 flex-1 min-w-0">
+                            <div><span id="receipt-invoice-no" class="font-black text-slate-900 text-[10px]">INV: #INV-1001</span></div>
+                            <div id="receipt-date-time" class="text-[8.5px] text-slate-600">25/09/2026 08:30 PM</div>
+                            <div class="truncate">Customer: <strong id="receipt-customer-name" class="text-slate-900 font-bold">Walk-in</strong></div>
+                            <div class="flex items-center justify-between text-[8px] text-slate-600 pt-0.5">
+                                <span>Cashier: Counter 01</span>
+                                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 font-bold rounded text-[7.5px] border border-emerald-300">✓ Verified</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-center shrink-0">
+                            <div class="p-1 bg-white border border-slate-400 rounded-md shadow-2xs">
+                                <img id="receipt-qr-code-img" src="" alt="Verify QR" class="w-14 h-14 object-contain block bg-white" />
+                            </div>
+                            <span class="text-[7px] font-black text-slate-600 tracking-wider mt-0.5 uppercase font-mono">Scan to Verify</span>
+                        </div>
                     </div>
                 </div>
 

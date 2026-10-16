@@ -12,6 +12,9 @@ let authUser = null;
 let deferredPrompt = null;
 let activePosSearchIndex = -1;
 
+// QR Code Generator for Authentic Digital Bill Verification
+import QRCode from 'qrcode';
+
 // Real Firebase Services via Bundled SDK
 import { 
     app, 
@@ -4749,7 +4752,7 @@ window.completeSale = function() {
 // RECEIPT GENERATION (Pure Receipt Format)
 // Dynamic Size according to items count
 // ==========================================
-function populateReceipt(sale) {
+async function populateReceipt(sale) {
     window.currentViewingSale = sale;
     const config = window.getStoreConfig();
 
@@ -4765,16 +4768,18 @@ function populateReceipt(sale) {
             rLicense.classList.add('hidden');
         }
     }
-    document.getElementById('receipt-invoice-no').innerText = 'INV: #' + (sale.invoiceId || '1001');
-    document.getElementById('receipt-date-time').innerText = new Date(sale.timestamp).toLocaleString();
+    const invId = sale.invoiceId || '1001';
+    document.getElementById('receipt-invoice-no').innerText = 'INV: #' + invId;
+    const saleDateStr = sale.timestamp ? new Date(sale.timestamp).toLocaleString() : new Date().toLocaleString();
+    document.getElementById('receipt-date-time').innerText = saleDateStr;
     document.getElementById('receipt-customer-name').innerText = sale.customer || 'Walk-in';
 
-    const totalItemCount = sale.items.reduce((acc, i) => acc + (i.qty || 1), 0);
-    document.getElementById('receipt-items-count').innerText = `${sale.items.length} items (${totalItemCount} units)`;
+    const totalItemCount = (sale.items || []).reduce((acc, i) => acc + (i.qty || 1), 0);
+    document.getElementById('receipt-items-count').innerText = `${(sale.items || []).length} items (${totalItemCount} units)`;
 
     const tbody = document.getElementById('receipt-items-tbody');
     if (tbody) {
-        tbody.innerHTML = sale.items.map(item => `
+        tbody.innerHTML = (sale.items || []).map(item => `
             <tr class="py-1">
                 <td class="py-1 font-bold">
                     <div class="text-[11px] leading-snug text-slate-900">${cleanNoEmoji(item.name)}</div>
@@ -4786,12 +4791,45 @@ function populateReceipt(sale) {
         `).join('');
     }
 
-    document.getElementById('receipt-subtotal-val').innerText = 'Rs. ' + Number(sale.subtotal).toFixed(2);
-    document.getElementById('receipt-discount-val').innerText = '- Rs. ' + Number(sale.discountAmount).toFixed(2);
-    document.getElementById('receipt-net-total-val').innerText = 'Rs. ' + Number(sale.netTotal).toFixed(2);
+    document.getElementById('receipt-subtotal-val').innerText = 'Rs. ' + Number(sale.subtotal || 0).toFixed(2);
+    document.getElementById('receipt-discount-val').innerText = '- Rs. ' + Number(sale.discountAmount || 0).toFixed(2);
+    document.getElementById('receipt-net-total-val').innerText = 'Rs. ' + Number(sale.netTotal || 0).toFixed(2);
     document.getElementById('receipt-payment-mode').innerText = sale.paymentMode || 'Cash';
     const barcodeEl = document.getElementById('receipt-barcode-number');
-    if (barcodeEl) barcodeEl.innerText = `*${sale.invoiceId || 'INV-1001'}*`;
+    if (barcodeEl) barcodeEl.innerText = `*${invId}*`;
+
+    // Generate Unique Verification QR Code for this receipt
+    const qrImg = document.getElementById('receipt-qr-code-img');
+    if (qrImg) {
+        const qrPayload = [
+            `DIGITAL PHARMA | VERIFIED BILL`,
+            `Store: ${config.name || 'Digital Pharma'}`,
+            `Phone: ${config.phone || '0300-1234567'}`,
+            `Invoice: #INV-${String(invId).replace(/^INV-?/i, '')}`,
+            `Date: ${saleDateStr}`,
+            `Customer: ${sale.customer || 'Walk-in'}`,
+            `Items: ${(sale.items || []).length} (${totalItemCount} units)`,
+            `Net Payable: Rs. ${Number(sale.netTotal || 0).toFixed(2)}`,
+            `Payment: ${sale.paymentMode || 'Cash'}`,
+            `Status: Genuine Verified Invoice`,
+            `Software: DIGITAL PHARMA by @ShahzadKhakh`
+        ].join('\n');
+
+        try {
+            const dataUrl = await QRCode.toDataURL(qrPayload, {
+                width: 160,
+                margin: 1,
+                errorCorrectionLevel: 'M',
+                color: {
+                    dark: '#020617',
+                    light: '#ffffff'
+                }
+            });
+            qrImg.src = dataUrl;
+        } catch (err) {
+            console.error('Failed to generate receipt QR code:', err);
+        }
+    }
 }
 
 window.closeReceiptModal = function() {
@@ -4799,12 +4837,22 @@ window.closeReceiptModal = function() {
     syncModalScrollLock();
 };
 
-window.downloadReceiptImage = function() {
+window.downloadReceiptImage = async function() {
     const card = document.getElementById('receipt-card-capture');
     if (!card) return;
+    const qrImg = document.getElementById('receipt-qr-code-img');
+    if (qrImg && !qrImg.complete && qrImg.src) {
+        await new Promise(r => { qrImg.onload = r; qrImg.onerror = r; setTimeout(r, 250); });
+    }
     showToast('Image generate ho rahi hai...', 'info');
     if (typeof window.html2canvas === 'function') {
-        window.html2canvas(card, { scale: 2.5, backgroundColor: '#fcfcf8' }).then(canvas => {
+        window.html2canvas(card, {
+            scale: 2.5,
+            backgroundColor: '#fcfcf8',
+            useCORS: true,
+            allowTaint: true,
+            logging: false
+        }).then(canvas => {
             const link = document.createElement('a');
             link.download = `Receipt_${window.currentViewingSale?.invoiceId || 'Bill'}.png`;
             link.href = canvas.toDataURL('image/png');
@@ -4998,9 +5046,9 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
 
         // Check if partner truly has positive stock for this exact medicine
         const matchedItem = partnerInv.find(item => {
-            const iName = String(item.name || '').toLowerCase();
+            const iName = String(item.name || item.medicineName || '').toLowerCase();
             const iGen = String(item.generic || item.formula || '').toLowerCase();
-            const stockQty = Number(item.stock || item.qty || 0);
+            const stockQty = Number(item.stock != null ? item.stock : (item.stockQty != null ? item.stockQty : (item.qty || 0)));
             if (stockQty <= 0) return false;
 
             if (iName.includes(queryLower)) return true;
@@ -5010,9 +5058,19 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
         });
 
         if (matchedItem) {
+            const rawMrp = matchedItem.mrp != null && matchedItem.mrp !== '' ? matchedItem.mrp : (matchedItem.retailPrice != null && matchedItem.retailPrice !== '' ? matchedItem.retailPrice : (matchedItem.price || 0));
+            const parsedMrp = Number(rawMrp) || 0;
             verifiedPartnerMatches.push({
                 pharmacy: p,
-                item: matchedItem
+                item: {
+                    ...matchedItem,
+                    name: matchedItem.name || matchedItem.medicineName,
+                    mrp: parsedMrp,
+                    retailPrice: parsedMrp,
+                    stock: Number(matchedItem.stock != null ? matchedItem.stock : (matchedItem.stockQty != null ? matchedItem.stockQty : (matchedItem.qty || 0))),
+                    generic: matchedItem.generic || matchedItem.formula || '',
+                    packSize: matchedItem.packSize || '20'
+                }
             });
         }
     });
@@ -5021,7 +5079,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
         html += `<div class="p-2 text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 rounded-xl mt-2 flex items-center justify-between"><span>Connected Pharmacies Network (Verified Stock Available):</span><span>${verifiedPartnerMatches.length} stores</span></div>`;
         html += verifiedPartnerMatches.map(({ pharmacy: p, item }) => {
             const packInfo = parsePackSize(item.packSize || '20');
-            const mrpVal = Number(item.mrp || 0).toFixed(1);
+            const mrpVal = Number(item.mrp != null && item.mrp !== '' ? item.mrp : (item.retailPrice != null && item.retailPrice !== '' ? item.retailPrice : (item.price || 0))).toFixed(1);
             return `
             <div class="p-3 hover:bg-emerald-50/40 border-b border-slate-100 transition rounded-xl flex flex-col gap-2 bg-white">
                 <div class="flex items-start justify-between gap-2">
@@ -9724,11 +9782,24 @@ window.syncStockWithNetwork = async function() {
             return; // Admin or stores without phone don't push stock
         }
 
-        const medList = (window.medicines || medicines || []).map(m => ({
-            name: m.name,
-            type: m.type,
-            stock: Number(m.stock) || 0
-        })).filter(m => m.stock > 0);
+        const medList = (window.medicines || medicines || []).map(m => {
+            const rawMrp = m.mrp != null && m.mrp !== '' ? m.mrp : (m.retailPrice != null && m.retailPrice !== '' ? m.retailPrice : (m.price || 0));
+            const numMrp = Number(rawMrp) || 0;
+            return {
+                id: m.id || '',
+                name: m.name || '',
+                generic: m.generic || '',
+                type: m.type || 'tab',
+                packSize: m.packSize || '20',
+                mrp: numMrp,
+                retailPrice: numMrp,
+                price: numMrp,
+                stock: Number(m.stock) || 0,
+                qty: Number(m.stock) || 0,
+                distributor: m.distributor || '',
+                location: m.location || ''
+            };
+        }).filter(m => m.stock > 0);
 
         await fetch('/api/network/sync-stock', {
             method: 'POST',
@@ -9810,9 +9881,12 @@ window.searchMedicineAcrossNetwork = async function(query) {
                                 <span class="text-[10px] text-slate-500 font-medium">
                                     🏥 ${escapeHtml(r.storeName)} (📍 ${escapeHtml(r.city)})
                                 </span>
-                                <div class="mt-0.5">
+                                <div class="mt-0.5 flex items-center gap-1.5 flex-wrap">
                                     <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-mono font-bold text-[10px]">
                                         📦 Stock: ${r.stockQty} ${escapeHtml(r.type || 'Packs')}
+                                    </span>
+                                    <span class="px-1.5 py-0.5 bg-brand-50 text-brand-900 border border-brand-200 rounded font-bold text-[10px]">
+                                        MRP: Rs. ${Number(r.mrp || 0).toFixed(1)}
                                     </span>
                                 </div>
                             </div>
