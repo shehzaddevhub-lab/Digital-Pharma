@@ -541,12 +541,11 @@
                         <span class="text-[10px] bg-brand-50 text-brand-700 font-bold px-2 py-0.5 rounded-full hidden sm:inline">Use Arrow keys & Enter for speed</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button type="button" onclick="window.triggerUnifiedMediaScan('presc')" class="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer" title="Scan Prescription / Nuskha directly to Bill">
-                            <i data-lucide="scan" class="w-3.5 h-3.5 text-amber-700"></i>
-                            <span class="hidden sm:inline">Scan Nuskha</span>
-                            <span class="sm:hidden">Nuskha</span>
+                        <button type="button" onclick="window.openBillVerifyModal()" class="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white border border-emerald-500/40 px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer" title="QR Code Scan Kar Ke Bill Verify Karein">
+                            <i data-lucide="qr-code" class="w-4 h-4 text-emerald-200"></i>
+                            <span class="hidden sm:inline">Scan Bill Verify</span>
+                            <span class="sm:hidden">Verify Bill</span>
                         </button>
-                        <input type="file" id="pos-presc-input" accept="image/*" class="sr-only absolute opacity-0 -z-10" onchange="window.handlePrescriptionScan(event)">
                         <button onclick="window.clearCartPrompt()" class="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Cart
                         </button>
@@ -1196,14 +1195,13 @@
                             <div class="truncate">Customer: <strong id="receipt-customer-name" class="text-slate-900 font-bold">Walk-in</strong></div>
                             <div class="flex items-center justify-between text-[8px] text-slate-600 pt-0.5">
                                 <span>Cashier: Counter 01</span>
-                                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 font-bold rounded text-[7.5px] border border-emerald-300">✓ Verified</span>
                             </div>
                         </div>
                         <div class="flex flex-col items-center shrink-0">
                             <div class="p-1 bg-white border border-slate-400 rounded-md shadow-2xs">
-                                <img id="receipt-qr-code-img" src="" alt="Verify QR" class="w-14 h-14 object-contain block bg-white" />
+                                <img id="receipt-qr-code-img" src="" alt="Bill QR" class="w-14 h-14 object-contain block bg-white" />
                             </div>
-                            <span class="text-[7px] font-black text-slate-600 tracking-wider mt-0.5 uppercase font-mono">Scan to Verify</span>
+                            <span class="text-[7px] font-black text-slate-600 tracking-wider mt-0.5 uppercase font-mono">Scan QR</span>
                         </div>
                     </div>
                 </div>
@@ -1267,6 +1265,92 @@
                 <button onclick="window.printReceipt()" class="py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow active:scale-95">
                     <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print Receipt
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BILL VERIFICATION SCANNER MODAL (Counter Section) -->
+    <div id="bill-verify-modal" onclick="if(event.target===this) window.closeBillVerifyModal()" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-slate-200">
+            <!-- Modal Header -->
+            <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white rounded-t-3xl">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
+                        <i data-lucide="qr-code" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-sm sm:text-base text-white tracking-wide flex items-center gap-1.5">
+                            Bill Verification Scanner
+                        </h3>
+                        <p class="text-[11px] text-emerald-300 font-medium">Asal Bill / Slip ki Asliyat QR Code se Verify Karein</p>
+                    </div>
+                </div>
+                <button type="button" onclick="window.closeBillVerifyModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+                <!-- Mode Switcher: Live Camera vs Image Upload -->
+                <div class="flex bg-slate-100 p-1 rounded-2xl gap-1">
+                    <button type="button" id="bill-scan-tab-cam" onclick="window.switchBillVerifyMode('camera')" class="flex-1 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-white text-slate-900 shadow-xs transition cursor-pointer">
+                        <i data-lucide="camera" class="w-3.5 h-3.5 text-emerald-600"></i> Live Camera Scan
+                    </button>
+                    <button type="button" id="bill-scan-tab-file" onclick="window.switchBillVerifyMode('file')" class="flex-1 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 transition cursor-pointer">
+                        <i data-lucide="image" class="w-3.5 h-3.5 text-indigo-600"></i> Slip Photo / PNG Upload
+                    </button>
+                </div>
+
+                <!-- Camera Container -->
+                <div id="bill-cam-wrapper" class="relative rounded-2xl overflow-hidden bg-black border border-slate-800 flex flex-col items-center justify-center min-h-[260px]">
+                    <video id="bill-qr-video" autoplay playsinline muted class="w-full h-64 sm:h-72 object-cover block"></video>
+                    
+                    <!-- Scanner Target Overlay Box with Animated Line -->
+                    <div id="bill-scanner-overlay" class="absolute inset-0 pointer-events-none flex items-center justify-center p-6">
+                        <div class="w-48 h-48 sm:w-56 sm:h-56 border-2 border-emerald-400 rounded-2xl relative shadow-lg">
+                            <span class="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg"></span>
+                            <span class="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg"></span>
+                            <span class="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg"></span>
+                            <span class="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 rounded-br-lg"></span>
+                            <div class="absolute inset-x-2 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_8px_#34d399] animate-pulse"></div>
+                        </div>
+                    </div>
+
+                    <div id="bill-cam-status-pill" class="absolute top-3 inset-x-4 text-center">
+                        <span class="px-3 py-1 bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold rounded-full border border-white/20">
+                            Receipt ke QR code ko frame ke samne layein
+                        </span>
+                    </div>
+
+                    <!-- Camera Control Bar -->
+                    <div class="absolute bottom-3 inset-x-4 flex items-center justify-center gap-2">
+                        <button type="button" onclick="window.flipBillCamera()" class="px-3 py-1.5 bg-black/60 hover:bg-black/80 text-white rounded-xl text-[11px] font-bold border border-white/20 flex items-center gap-1 cursor-pointer">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Camera Badlein
+                        </button>
+                    </div>
+                </div>
+
+                <!-- File Upload Container -->
+                <div id="bill-file-wrapper" class="hidden flex flex-col items-center justify-center p-6 border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/40 text-center space-y-3">
+                    <div class="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-inner">
+                        <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-black text-slate-800 text-xs sm:text-sm">Bill ki Photo ya Download shuda Slip PNG Chunein</h4>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Mobile gallery ya computer se receipt image upload karein</p>
+                    </div>
+                    <button type="button" onclick="document.getElementById('bill-qr-file-input').click()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition cursor-pointer flex items-center gap-1.5">
+                        <i data-lucide="file-image" class="w-4 h-4"></i> Receipt Photo Select Karein
+                    </button>
+                    <input type="file" id="bill-qr-file-input" accept="image/*" class="sr-only" onchange="window.handleBillQrFileUpload(event)">
+                </div>
+
+                <!-- Hidden Canvas for QR Extraction -->
+                <canvas id="bill-qr-canvas" class="hidden"></canvas>
+
+                <!-- Verification Result Display Area -->
+                <div id="bill-verify-result-box" class="hidden transition-all"></div>
             </div>
         </div>
     </div>
