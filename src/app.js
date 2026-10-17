@@ -3539,6 +3539,23 @@ function cleanNoEmoji(str) {
         .trim();
 }
 
+// Format stock numbers cleanly (1 decimal max, no lengthy floats like 4.975 -> 4.9)
+function formatStockDisplay(val) {
+    if (val == null || isNaN(val)) return '0';
+    const num = Number(val);
+    if (num <= 0) return '0';
+    if (Number.isInteger(num)) return String(num);
+    // If very small fractional pack e.g. 0.05
+    if (num < 0.1) return String(parseFloat(num.toFixed(2)));
+    // As per user specification: "4.975 es trh show krwany ki bjaye only 4.9 itni value kafi hai decimal ke bd 1 number best rhy ga ya 2 numbers"
+    const oneDec = Math.floor(num * 10) / 10;
+    if (oneDec % 1 === 0) {
+        return String(parseFloat(num.toFixed(1)));
+    }
+    return oneDec.toFixed(1);
+}
+window.formatStockDisplay = formatStockDisplay;
+
 // Global Distributor Memory & Autocomplete Suggestions
 window.getAllExistingDistributors = function() {
     const set = new Set();
@@ -4411,7 +4428,7 @@ window.searchMedicineForPos = function() {
                 <div tabindex="0" onclick="window.selectMedicineForPos('${m.id}')" class="pos-result-row p-2.5 hover:bg-brand-50 outline-none cursor-pointer flex justify-between items-center text-xs transition border-b border-slate-100 last:border-0">
                     <div class="space-y-0.5">
                         <strong class="text-slate-800 text-xs">${m.name}</strong>
-                        <span class="text-[10px] text-slate-500 block">${displayGen ? displayGen + ' • ' : ''}Stock: ${m.stock} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
+                        <span class="text-[10px] text-slate-500 block">${displayGen ? displayGen + ' • ' : ''}Stock: ${formatStockDisplay(m.stock)} packs (${packInfo.displayText}) • Batch: ${m.batch || 'B-01'}</span>
                     </div>
                     <span class="font-black text-emerald-700 text-xs shrink-0 ml-2">Rs. ${Number(m.mrp).toFixed(2)}</span>
                 </div>
@@ -4430,7 +4447,7 @@ window.selectMedicineForPos = function(id) {
     const totalTabs = Math.floor(med.stock * packInfo.totalUnits);
 
     document.getElementById('pos-selected-title').innerText = med.name;
-    document.getElementById('pos-selected-stock').innerText = `${med.stock} packs (${totalTabs} tabs)`;
+    document.getElementById('pos-selected-stock').innerText = `${formatStockDisplay(med.stock)} packs (${totalTabs} tabs)`;
     document.getElementById('pos-search-results')?.classList.add('hidden');
     document.getElementById('pos-search').value = '';
     
@@ -4704,7 +4721,7 @@ window.completeSale = function() {
     for (const c of cart) {
         const med = medicines.find(m => m.id === c.id);
         if (med) {
-            med.stock = Math.max(0, parseFloat((med.stock - c.stockDeduct).toFixed(4)));
+            med.stock = Math.max(0, parseFloat((med.stock - c.stockDeduct).toFixed(2)));
             updatedMeds.push(med);
         }
     }
@@ -4821,11 +4838,11 @@ async function populateReceipt(sale) {
 
         try {
             const dataUrl = await QRCode.toDataURL(qrPayload, {
-                width: 160,
-                margin: 1,
+                width: 200,
+                margin: 2,
                 errorCorrectionLevel: 'M',
                 color: {
-                    dark: '#020617',
+                    dark: '#000000',
                     light: '#ffffff'
                 }
             });
@@ -4845,23 +4862,30 @@ window.downloadReceiptImage = async function() {
     const card = document.getElementById('receipt-card-capture');
     if (!card) return;
     const qrImg = document.getElementById('receipt-qr-code-img');
-    if (qrImg && !qrImg.complete && qrImg.src) {
-        await new Promise(r => { qrImg.onload = r; qrImg.onerror = r; setTimeout(r, 250); });
+    if (qrImg && qrImg.src) {
+        if (!qrImg.complete || qrImg.naturalWidth === 0) {
+            await new Promise(r => {
+                qrImg.onload = r;
+                qrImg.onerror = r;
+                setTimeout(r, 250);
+            });
+        }
     }
-    showToast('Image generate ho rahi hai...', 'info');
+    showToast('Receipt PNG generate ho rahi hai...', 'info');
     if (typeof window.html2canvas === 'function') {
         window.html2canvas(card, {
             scale: 2.5,
             backgroundColor: '#fcfcf8',
             useCORS: true,
             allowTaint: true,
-            logging: false
+            logging: false,
+            imageTimeout: 5000
         }).then(canvas => {
             const link = document.createElement('a');
             link.download = `Receipt_${window.currentViewingSale?.invoiceId || 'Bill'}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
-            showToast('Receipt download ho gayi!', 'success');
+            showToast('✓ Receipt PNG kamyabi se download ho gayi!', 'success');
         }).catch(err => {
             console.error('Image Export Error:', err);
             showToast('Receipt image download nahi ho saki.', 'error');
@@ -5027,13 +5051,138 @@ window.stopBillCamera = function() {
     if (video) video.srcObject = null;
 };
 
-function tickBillScanner() {
+// Robust Multi-Pass QR Code Decoder for Full Receipts, Photos & Camera
+async function decodeBillQrFromImage(img) {
+    if (!img) return null;
+
+    // Pass 1: Hardware-accelerated native BarcodeDetector if available in browser
+    if ('BarcodeDetector' in window) {
+        try {
+            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            const barcodes = await detector.detect(img);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                return barcodes[0].rawValue.trim();
+            }
+        } catch (_) {}
+    }
+
+    if (typeof jsQR !== 'function') return null;
+
+    // Helper: test a canvas with jsQR (direct + contrast-binarized)
+    function testCanvas(cv) {
+        if (!cv || cv.width <= 0 || cv.height <= 0) return null;
+        try {
+            const ctx = cv.getContext('2d', { willReadFrequently: true });
+            const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
+
+            // Sub-pass 1: standard jsQR
+            let code = jsQR(imgData.data, cv.width, cv.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data && code.data.trim()) return code.data.trim();
+
+            // Sub-pass 2: Adaptive contrast binarization (removes anti-aliasing / image scaling blur)
+            const d = imgData.data;
+            let sumLum = 0;
+            const step = 4;
+            let count = 0;
+            for (let i = 0; i < d.length; i += 4 * step) {
+                sumLum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                count++;
+            }
+            const avgLum = count > 0 ? (sumLum / count) : 128;
+            const threshold = Math.max(80, Math.min(185, avgLum));
+
+            for (let i = 0; i < d.length; i += 4) {
+                const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                const v = lum > threshold ? 255 : 0;
+                d[i] = v; d[i + 1] = v; d[i + 2] = v;
+            }
+            code = jsQR(d, cv.width, cv.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data && code.data.trim()) return code.data.trim();
+        } catch (_) {}
+
+        return null;
+    }
+
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (w <= 0 || h <= 0) return null;
+
+    // Pass 2: Top-Right Quadrant Crop (Exact position of receipt verification QR code in our layout)
+    const cvTR = document.createElement('canvas');
+    const trX = Math.floor(w * 0.35);
+    const trW = w - trX;
+    const trH = Math.min(h, Math.max(200, Math.floor(h * 0.45)));
+    cvTR.width = trW;
+    cvTR.height = trH;
+    const ctxTR = cvTR.getContext('2d', { willReadFrequently: true });
+    ctxTR.drawImage(img, trX, 0, trW, trH, 0, 0, trW, trH);
+    let result = testCanvas(cvTR);
+    if (result) return result;
+
+    // Pass 3: Top Half of Document
+    const cvTop = document.createElement('canvas');
+    const topH = Math.min(h, Math.max(300, Math.floor(h * 0.55)));
+    cvTop.width = w;
+    cvTop.height = topH;
+    const ctxTop = cvTop.getContext('2d', { willReadFrequently: true });
+    ctxTop.drawImage(img, 0, 0, w, topH, 0, 0, w, topH);
+    result = testCanvas(cvTop);
+    if (result) return result;
+
+    // Pass 4: Full Document Canvas
+    const cvFull = document.getElementById('bill-qr-canvas') || document.createElement('canvas');
+    cvFull.width = w;
+    cvFull.height = h;
+    const ctxFull = cvFull.getContext('2d', { willReadFrequently: true });
+    ctxFull.drawImage(img, 0, 0, w, h);
+    result = testCanvas(cvFull);
+    if (result) return result;
+
+    // Pass 5: Rescaled Document (Downscaled to ideal size ~700px width if very large)
+    if (w > 800 || h > 1200) {
+        const scale = Math.min(800 / w, 1200 / h);
+        const cvScale = document.createElement('canvas');
+        cvScale.width = Math.round(w * scale);
+        cvScale.height = Math.round(h * scale);
+        const ctxScale = cvScale.getContext('2d', { willReadFrequently: true });
+        ctxScale.drawImage(img, 0, 0, cvScale.width, cvScale.height);
+        result = testCanvas(cvScale);
+        if (result) return result;
+    }
+
+    // Pass 6: Top-Left Crop (In case photo was taken horizontally or inverted)
+    const cvTL = document.createElement('canvas');
+    cvTL.width = Math.floor(w * 0.65);
+    cvTL.height = Math.floor(h * 0.45);
+    const ctxTL = cvTL.getContext('2d', { willReadFrequently: true });
+    ctxTL.drawImage(img, 0, 0, cvTL.width, cvTL.height, 0, 0, cvTL.width, cvTL.height);
+    result = testCanvas(cvTL);
+    if (result) return result;
+
+    return null;
+}
+
+async function tickBillScanner() {
     if (!isBillScanningActive) return;
     const video = document.getElementById('bill-qr-video');
     const canvas = document.getElementById('bill-qr-canvas');
     if (!video || !canvas) return;
 
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        // Fast-path: BarcodeDetector if available
+        if ('BarcodeDetector' in window) {
+            try {
+                const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+                const barcodes = await detector.detect(video);
+                if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                    isBillScanningActive = false;
+                    window.stopBillCamera();
+                    window.verifyBillQrData(barcodes[0].rawValue.trim());
+                    return;
+                }
+            } catch (_) {}
+        }
+
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -5055,30 +5204,26 @@ function tickBillScanner() {
     billScanAnimFrame = requestAnimationFrame(tickBillScanner);
 }
 
-window.handleBillQrFileUpload = function(event) {
+window.handleBillQrFileUpload = async function(event) {
     const file = event.target?.files?.[0];
     if (!file) return;
+
+    showToast('Receipt QR code scan ho raha hai...', 'info');
 
     const reader = new FileReader();
     reader.onload = function(e) {
         const img = new Image();
-        img.onload = function() {
-            const canvas = document.getElementById('bill-qr-canvas');
-            if (!canvas) return;
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: 'attemptBoth'
-            });
-
-            if (code && code.data && code.data.trim()) {
-                window.verifyBillQrData(code.data.trim());
-            } else {
-                showToast('Is photo mein koi bill QR code nahi mila! Saaf picture chunein.', 'error');
+        img.onload = async function() {
+            try {
+                const qrText = await decodeBillQrFromImage(img);
+                if (qrText && qrText.trim()) {
+                    window.verifyBillQrData(qrText.trim());
+                } else {
+                    showToast('Is photo mein koi bill QR code nahi mila! Saaf picture chunein.', 'error');
+                }
+            } catch (err) {
+                console.error('Scan error:', err);
+                showToast('Image scan karne mein masla pesh aya.', 'error');
             }
         };
         img.src = e.target.result;
@@ -5332,7 +5477,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
             const displayLocation = hasLocation ? m.location.trim() : 'None';
             const isStockAvail = Number(m.stock) > 0;
             const stockBadge = isStockAvail
-                ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available (${m.stock} Packs)</span>`
+                ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Available (${formatStockDisplay(m.stock)} Packs)</span>`
                 : `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">Shelf Par Khatam (Out of Stock)</span>`;
 
             const cleanGen = (m.generic || '').replace(/[\s\-_]*(kelye|ke liye|k liye)[\s\-_]*/gi, '').replace(/^(dawa|dawai|use|purpose|category|indication)[\s:–—-]*/gi, '').trim();
@@ -5365,7 +5510,7 @@ function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
                         </div>
                         <div>
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Stock Qty:</span>
-                            <strong class="${isStockAvail ? 'text-slate-900 font-black' : 'text-rose-600 font-black'}">${m.stock} Packs <span class="text-slate-500 font-normal">(💊 ${totalStockUnits} Loose Unit)</span></strong>
+                            <strong class="${isStockAvail ? 'text-slate-900 font-black' : 'text-rose-600 font-black'}">${formatStockDisplay(m.stock)} Packs <span class="text-slate-500 font-normal">(💊 ${totalStockUnits} Loose Unit)</span></strong>
                         </div>
                         <div>
                             <span class="text-[9px] uppercase font-bold text-slate-400 block">Per Unit Rate:</span>
@@ -5730,7 +5875,7 @@ function renderInventoryTable() {
                         <td class="p-3 text-right font-black text-emerald-700">Rs. ${Number(m.mrp).toFixed(1)}</td>
                         <td class="p-3 text-center">
                             <span class="px-2 py-0.5 rounded-full font-black text-xs ${isCriticallyLow ? 'bg-rose-100 text-rose-800 border border-rose-200 animate-pulse' : 'bg-emerald-100 text-emerald-800'}">
-                                ${m.stock}
+                                ${formatStockDisplay(m.stock)}
                             </span>
                         </td>
                         <td class="p-3 text-center">
@@ -5779,7 +5924,7 @@ function renderInventoryTable() {
                                 <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${displayFormula ? displayFormula + ' • ' : ''}<span class="text-brand-700 font-bold">${m.distributor || 'General'}</span> • <span class="text-slate-600 font-mono">📍 ${m.location ? m.location : 'None'}</span></span>
                             </div>
                             <span class="shrink-0 px-2.5 py-1 rounded-full font-black text-xs ${isCriticallyLow ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
-                                ${m.stock} Packs
+                                ${formatStockDisplay(m.stock)} Packs
                             </span>
                         </div>
 
@@ -6031,42 +6176,134 @@ window.closeSaleEditModal = function() {
 };
 
 window.openDistributorComparisonModal = function() {
+    const searchInput = document.getElementById('distributor-compare-search');
+    if (searchInput) searchInput.value = '';
+    window.renderDistributorComparisonList();
+    document.getElementById('distributor-modal')?.classList.remove('hidden');
+    syncModalScrollLock();
+    safeCreateIcons();
+    setTimeout(() => searchInput?.focus(), 80);
+};
+
+window.filterDistributorComparison = function() {
+    window.renderDistributorComparisonList();
+};
+
+window.renderDistributorComparisonList = function() {
     const container = document.getElementById('distributor-comparison-body');
+    const counterEl = document.getElementById('distributor-compare-total-count');
+    if (!container) return;
+
+    const searchVal = document.getElementById('distributor-compare-search')?.value.toLowerCase().trim() || '';
+
     const map = {};
-    medicines.forEach(m => {
+    (medicines || []).forEach(m => {
+        if (!m || !m.name) return;
         const key = m.name.toLowerCase().trim();
-        if (!map[key]) map[key] = { name: m.name, rates: [] };
-        map[key].rates.push({
-            distributor: m.distributor || 'Unknown',
-            buyRate: m.buyRate,
-            mrp: m.mrp,
-            margin: (((m.mrp - m.buyRate) / m.mrp) * 100).toFixed(1)
-        });
+        if (!map[key]) {
+            map[key] = {
+                name: m.name,
+                type: m.type || 'tab',
+                generic: m.generic || '',
+                rates: []
+            };
+        }
+        const distName = (m.distributor && m.distributor.trim()) ? m.distributor.trim() : 'General Distributor';
+        const bRate = Number(m.buyRate) || 0;
+        const mrpVal = Number(m.mrp) || 0;
+        const marginPct = mrpVal > 0 ? (((mrpVal - bRate) / mrpVal) * 100).toFixed(1) : '0.0';
+
+        const existing = map[key].rates.find(r => r.distributor.toLowerCase() === distName.toLowerCase());
+        if (!existing) {
+            map[key].rates.push({
+                distributor: distName,
+                buyRate: bRate,
+                mrp: mrpVal,
+                margin: marginPct
+            });
+        }
     });
 
-    const items = Object.values(map);
-    if (!container) return;
-    if (items.length === 0) {
-        container.innerHTML = `<p class="text-xs text-slate-400 py-6 text-center">Koi medicine data dastiyab nahi.</p>`;
-    } else {
-        container.innerHTML = items.map(item => `
-            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
-                <strong class="text-slate-900 block font-bold">${item.name}</strong>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    ${item.rates.map(r => `
-                        <div class="bg-white p-2 rounded-lg border border-slate-200 flex justify-between items-center">
-                            <div>
-                                <span class="font-bold text-slate-700">${r.distributor}</span>
-                                <span class="text-[10px] text-slate-400 block">Buy Rate TP: Rs. ${r.buyRate.toFixed(1)}</span>
-                            </div>
-                            <span class="text-xs font-black text-emerald-600">${r.margin}% Profit</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `).join('');
+    let items = Object.values(map);
+
+    if (searchVal) {
+        items = items.filter(item => 
+            item.name.toLowerCase().includes(searchVal) ||
+            item.generic.toLowerCase().includes(searchVal) ||
+            item.rates.some(r => r.distributor.toLowerCase().includes(searchVal))
+        );
     }
-    document.getElementById('distributor-modal')?.classList.remove('hidden');
+
+    if (counterEl) counterEl.innerText = items.length;
+
+    if (items.length === 0) {
+        if (searchVal) {
+            container.innerHTML = `
+                <div class="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                    <i data-lucide="search-x" class="w-8 h-8 mx-auto text-slate-300"></i>
+                    <p class="font-bold text-slate-700 text-xs">"${escapeHtml(searchVal)}" ke mutabiq koi item ya distributor nahi mila.</p>
+                    <p class="text-[11px] text-slate-400">Medicine ka naam, company ya distributor sahi enter karein.</p>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                    <i data-lucide="package-search" class="w-8 h-8 mx-auto text-slate-300"></i>
+                    <p class="font-bold text-slate-600 text-xs">Koi medicine ya distributor data dastiyab nahi.</p>
+                    <p class="text-[11px] text-slate-400">Inventory mein medicines add karein taa ke rate comparison dekh sakein.</p>
+                </div>
+            `;
+        }
+    } else {
+        container.innerHTML = items.map(item => {
+            const minBuyRate = Math.min(...item.rates.map(r => r.buyRate));
+            const typeLabel = (item.type || 'tab').toUpperCase();
+
+            return `
+                <div class="p-3 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2 text-xs transition hover:border-indigo-300">
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <strong class="text-slate-900 font-black text-sm">${escapeHtml(item.name)}</strong>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-50 text-amber-900 border border-amber-200/80">${typeLabel}</span>
+                            ${item.generic ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(item.generic)})</span>` : ''}
+                        </div>
+                        <span class="text-[10px] font-bold text-slate-500 font-mono">${item.rates.length} Supplier${item.rates.length > 1 ? 's' : ''}</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        ${item.rates.map(r => {
+                            const isBest = r.buyRate === minBuyRate && item.rates.length > 1;
+                            const diff = item.rates.length > 1 && r.buyRate > minBuyRate ? (r.buyRate - minBuyRate).toFixed(1) : 0;
+                            return `
+                                <div class="p-2.5 rounded-xl border ${isBest ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-200' : 'bg-white border-slate-200'} flex flex-col justify-between gap-1 shadow-2xs">
+                                    <div class="flex items-start justify-between gap-1">
+                                        <div>
+                                            <span class="font-bold text-slate-800 text-xs block">${escapeHtml(r.distributor)}</span>
+                                            <div class="flex items-center gap-1 mt-0.5">
+                                                <span class="text-[10px] font-bold text-slate-500 font-mono">Buy TP: <strong class="text-slate-900 text-xs font-black">Rs. ${r.buyRate.toFixed(1)}</strong></span>
+                                                <span class="text-[9px] text-slate-400">| MRP: Rs. ${r.mrp.toFixed(1)}</span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right shrink-0">
+                                            <span class="text-[11px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full inline-block">${r.margin}% Profit</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px]">
+                                        ${isBest 
+                                            ? `<span class="font-black text-emerald-800 flex items-center gap-1 text-[10px]"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> 🏆 Sab se Sasta (Best Rate)</span>` 
+                                            : (diff > 0 
+                                                ? `<span class="text-amber-700 font-medium">+Rs. ${diff} mehnga</span>` 
+                                                : `<span class="text-slate-400 font-medium">Standard Rate</span>`)}
+                                        <span class="text-slate-400 text-[9px] font-mono">TP Rate</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
     safeCreateIcons();
 };
 
@@ -8027,7 +8264,7 @@ window.deleteSaleInvoicePrompt = function() {
             for (const item of sale.items) {
                 const med = medicines.find(m => m.id === item.id);
                 if (med) {
-                    med.stock = parseFloat((med.stock + item.stockDeduct).toFixed(4));
+                    med.stock = parseFloat((med.stock + item.stockDeduct).toFixed(2));
                     restockedMeds.push(med);
                 }
             }

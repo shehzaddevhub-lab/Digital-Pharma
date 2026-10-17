@@ -1199,9 +1199,9 @@
                         </div>
                         <div class="flex flex-col items-center shrink-0">
                             <div class="p-1 bg-white border border-slate-400 rounded-md shadow-2xs">
-                                <img id="receipt-qr-code-img" src="" alt="Bill QR" class="w-14 h-14 object-contain block bg-white" />
+                                <img id="receipt-qr-code-img" src="" alt="Bill QR" class="w-16 h-16 object-contain block bg-white [image-rendering:pixelated]" />
                             </div>
-                            <span class="text-[7px] font-black text-slate-600 tracking-wider mt-0.5 uppercase font-mono">Scan QR</span>
+                            <span class="text-[7px] font-black text-slate-700 tracking-wider mt-0.5 uppercase font-mono text-center leading-tight max-w-[80px]">Scan QR to Verify Bill</span>
                         </div>
                     </div>
                 </div>
@@ -1242,12 +1242,27 @@
                     </div>
                 </div>
 
-                <div class="text-left pt-2 border-t border-dashed border-slate-700 text-[8.5px] text-slate-800 leading-snug space-y-1">
-                    <p class="font-bold text-slate-900 text-center tracking-wide uppercase">Note:</p>
-                    <p class="font-medium"><strong class="font-black text-slate-900">1.</strong> Items will be return with cash memo within 3 days.</p>
-                    <p class="font-medium"><strong class="font-black text-slate-900">2.</strong> Inhaler / loose tablets/lotion/fridge items/cosmetic items will not be returned.</p>
-                    <p class="font-medium"><strong class="font-black text-slate-900">3.</strong> Without sign and stamp bill will not be valid</p>
-                    <div class="pt-2 border-t-2 border-dotted border-slate-700 mt-1.5 text-center">
+                <!-- Refined & Well-Aligned Pharmacy Terms / Note -->
+                <div class="mt-2 pt-2 border-t border-dashed border-slate-700 text-[8px] text-slate-800 leading-tight">
+                    <div class="flex items-center justify-between pb-1 mb-1.5 border-b border-dotted border-slate-400">
+                        <span class="font-black uppercase tracking-wider text-slate-900 text-[8.5px] font-sans">Policy & Return Terms</span>
+                        <span class="text-[7.5px] font-bold text-slate-600 font-mono">Original Memo Required</span>
+                    </div>
+                    <div class="space-y-1.5 font-sans">
+                        <div class="flex items-start gap-1.5">
+                            <span class="font-mono font-black text-slate-900 shrink-0 text-[8.5px]">01.</span>
+                            <span class="text-slate-800 font-medium">Items eligible for return/exchange within <strong>3 days</strong> along with original cash memo.</span>
+                        </div>
+                        <div class="flex items-start gap-1.5">
+                            <span class="font-mono font-black text-slate-900 shrink-0 text-[8.5px]">02.</span>
+                            <span class="text-slate-800 font-medium">No return or exchange on <strong>fridge items, inhalers, loose tablets, lotions & cosmetics</strong>.</span>
+                        </div>
+                        <div class="flex items-start gap-1.5">
+                            <span class="font-mono font-black text-slate-900 shrink-0 text-[8.5px]">03.</span>
+                            <span class="text-slate-800 font-medium">This cash memo is valid only with <strong>authorized signature & pharmacy stamp</strong>.</span>
+                        </div>
+                    </div>
+                    <div class="pt-2 border-t-2 border-dotted border-slate-700 mt-2 text-center">
                         <span class="block font-black text-[10px] uppercase tracking-wider text-slate-900 font-sans">DIGITAL PHARMA - SOFTWARE</span>
                         <span class="block font-bold text-[9px] tracking-wide text-slate-800 mt-0.5 font-sans">Developed by @ShahzadKhakh</span>
                     </div>
@@ -1903,7 +1918,23 @@
                 </button>
             </div>
             <p class="text-xs text-slate-500">Check karein kis distributor ne kon si dawai sasti di aur kis ka rate zyada hai.</p>
-            <div id="distributor-comparison-body" class="space-y-2"></div>
+            
+            <!-- Compare Rates Search Filter -->
+            <div class="relative">
+                <input type="text" id="distributor-compare-search" oninput="window.filterDistributorComparison()" placeholder="Dawai ka naam, company ya distributor search karein..." class="w-full pl-9 pr-8 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 bg-slate-50 font-medium text-slate-900 transition">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+                <button type="button" onclick="document.getElementById('distributor-compare-search').value=''; window.filterDistributorComparison();" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5" title="Clear">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+            <div class="text-[11px] font-semibold text-slate-500 flex items-center justify-between px-0.5">
+                <span>Items: <strong id="distributor-compare-total-count" class="text-slate-800">0</strong></span>
+                <span class="text-indigo-600 text-[10px] flex items-center gap-1 font-bold">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> Sab se sasta rate highlight hota hai
+                </span>
+            </div>
+
+            <div id="distributor-comparison-body" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1"></div>
         </div>
     </div>
 
