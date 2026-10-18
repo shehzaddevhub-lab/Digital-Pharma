@@ -208,6 +208,139 @@ function getMedicineShortUse(name: string, generic?: string): string {
   return 'Dawai ke istemal kelye';
 }
 
+function parseSmartExpiry(rawExp: any) {
+  if (!rawExp) return { month: '', year: '', formatted: '' };
+  let str = String(rawExp).trim().toUpperCase();
+  str = str.replace(/^(EXP|EXPIRY|EXP\.|BB|B\.E\.|USE BEFORE|BEST BEFORE|MFG|BATCH)[\s:–—-]*/i, '').trim();
+  if (!str || /NULL|UNDEFINED|NONE|N\/A|NOT PRINTED|NA|NIL/i.test(str)) {
+    return { month: '', year: '', formatted: '' };
+  }
+
+  const MONTH_MAP: Record<string, string> = {
+    JANUARY: '01', JAN: '01', JNR: '01', JA: '01',
+    FEBRUARY: '02', FEBR: '02', FBR: '02', FEB: '02', FB: '02',
+    MARCH: '03', MCH: '03', MAR: '03', MR: '03',
+    APRIL: '04', APL: '04', APR: '04', AP: '04',
+    MAY: '05', MY: '05',
+    JUNE: '06', JNE: '06', JUN: '06', JN: '06',
+    JULY: '07', JUL: '07', JLY: '07', JL: '07',
+    AUGUST: '08', AGU: '08', AGT: '08', AUG: '08', AG: '08',
+    SEPTEMBER: '09', SEPT: '09', SEP: '09', SP: '09',
+    OCTOBER: '10', OCTB: '10', OCT: '10', OC: '10',
+    NOVEMBER: '11', NOVB: '11', NOV: '11', NV: '11',
+    DECEMBER: '12', DECB: '12', DEC: '12', DC: '12'
+  };
+
+  let detectedMonth = '';
+  let detectedYear = '';
+
+  // 1. Text Month recognition (JUL, AUG, FEB, etc.)
+  for (const [name, num] of Object.entries(MONTH_MAP)) {
+    const reg = new RegExp('(?:^|[^A-Z])' + name + '(?:[^A-Z]|$)', 'i');
+    if (reg.test(str)) {
+      detectedMonth = num;
+      str = str.replace(new RegExp(name, 'gi'), ' ').trim();
+      break;
+    }
+  }
+
+  if (detectedMonth) {
+    const y4 = str.match(/\b(20[2-3]\d)\b/);
+    if (y4) {
+      detectedYear = y4[1].slice(-2);
+    } else {
+      const nums = str.split(/[^0-9]+/).filter(Boolean).map(t => parseInt(t, 10));
+      const yrNum = nums.find(n => n >= 24 && n <= 45);
+      if (yrNum != null) {
+        detectedYear = String(yrNum).padStart(2, '0');
+      } else if (nums.length > 0) {
+        detectedYear = String(nums[nums.length - 1]).padStart(2, '0');
+      }
+    }
+    return { month: detectedMonth, year: detectedYear || '', formatted: detectedYear ? `${detectedMonth}/${detectedYear}` : '' };
+  }
+
+  // 2. Numerical Tokens (e.g. 07/26, 26/07, 15/07/2026, 2026/07)
+  const tokens = str.split(/[^0-9]+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    const tok4Idx = tokens.findIndex(t => t.length === 4 && (t.startsWith('20') || t.startsWith('19')));
+    if (tok4Idx !== -1) {
+      detectedYear = tokens[tok4Idx].slice(-2);
+      const remaining = tokens.filter((_, i) => i !== tok4Idx).map(t => parseInt(t, 10));
+      if (remaining.length === 1) {
+        detectedMonth = String(Math.min(12, Math.max(1, remaining[0]))).padStart(2, '0');
+      } else if (remaining.length >= 2) {
+        const mCandidate = remaining.find(n => n <= 12) || remaining[1];
+        detectedMonth = String(mCandidate).padStart(2, '0');
+      }
+    } else if (tokens.length === 2) {
+      const n0 = parseInt(tokens[0], 10);
+      const n1 = parseInt(tokens[1], 10);
+      if (n0 > 12 && n1 <= 12) {
+        detectedYear = String(n0).padStart(2, '0');
+        detectedMonth = String(n1).padStart(2, '0');
+      } else if (n1 > 12 && n0 <= 12) {
+        detectedMonth = String(n0).padStart(2, '0');
+        detectedYear = String(n1).padStart(2, '0');
+      } else {
+        detectedMonth = String(n0).padStart(2, '0');
+        detectedYear = String(n1).padStart(2, '0');
+      }
+    } else if (tokens.length >= 3) {
+      const nums = tokens.map(t => parseInt(t, 10));
+      const yrCandidate = nums.find(n => n >= 24 && n <= 99);
+      const yrIdx = yrCandidate ? nums.indexOf(yrCandidate) : nums.length - 1;
+      detectedYear = String(nums[yrIdx]).slice(-2).padStart(2, '0');
+      const otherNums = nums.filter((_, i) => i !== yrIdx);
+      const m = otherNums.find(n => n <= 12) || otherNums[0];
+      detectedMonth = String(m).padStart(2, '0');
+    }
+  } else if (tokens.length === 1 && tokens[0].length === 4) {
+    detectedMonth = tokens[0].slice(0, 2);
+    detectedYear = tokens[0].slice(2);
+  }
+
+  if (detectedMonth && detectedYear) {
+    return { month: detectedMonth, year: detectedYear, formatted: `${detectedMonth}/${detectedYear}` };
+  }
+  return { month: detectedMonth || '', year: detectedYear || '', formatted: '' };
+}
+
+function detectMedicineTypeSmart(rawType?: string, rawName?: string): string {
+  const t = String(rawType || '').toLowerCase().trim();
+  const n = String(rawName || '').toLowerCase().trim();
+  const combined = `${t} ${n}`;
+
+  // 1. Inhalers & Sprays
+  if (/\b(inhaler|rotahaler|spray|puff|mDI|turbuhaler|accuhaler|evohaler|nasal spray)\b/i.test(combined)) return 'inhaler';
+
+  // 2. Syrups, Suspensions & Liquids (Strict: never confuse syp with capsule or tablet)
+  if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|oral sol|pediatric drops|dry susp|d\.susp)\b/i.test(combined) || /\b(syp|syrup|susp)\./i.test(combined)) return 'syp';
+
+  // 3. Capsules (Strict: cap, capsule, softgel)
+  if (/\b(cap|capsule|capsules|caps|softgel|soft gel|tabsule)\b/i.test(combined) || /\bcap\./i.test(combined)) return 'cap';
+
+  // 4. Drops
+  if (/\b(eye drop|ear drop|nasal drop|eye drops|ear drops|nasal drops|ophthalmic|otic|drp|drops)\b/i.test(combined) || /\bdrop\./i.test(combined)) return 'drop';
+
+  // 5. Injections & Infusions
+  if (/\b(inj|injection|infusion|amp|ampoule|vial|iv infusion|iv drip|i\.v\.|i\.m\.)\b/i.test(combined) || /\binj\./i.test(combined)) return 'inj';
+
+  // 6. Sachets & Powders
+  if (/\b(sachet|sachets|scht|sct|effervescent|powder|granules)\b/i.test(combined) || /\bscht\./i.test(combined)) return 'scht';
+
+  // 7. Creams, Ointments, Gels & Lotions
+  if (/\b(cream|ointment|oint|gel|lotion|emulgel|skin ointment|liniment|paste)\b/i.test(combined) || /\b(oint|crm)\./i.test(combined)) return 'cream';
+
+  // 8. Surgical & Disposables
+  if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape|catheter|iv set|gauze)\b/i.test(combined)) return 'surgical';
+
+  // 9. Tablets
+  if (/\b(tab|tablet|tablets|tabs|chewable|dispersible|lozenge|sublingual|fct|f\.c\.t)\b/i.test(combined) || /\btab\./i.test(combined)) return 'tab';
+
+  return 'tab';
+}
+
 function normalizePrescriptionData(parsed: any) {
   if (!parsed) return null;
   let meds: any[] = [];
@@ -254,30 +387,54 @@ function normalizePrescriptionData(parsed: any) {
         if (clean.length < 2 || isModelRefusal(clean)) return null;
         const parts = clean.split(/[-–—:]/);
         const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
-        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
+        const medType = detectMedicineTypeSmart('', name);
+        let defaultTiming = 'Subah sham 1 goli khane ke baad (1+0+1)';
+        if (medType === 'syp') defaultTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
+        else if (medType === 'cap') defaultTiming = 'Subah sham 1 capsule khane ke baad (1+0+1)';
+        else if (medType === 'drop') defaultTiming = 'Subah sham 2 qatre';
+        else if (medType === 'inhaler') defaultTiming = 'Zaroorat ke waqt 2 puff';
+        else if (medType === 'cream') defaultTiming = 'Subah sham mutaasira jagah par lagayein';
+        else if (medType === 'scht') defaultTiming = 'Neem garam paani mein 1 sachet hal karein';
+        else if (medType === 'inj') defaultTiming = 'Doctor ki hidayat ke mutabiq lagwayein';
+
+        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || defaultTiming;
         const shortUse = getMedicineShortUse(name, '');
         return {
           name,
+          type: medType,
           formula: '',
           timing,
-          usage: 'Taza paani ke sath lein',
+          usage: medType === 'cream' ? 'Halke hath se lagayein' : (medType === 'drop' ? 'Aankh ya kaan mein tapkayen' : 'Taza paani ke sath lein'),
           shortUse
         };
       }
       if (!m || typeof m !== 'object') return null;
       const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || m.title || m.label || '').trim();
       if (!name || isModelRefusal(name)) return null;
+      const rawType = String(m.type || m.form || m.dosageForm || '').trim();
+      const medType = detectMedicineTypeSmart(rawType, name);
+
+      let defaultTiming = 'Subah sham 1 goli khane ke baad (1+0+1)';
+      if (medType === 'syp') defaultTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
+      else if (medType === 'cap') defaultTiming = 'Subah sham 1 capsule khane ke baad (1+0+1)';
+      else if (medType === 'drop') defaultTiming = 'Subah sham 2 qatre';
+      else if (medType === 'inhaler') defaultTiming = 'Zaroorat ke waqt 2 puff';
+      else if (medType === 'cream') defaultTiming = 'Subah sham mutaasira jagah par lagayein';
+      else if (medType === 'scht') defaultTiming = 'Neem garam paani mein 1 sachet hal karein';
+      else if (medType === 'inj') defaultTiming = 'Doctor ki hidayat ke mutabiq lagwayein';
+
       const formula = String(m.formula || m.generic || m.salt || m.composition || '').trim();
       const rawUse = String(m.shortUse || m.use || m.purpose || m.indication || m.reason || '').trim();
       const shortUseHint = rawUse || getMedicineShortUse(name, formula);
       return {
         name,
+        type: medType,
         formula,
         timing: isModelRefusal(String(m.timing || '')) 
-          ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
-          : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+          ? defaultTiming
+          : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || defaultTiming).trim(),
         usage: isModelRefusal(String(m.usage || '')) 
-          ? 'Taza paani ke sath lein' 
+          ? (medType === 'cream' ? 'Halke hath se lagayein' : (medType === 'drop' ? 'Aankh ya kaan mein tapkayen' : 'Taza paani ke sath lein')) 
           : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
         shortUse: shortUseHint
       };
@@ -376,32 +533,12 @@ function normalizeInvoiceItems(parsed: any) {
     return str;
   }
 
-  function detectTypeFromFullName(name: string): string {
-    const n = String(name || '').toLowerCase();
-    // 1. Syrups & Suspensions (syp, surup, syrup, srup, syr, susp, suspension, elixir, solution, sol)
-    if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|sol)\b/i.test(n) || /syp\.|syrup\.|surup\./i.test(n)) return 'syp';
-    // 2. Capsules (cap, capsule, capsules, softgel, cap.)
-    if (/\b(cap|capsule|caps|softgel)\b/i.test(n) || /cap\./i.test(n)) return 'cap';
-    // 3. Drops (drop, drops, eye drop, ear drop, nasal drop)
-    if (/\b(drop|drops|drp|drps)\b/i.test(n) || /drop\./i.test(n)) return 'drop';
-    // 4. Injections & Infusions (inj, injection, infusion, amp, ampoule, vial, iv, im)
-    if (/\b(inj|injection|infusion|inf|amp|ampoule|vial|iv|im)\b/i.test(n) || /inj\./i.test(n)) return 'inj';
-    // 5. Sachets (sachet, sachets, scht, sct, powder, granules)
-    if (/\b(sachet|sachets|scht|sct|powder|granules)\b/i.test(n) || /scht\./i.test(n)) return 'scht';
-    // 6. Creams & Ointments (cream, oint, ointment, gel, lotion, emulgel)
-    if (/\b(cream|gel|ointment|oint|lotion|emulgel)\b/i.test(n) || /oint\.|crm\./i.test(n)) return 'cream';
-    // 7. Surgical & Disposables (surgical, syringe, cannula, bandage, cotton, gloves, tape)
-    if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape)\b/i.test(n)) return 'surgical';
-    // 8. Tablets (tab, tablet, tablets, tabs, tab.)
-    if (/\b(tab|tablet|tablets|tabs)\b/i.test(n) || /tab\./i.test(n)) return 'tab';
-    return 'tab';
-  }
+
 
   const cleanedItems = list.filter((item: any) => item && (item.name || item.itemName || item.item || item.description || item.medicine || item.product) && !isModelRefusal(String(item.name || item.item))).map((item: any) => {
     const rawName = String(item.name || item.itemName || item.item || item.description || item.medicine || item.product || 'Medicine Item').trim();
-    // Prioritize detecting type directly from complete medicine name to avoid OCR hallucinating random types
-    const detectedFromFull = detectTypeFromFullName(rawName);
-    const itemType = detectedFromFull || (item.type ? detectTypeFromFullName(String(item.type)) : 'tab');
+    const itemType = detectMedicineTypeSmart(item.type, rawName);
+    const parsedExp = parseSmartExpiry(item.expiry || item.exp);
     const itemDisc = Number(item.discountPercent || item.discount || item.discPct || 0) || 0;
     const itemExtraDisc = Number(item.extraDiscountPercent || item.extraDiscount || item.bonusPercent || 0) || 0;
 
@@ -411,7 +548,9 @@ function normalizeInvoiceItems(parsed: any) {
       generic: String(item.generic || item.formula || '').trim(),
       batch: String(item.batch || item.batch_no || item.batchNo || item.batchNumber || '').trim(),
       // STRICT: ONLY use expiry if physically printed on the bill, never fabricate a future expiry
-      expiry: cleanExpiryField(item.expiry || item.exp),
+      expiry: parsedExp.formatted || cleanExpiryField(item.expiry || item.exp),
+      expiryMonth: parsedExp.month || '',
+      expiryYear: parsedExp.year || '',
       packSize: String(item.packSize || item.pack_size || item.pack || '20').trim(),
       qty: Number(item.qty || item.quantity || item.packs || item.count || 1) || 1,
       buyRate: Number(item.buyRate || item.rate || item.tradePrice || item.tp || item.price || item.unitPrice || 0) || 0,
@@ -640,6 +779,16 @@ EXHAUSTIVE EXTRACTION MANDATE:
 Do NOT stop after reading just 1, 2, or 3 items. Carefully transcribe EVERY SINGLE medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
 - Read all numbered lines (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, etc.), unnumbered lines, columns, bullet points, and any margin/SOS notes.
 - Use your deep clinical pharmacy intellect to decipher messy doctor cursive handwriting, abbreviations, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
+- STRICT MEDICINE TYPE ACCURACY: Accurately identify the dosage form:
+  * tab: Tablet, chewable, dispersible
+  * cap: Capsule, softgel
+  * syp: Syrup, suspension, elixir, oral liquid
+  * drop: Eye drops, ear drops, nasal drops
+  * inj: Injection, ampoule, vial, IV infusion
+  * scht: Sachet, powder
+  * cream: Cream, ointment, gel, lotion
+  * inhaler: Inhaler, spray
+  Never confuse a capsule for a tablet, or a syrup for a capsule!
 - For each medicine, determine its medical clinical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi aur balgham kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
 - Also read doctor name, clinic name, and patient name if written.
 - IMPORTANT: Do NOT include any drug category or therapeutic classification in the output.
@@ -653,8 +802,9 @@ Return JSON format:
   "medicines": [
     {
       "name": "Exact medicine name and strength",
+      "type": "tab / cap / syp / drop / inj / scht / cream / inhaler",
       "formula": "Generic salt if visible",
-      "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1)",
+      "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1) or 1 chamach for syrup",
       "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
       "shortUse": "Purpose in Roman Urdu ending with kelye"
     }
@@ -730,8 +880,8 @@ app.post('/api/ai/scan-invoice', async (req: Request, res: Response): Promise<vo
     const prompt = `You are an expert pharmacy wholesale bill and distributor invoice OCR reader.
 Examine this invoice, delivery challan, or receipt slip thoroughly.
 CRITICAL MANDATES:
-1. EXPIRY INTEGRITY: ONLY transcribe the expiry date if it is PHYSICALLY PRINTED on the bill paper. If no expiry date is printed for an item row, leave expiry as "" (empty string). DO NOT guess or fabricate any fake or default future expiry date!
-2. COMPLETE MEDICINE NAME & TYPE: Transcribe the full product name, strength, and identify form/type (e.g. syp, syrup, surup, tab, tablet, cap, capsule, drop, inj, injection, scht, sachet, cream, ointment, surgical).
+1. EXPIRY INTEGRITY & ACCURACY: ONLY transcribe the expiry date if it is PHYSICALLY PRINTED on the bill paper. If printed (e.g. 'JUL 26', '26-JUL', 'JUL-2026', '15-JUL-26', '07/26', '07/2026'), convert it into standard 'MM/YY' format (e.g. '07/26'). Strictly distinguish Month (01-12) from Year (e.g. 26). Never swap month and year! If no expiry is printed, leave expiry as "" (empty string). DO NOT guess or fabricate any fake or default future expiry date!
+2. COMPLETE MEDICINE NAME & TYPE: Transcribe the complete product name and strength without cutting off words. Strictly determine form/type (tab, cap, syp, drop, inj, scht, cream, surgical, inhaler). Never confuse a capsule for a tablet or a syrup for a capsule.
 3. BILL TOTALS & DISCOUNTS: Read the total bill net amount, subtotal, overall discount percentage, and any extra / special discount percentage printed on the bill.
 4. LINE ITEM DISCOUNTS: Transcribe any trade discount % or extra scheme discount % printed for individual items.
 
@@ -746,13 +896,13 @@ Return JSON format:
   "lineItems": [
     {
       "name": "Full medicine name and strength as printed",
-      "type": "tab / cap / syp / drop / inj / scht / cream / surgical",
+      "type": "tab / cap / syp / drop / inj / scht / cream / inhaler / surgical",
       "batch": "Batch number if printed",
       "qty": 10,
       "buyRate": 150.00,
       "discountPercent": 10.0,
       "extraDiscountPercent": 2.5,
-      "expiry": "Exact printed expiry or empty string if not printed"
+      "expiry": "MM/YY format (e.g. 07/26) if printed or empty string"
     }
   ]
 }`;
@@ -2188,10 +2338,12 @@ app.post('/api/admin/delete-user', (req: Request, res: Response): void => {
 
     if (req.body?.deleteHistory) {
       // Remove from removed history
+      const reqName = String(req.body?.name || '').trim().toLowerCase();
       removedMembersList = removedMembersList.filter(r => {
         if (cleanUid && r.id === cleanUid) return false;
         if (cleanEmail && r.email && r.email.toLowerCase() === cleanEmail) return false;
         if (normPhone && normalizePhone(r.phone) === normPhone) return false;
+        if (reqName && r.name && r.name.toLowerCase() === reqName) return false;
         return true;
       });
       saveRemovedMembers(removedMembersList);

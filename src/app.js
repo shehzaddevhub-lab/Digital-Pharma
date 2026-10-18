@@ -257,25 +257,148 @@ export function customAlert(title, message, onOk) {
 window.customAlert = customAlert;
 
 // ==========================================
-// EXPIRY DATE HELPERS (Strictly MM / YY, Zero DD, Zero YYYY, Auto-Formatting)
+// EXPIRY DATE HELPERS (Strictly MM / YY, Smart Text Month Parser JUL, AUG, FEB, Auto-Formatting)
 // ==========================================
+export function parseExpiryDateSmart(rawExp) {
+    if (!rawExp) return { month: '', year: '', formatted: '' };
+    let str = String(rawExp).trim().toUpperCase();
+    str = str.replace(/^(EXP|EXPIRY|EXP\.|BB|B\.E\.|USE BEFORE|BEST BEFORE|MFG|BATCH)[\s:–—-]*/i, '').trim();
+    if (!str || /NULL|UNDEFINED|NONE|N\/A|NOT PRINTED|NA|NIL/i.test(str)) {
+        return { month: '', year: '', formatted: '' };
+    }
+
+    const MONTH_MAP = {
+        JANUARY: '01', JAN: '01', JNR: '01', JA: '01',
+        FEBRUARY: '02', FEBR: '02', FBR: '02', FEB: '02', FB: '02',
+        MARCH: '03', MCH: '03', MAR: '03', MR: '03',
+        APRIL: '04', APL: '04', APR: '04', AP: '04',
+        MAY: '05', MY: '05',
+        JUNE: '06', JNE: '06', JUN: '06', JN: '06',
+        JULY: '07', JUL: '07', JLY: '07', JL: '07',
+        AUGUST: '08', AGU: '08', AGT: '08', AUG: '08', AG: '08',
+        SEPTEMBER: '09', SEPT: '09', SEP: '09', SP: '09',
+        OCTOBER: '10', OCTB: '10', OCT: '10', OC: '10',
+        NOVEMBER: '11', NOVB: '11', NOV: '11', NV: '11',
+        DECEMBER: '12', DECB: '12', DEC: '12', DC: '12'
+    };
+
+    let detectedMonth = '';
+    let detectedYear = '';
+
+    // 1. Text Month recognition (JUL, AUG, FEB, etc.)
+    for (const [name, num] of Object.entries(MONTH_MAP)) {
+        const reg = new RegExp('(?:^|[^A-Z])' + name + '(?:[^A-Z]|$)', 'i');
+        if (reg.test(str)) {
+            detectedMonth = num;
+            str = str.replace(new RegExp(name, 'gi'), ' ').trim();
+            break;
+        }
+    }
+
+    if (detectedMonth) {
+        const y4 = str.match(/\b(20[2-3]\d)\b/);
+        if (y4) {
+            detectedYear = y4[1].slice(-2);
+        } else {
+            const nums = str.split(/[^0-9]+/).filter(Boolean).map(t => parseInt(t, 10));
+            const yrNum = nums.find(n => n >= 24 && n <= 45);
+            if (yrNum != null) {
+                detectedYear = String(yrNum).padStart(2, '0');
+            } else if (nums.length > 0) {
+                detectedYear = String(nums[nums.length - 1]).padStart(2, '0');
+            }
+        }
+        return { month: detectedMonth, year: detectedYear || '', formatted: detectedYear ? `${detectedMonth}/${detectedYear}` : '' };
+    }
+
+    // 2. Numerical Tokens (e.g. 07/26, 26/07, 15/07/2026, 2026/07)
+    const tokens = str.split(/[^0-9]+/).filter(Boolean);
+    if (tokens.length >= 2) {
+        const tok4Idx = tokens.findIndex(t => t.length === 4 && (t.startsWith('20') || t.startsWith('19')));
+        if (tok4Idx !== -1) {
+            detectedYear = tokens[tok4Idx].slice(-2);
+            const remaining = tokens.filter((_, i) => i !== tok4Idx).map(t => parseInt(t, 10));
+            if (remaining.length === 1) {
+                detectedMonth = String(Math.min(12, Math.max(1, remaining[0]))).padStart(2, '0');
+            } else if (remaining.length >= 2) {
+                const mCandidate = remaining.find(n => n <= 12) || remaining[1];
+                detectedMonth = String(mCandidate).padStart(2, '0');
+            }
+        } else if (tokens.length === 2) {
+            const n0 = parseInt(tokens[0], 10);
+            const n1 = parseInt(tokens[1], 10);
+            if (n0 > 12 && n1 <= 12) {
+                detectedYear = String(n0).padStart(2, '0');
+                detectedMonth = String(n1).padStart(2, '0');
+            } else if (n1 > 12 && n0 <= 12) {
+                detectedMonth = String(n0).padStart(2, '0');
+                detectedYear = String(n1).padStart(2, '0');
+            } else {
+                detectedMonth = String(n0).padStart(2, '0');
+                detectedYear = String(n1).padStart(2, '0');
+            }
+        } else if (tokens.length >= 3) {
+            const nums = tokens.map(t => parseInt(t, 10));
+            const yrCandidate = nums.find(n => n >= 24 && n <= 99);
+            const yrIdx = yrCandidate ? nums.indexOf(yrCandidate) : nums.length - 1;
+            detectedYear = String(nums[yrIdx]).slice(-2).padStart(2, '0');
+            const otherNums = nums.filter((_, i) => i !== yrIdx);
+            const m = otherNums.find(n => n <= 12) || otherNums[0];
+            detectedMonth = String(m).padStart(2, '0');
+        }
+    } else if (tokens.length === 1 && tokens[0].length === 4) {
+        detectedMonth = tokens[0].slice(0, 2);
+        detectedYear = tokens[0].slice(2);
+    }
+
+    if (detectedMonth && detectedYear) {
+        return { month: detectedMonth, year: detectedYear, formatted: `${detectedMonth}/${detectedYear}` };
+    }
+    return { month: detectedMonth || '', year: detectedYear || '', formatted: '' };
+}
+window.parseExpiryDateSmart = parseExpiryDateSmart;
+
+export function detectMedicineTypeSmart(rawType, rawName) {
+    const t = String(rawType || '').toLowerCase().trim();
+    const n = String(rawName || '').toLowerCase().trim();
+    const combined = `${t} ${n}`;
+
+    // 1. Inhalers & Sprays
+    if (/\b(inhaler|rotahaler|spray|puff|mDI|turbuhaler|accuhaler|evohaler|nasal spray)\b/i.test(combined)) return 'inhaler';
+
+    // 2. Syrups, Suspensions & Liquids (Strict: never confuse syp with capsule or tablet)
+    if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|oral sol|pediatric drops|dry susp|d\.susp)\b/i.test(combined) || /\b(syp|syrup|susp)\./i.test(combined)) return 'syp';
+
+    // 3. Capsules (Strict: cap, capsule, softgel)
+    if (/\b(cap|capsule|capsules|caps|softgel|soft gel|tabsule)\b/i.test(combined) || /\bcap\./i.test(combined)) return 'cap';
+
+    // 4. Drops
+    if (/\b(eye drop|ear drop|nasal drop|eye drops|ear drops|nasal drops|ophthalmic|otic|drp|drops)\b/i.test(combined) || /\bdrop\./i.test(combined)) return 'drop';
+
+    // 5. Injections & Infusions
+    if (/\b(inj|injection|infusion|amp|ampoule|vial|iv infusion|iv drip|i\.v\.|i\.m\.)\b/i.test(combined) || /\binj\./i.test(combined)) return 'inj';
+
+    // 6. Sachets & Powders
+    if (/\b(sachet|sachets|scht|sct|effervescent|powder|granules)\b/i.test(combined) || /\bscht\./i.test(combined)) return 'scht';
+
+    // 7. Creams, Ointments, Gels & Lotions
+    if (/\b(cream|ointment|oint|gel|lotion|emulgel|skin ointment|liniment|paste)\b/i.test(combined) || /\b(oint|crm)\./i.test(combined)) return 'cream';
+
+    // 8. Surgical & Disposables
+    if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape|catheter|iv set|gauze)\b/i.test(combined)) return 'surgical';
+
+    // 9. Tablets
+    if (/\b(tab|tablet|tablets|tabs|chewable|dispersible|lozenge|sublingual|fct|f\.c\.t)\b/i.test(combined) || /\btab\./i.test(combined)) return 'tab';
+
+    return 'tab';
+}
+window.detectMedicineTypeSmart = detectMedicineTypeSmart;
+
 export function formatExpiryMMYY(exp) {
     if (!exp) return '-';
-    const str = String(exp).trim();
-    if (str.includes('/')) {
-        const parts = str.split('/');
-        let mm = parts[0].trim().padStart(2, '0');
-        let yy = parts[1].trim();
-        if (yy.length === 4) yy = yy.slice(-2);
-        return `${mm}/${yy}`;
-    }
-    if (str.includes('-')) {
-        const parts = str.split('-');
-        let yy = parts[0].slice(-2);
-        let mm = (parts[1] || '01').padStart(2, '0');
-        return `${mm}/${yy}`;
-    }
-    return str;
+    const parsed = parseExpiryDateSmart(exp);
+    if (parsed.formatted) return parsed.formatted;
+    return String(exp).trim() || '-';
 }
 window.formatExpiryMMYY = formatExpiryMMYY;
 
@@ -295,6 +418,20 @@ export function parseExpiryToDate(exp) {
 window.parseExpiryToDate = parseExpiryToDate;
 
 window.handleExpiryMonthInput = function(el) {
+    const raw = String(el.value || '').trim();
+    // Auto-detect if user typed / pasted a text month name e.g. JUL, AUG, FEB or complete date
+    const smart = parseExpiryDateSmart(raw);
+    if (smart.month) {
+        el.value = smart.month;
+        if (smart.year) {
+            const container = el.closest('.grid') || el.parentElement;
+            const yearInput = container?.querySelector('#med-expiry-year, #edit-scanned-expiry-year, [id$="-year"]');
+            if (yearInput) {
+                yearInput.value = smart.year;
+            }
+        }
+        return;
+    }
     let v = el.value.replace(/\D/g, '');
     if (v.length > 2) v = v.slice(0, 2);
     if (parseInt(v, 10) > 12) v = '12';
@@ -3511,24 +3648,37 @@ window.escapeHtml = escapeHtml;
 function detectMedicineTypeFromName(name) {
     if (!name) return 'tab';
     const n = String(name).toLowerCase();
-    // 1. Syrups & Suspensions (syp, surup, syrup, srup, syr, susp, suspension, elixir, solution, sol, ped syp)
-    if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|sol)\b/i.test(n) || /syp\.|syrup\.|surup\./i.test(n)) return 'syp';
-    // 2. Capsules (cap, capsule, capsules, softgel, cap.)
-    if (/\b(cap|capsule|caps|softgel)\b/i.test(n) || /cap\./i.test(n)) return 'cap';
+    
+    // 1. Syrups & Suspensions (syp, surup, syrup, srup, syr, susp, suspension, elixir, solution, sol, liquid, ped syp)
+    if (/\b(syp|syrup|surup|srup|syr|susp|suspension|elixir|solution|sol|liquid|dry syp|ped syp)\b/i.test(n) || /syp\.|syrup\.|susp\.|sol\./i.test(n) || /\/5ml|\/10ml|\/15ml/i.test(n)) return 'syp';
+    
+    // 2. Capsules (cap, capsule, capsules, softgel, softgels)
+    if (/\b(cap|capsule|caps|softgel|softgels)\b/i.test(n) || /cap\./i.test(n) || /\(cap\)/i.test(n) || /-cap\b/i.test(n)) return 'cap';
+    
     // 3. Drops (drop, drops, eye drop, ear drop, nasal drop)
-    if (/\b(drop|drops|drp|drps)\b/i.test(n) || /drop\./i.test(n)) return 'drop';
+    if (/\b(drop|drops|drp|drps)\b/i.test(n) || /drop\./i.test(n) || /guttae/i.test(n)) return 'drop';
+    
     // 4. Injections & Infusions (inj, injection, infusion, amp, ampoule, vial, iv, im)
     if (/\b(inj|injection|infusion|inf|amp|ampoule|vial|iv|im)\b/i.test(n) || /inj\./i.test(n)) return 'inj';
+    
     // 5. Sachets (sachet, sachets, scht, sct, powder, granules)
     if (/\b(sachet|sachets|scht|sct|powder|granules)\b/i.test(n) || /scht\./i.test(n)) return 'scht';
+    
     // 6. Creams & Ointments (cream, oint, ointment, gel, lotion, emulgel)
     if (/\b(cream|gel|ointment|oint|lotion|emulgel)\b/i.test(n) || /oint\.|crm\./i.test(n)) return 'cream';
-    // 7. Surgical & Disposables (surgical, syringe, cannula, bandage, cotton, gloves, blade, tape)
-    if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape)\b/i.test(n)) return 'surgical';
-    // 8. Tablets (tab, tablet, tablets, tabs, tab.)
-    if (/\b(tab|tablet|tablets|tabs)\b/i.test(n) || /tab\./i.test(n)) return 'tab';
+    
+    // 7. Inhalers & Aerosols
+    if (/\b(inhaler|inhalation|rotacap|respules|aerosol|spray)\b/i.test(n)) return 'inhaler';
+
+    // 8. Surgical & Disposables
+    if (/\b(surgical|bandage|cannula|syringe|cotton|gloves|blade|tape|strip)\b/i.test(n)) return 'surgical';
+    
+    // 9. Tablets (tab, tablet, tablets, tabs, tab.)
+    if (/\b(tab|tablet|tablets|tabs)\b/i.test(n) || /tab\./i.test(n) || /\(tab\)/i.test(n)) return 'tab';
+    
     return 'tab';
 }
+window.detectMedicineTypeFromName = detectMedicineTypeFromName;
 
 function cleanNoEmoji(str) {
     if (!str) return '';
@@ -3539,22 +3689,31 @@ function cleanNoEmoji(str) {
         .trim();
 }
 
-// Format stock numbers cleanly (1 decimal max, no lengthy floats like 4.975 -> 4.9)
+// Format stock numbers cleanly with 2 decimal places (e.g. 4.90 instead of 4.9, point ke baad 2 values)
 function formatStockDisplay(val) {
     if (val == null || isNaN(val)) return '0';
     const num = Number(val);
     if (num <= 0) return '0';
     if (Number.isInteger(num)) return String(num);
-    // If very small fractional pack e.g. 0.05
-    if (num < 0.1) return String(parseFloat(num.toFixed(2)));
-    // As per user specification: "4.975 es trh show krwany ki bjaye only 4.9 itni value kafi hai decimal ke bd 1 number best rhy ga ya 2 numbers"
-    const oneDec = Math.floor(num * 10) / 10;
-    if (oneDec % 1 === 0) {
-        return String(parseFloat(num.toFixed(1)));
-    }
-    return oneDec.toFixed(1);
+    // User requirement: "Stock decimal ke bd wli value 1 number ki bjayae 2 number value krdo like 4.9 ki jga 4.90 esi trh , point ke bd 2 value hni chaye"
+    return num.toFixed(2);
 }
 window.formatStockDisplay = formatStockDisplay;
+
+window.handleCompareSearchFocus = function(input) {
+    setTimeout(() => {
+        const modal = document.getElementById('distributor-modal');
+        if (modal) {
+            modal.scrollTop = 0;
+            modal.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        input?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const body = document.getElementById('distributor-comparison-body');
+        if (body) {
+            body.scrollTop = 0;
+        }
+    }, 80);
+};
 
 // Global Distributor Memory & Autocomplete Suggestions
 window.getAllExistingDistributors = function() {
@@ -3797,15 +3956,7 @@ window.openEditScannedItemModal = function(idx) {
 
     const typeEl = document.getElementById('edit-scanned-type');
     if (typeEl) {
-        let t = (item.type || '').toLowerCase();
-        if (t.includes('cap')) typeEl.value = 'cap';
-        else if (t.includes('syp') || t.includes('syrup')) typeEl.value = 'syp';
-        else if (t.includes('drop')) typeEl.value = 'drop';
-        else if (t.includes('inj')) typeEl.value = 'inj';
-        else if (t.includes('scht') || t.includes('sachet')) typeEl.value = 'scht';
-        else if (t.includes('cream') || t.includes('oint') || t.includes('gel')) typeEl.value = 'cream';
-        else if (t.includes('surg')) typeEl.value = 'surgical';
-        else typeEl.value = 'tab';
+        typeEl.value = detectMedicineTypeSmart(item.type, item.name);
     }
 
     const genEl = document.getElementById('edit-scanned-generic');
@@ -3827,27 +3978,9 @@ window.openEditScannedItemModal = function(idx) {
     if (expMonthEl && expYearEl) {
         expMonthEl.value = '';
         expYearEl.value = '';
-        const expStr = String(item.expiry || '').trim();
-        if (expStr) {
-            if (expStr.includes('/')) {
-                const parts = expStr.split('/');
-                if (parts.length >= 2) {
-                    expMonthEl.value = parts[0].padStart(2, '0');
-                    expYearEl.value = parts[1].length === 4 ? parts[1].slice(-2) : parts[1];
-                }
-            } else if (expStr.includes('-')) {
-                const parts = expStr.split('-');
-                if (parts.length >= 2) {
-                    if (parts[0].length === 4) {
-                        expYearEl.value = parts[0].slice(-2);
-                        expMonthEl.value = parts[1].padStart(2, '0');
-                    } else {
-                        expMonthEl.value = parts[0].padStart(2, '0');
-                        expYearEl.value = parts[1].length === 4 ? parts[1].slice(-2) : parts[1];
-                    }
-                }
-            }
-        }
+        const smartExp = parseExpiryDateSmart(item.expiry);
+        if (smartExp.month) expMonthEl.value = smartExp.month;
+        if (smartExp.year) expYearEl.value = smartExp.year;
     }
 
     const qtyEl = document.getElementById('edit-scanned-qty');
@@ -4057,6 +4190,9 @@ window.saveAiScannedItemsToInventory = async function() {
         for (const item of itemsToSave) {
             const itemDist = item.distributor || dist;
             if (itemDist && itemDist.toLowerCase() !== 'distributor') window.rememberDistributor(itemDist);
+            const medType = detectMedicineTypeSmart(item.type, item.name);
+            const parsedExp = parseExpiryDateSmart(item.expiry);
+            const medExpiry = parsedExp.formatted || item.expiry || '';
 
             const existing = medicines.find(m => m.name.toLowerCase() === item.name.toLowerCase() && m.batch === item.batch);
             if (existing) {
@@ -4065,8 +4201,8 @@ window.saveAiScannedItemsToInventory = async function() {
                 existing.mrp = item.mrp;
                 existing.distributor = itemDist;
                 if (item.generic) existing.generic = item.generic;
-                if (item.type) existing.type = item.type;
-                if (item.expiry) existing.expiry = item.expiry;
+                existing.type = medType;
+                if (medExpiry) existing.expiry = medExpiry;
                 if (item.packSize) existing.packSize = item.packSize;
                 if (item.location) existing.location = item.location;
                 if (item.minStock) existing.minStock = Number(item.minStock);
@@ -4076,11 +4212,11 @@ window.saveAiScannedItemsToInventory = async function() {
                     id: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                     name: item.name,
                     generic: item.generic || '',
-                    type: item.type || 'tab',
+                    type: medType,
                     distributor: itemDist,
                     packSize: item.packSize || '20',
                     batch: item.batch || 'B-' + Math.floor(100 + Math.random() * 900),
-                    expiry: item.expiry || '',
+                    expiry: medExpiry,
                     buyRate: Number(item.buyRate),
                     mrp: Number(item.mrp),
                     stock: Number(item.qty),
@@ -4551,7 +4687,7 @@ window.addItemToCart = function() {
         stockDeduction = qty;
         displayUnit = `📦 Pack (${packInfo.displayText})`;
         if (currentSelectedMed.stock < stockDeduction) {
-            showToast(`Stock kam hai! Mojood: ${currentSelectedMed.stock} packs`, 'error');
+            showToast(`Stock kam hai! Mojood: ${formatStockDisplay(currentSelectedMed.stock)} packs`, 'error');
             return;
         }
     }
@@ -4614,7 +4750,7 @@ window.changeCartItemQty = function(index, delta) {
         item.stockDeduct = (newQty * unitsPerStrip) / totalUnits;
     } else {
         if (med && med.stock < newQty) {
-            showToast(`Stock kam hai! Mojood: ${med.stock} packs`, 'error');
+            showToast(`Stock kam hai! Mojood: ${formatStockDisplay(med.stock)} packs`, 'error');
             return;
         }
         item.stockDeduct = newQty;
@@ -6179,14 +6315,22 @@ window.openDistributorComparisonModal = function() {
     const searchInput = document.getElementById('distributor-compare-search');
     if (searchInput) searchInput.value = '';
     window.renderDistributorComparisonList();
-    document.getElementById('distributor-modal')?.classList.remove('hidden');
+    const modal = document.getElementById('distributor-modal');
+    modal?.classList.remove('hidden');
+    if (modal) modal.scrollTop = 0;
     syncModalScrollLock();
     safeCreateIcons();
-    setTimeout(() => searchInput?.focus(), 80);
+    setTimeout(() => {
+        if (modal) modal.scrollTop = 0;
+        searchInput?.focus();
+        window.handleCompareSearchFocus(searchInput);
+    }, 80);
 };
 
 window.filterDistributorComparison = function() {
     window.renderDistributorComparisonList();
+    const body = document.getElementById('distributor-comparison-body');
+    if (body) body.scrollTop = 0;
 };
 
 window.renderDistributorComparisonList = function() {
@@ -6275,7 +6419,7 @@ window.renderDistributorComparisonList = function() {
                             const isBest = r.buyRate === minBuyRate && item.rates.length > 1;
                             const diff = item.rates.length > 1 && r.buyRate > minBuyRate ? (r.buyRate - minBuyRate).toFixed(1) : 0;
                             return `
-                                <div class="p-2.5 rounded-xl border ${isBest ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-200' : 'bg-white border-slate-200'} flex flex-col justify-between gap-1 shadow-2xs">
+                                <div class="p-2.5 rounded-xl border ${isBest ? 'bg-slate-50 border-slate-300 ring-1 ring-slate-200' : 'bg-white border-slate-200'} flex flex-col justify-between gap-1 shadow-2xs">
                                     <div class="flex items-start justify-between gap-1">
                                         <div>
                                             <span class="font-bold text-slate-800 text-xs block">${escapeHtml(r.distributor)}</span>
@@ -6285,14 +6429,14 @@ window.renderDistributorComparisonList = function() {
                                             </div>
                                         </div>
                                         <div class="text-right shrink-0">
-                                            <span class="text-[11px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full inline-block">${r.margin}% Profit</span>
+                                            <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full inline-block">${r.margin}% Margin</span>
                                         </div>
                                     </div>
                                     <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px]">
                                         ${isBest 
-                                            ? `<span class="font-black text-emerald-800 flex items-center gap-1 text-[10px]"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> 🏆 Sab se Sasta (Best Rate)</span>` 
+                                            ? `<span class="font-bold text-slate-800 flex items-center gap-1 text-[10px]"><span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Lowest Rate</span>` 
                                             : (diff > 0 
-                                                ? `<span class="text-amber-700 font-medium">+Rs. ${diff} mehnga</span>` 
+                                                ? `<span class="text-slate-500 font-medium">+Rs. ${diff}</span>` 
                                                 : `<span class="text-slate-400 font-medium">Standard Rate</span>`)}
                                         <span class="text-slate-400 text-[9px] font-mono">TP Rate</span>
                                     </div>
@@ -6987,7 +7131,7 @@ function renderExpiryAlertSection() {
                 <div onclick="window.switchTab('inventory'); const s=document.getElementById('inv-search'); if(s){ s.value='${med.name.replace(/'/g, "\\'")}'; window.filterInventoryTable(); }" class="py-2 flex items-center justify-between text-xs hover:bg-slate-50 px-1 rounded-lg cursor-pointer transition">
                     <div>
                         <strong class="text-slate-800 block">${med.name}</strong>
-                        <span class="text-[10px] text-slate-400">Stock: ${med.stock} • Exp: ${formatExpiryMMYY(med.expiry)}</span>
+                        <span class="text-[10px] text-slate-400">Stock: ${formatStockDisplay(med.stock)} • Exp: ${formatExpiryMMYY(med.expiry)}</span>
                     </div>
                     <span class="px-2 py-0.5 rounded-full text-[10px] ${badgeClass}">${labelText}</span>
                 </div>
@@ -9044,15 +9188,86 @@ window.handleAdminKeepKickedMemberByIndex = function(idx) {
 window.handleAdminDeleteKickedMemberPermanentlyByIndex = function(idx) {
     const m = window.adminKickedMembersList?.[idx];
     if (!m) return;
-    customConfirm('Record Permanently Delete Karein?', `Kya aap "${m.name || m.email || 'Member'}" ka record blacklist se mukammal khatam karna chahte hain?`, async () => {
+    const displayName = m.name || m.email || m.phone || 'Member';
+    customConfirm('Record Permanently Delete Karein?', `Kya aap "${displayName}" ka record blacklist se mukammal khatam karna chahte hain?`, async () => {
+        const cleanUid = m.id ? String(m.id).trim() : '';
+        const cleanEmail = (m.email && m.email !== '-') ? String(m.email).trim().toLowerCase() : '';
+        const normPhone = (m.phone || '').replace(/\D/g, '').slice(-10);
+        const mName = (m.name || '').trim().toLowerCase();
+
+        // 1. Immediately remove from local memory and UI list so it vanishes instantly
+        if (Array.isArray(window.adminKickedMembersList)) {
+            window.adminKickedMembersList = window.adminKickedMembersList.filter((_, i) => i !== idx);
+        }
+
+        // 2. Wipe from sm_kicked_members in localStorage
+        try {
+            let kickedLocal = JSON.parse(localStorage.getItem('sm_kicked_members') || '[]');
+            kickedLocal = kickedLocal.filter(k => {
+                const kUid = k.id ? String(k.id).trim() : '';
+                const kEmail = (k.email && k.email !== '-') ? String(k.email).trim().toLowerCase() : '';
+                const kNormPhone = (k.phone || '').replace(/\D/g, '').slice(-10);
+                const kName = (k.name || '').trim().toLowerCase();
+
+                if (cleanUid && kUid === cleanUid) return false;
+                if (cleanEmail && kEmail === cleanEmail) return false;
+                if (normPhone && kNormPhone === normPhone) return false;
+                if (mName && kName === mName) return false;
+                return true;
+            });
+            localStorage.setItem('sm_kicked_members', JSON.stringify(kickedLocal));
+        } catch(_) {}
+
+        // 3. Wipe from sm_staff_members in localStorage
+        try {
+            let staff = window.getRegisteredStaffList();
+            staff = staff.filter(s => {
+                const sUid = s.id ? String(s.id).trim() : '';
+                const sEmail = (s.email && s.email !== '-') ? String(s.email).trim().toLowerCase() : '';
+                const sNormPhone = (s.phone || '').replace(/\D/g, '').slice(-10);
+                const sName = (s.name || '').trim().toLowerCase();
+
+                if (cleanUid && sUid === cleanUid) return false;
+                if (cleanEmail && sEmail === cleanEmail) return false;
+                if (normPhone && sNormPhone === normPhone) return false;
+                if (mName && sName === mName) return false;
+                return true;
+            });
+            localStorage.setItem('sm_staff_members', JSON.stringify(staff));
+        } catch(_) {}
+
+        // 4. Wipe from sm_registered_users in localStorage
+        try {
+            let reg = JSON.parse(localStorage.getItem('sm_registered_users') || '[]');
+            reg = reg.filter(u => {
+                const uUid = u.uid ? String(u.uid).trim() : '';
+                const uEmail = (u.email && u.email !== '-') ? String(u.email).trim().toLowerCase() : '';
+                const uNormPhone = (u.phone || '').replace(/\D/g, '').slice(-10);
+
+                if (cleanUid && uUid === cleanUid) return false;
+                if (cleanEmail && uEmail === cleanEmail) return false;
+                if (normPhone && uNormPhone === normPhone) return false;
+                return true;
+            });
+            localStorage.setItem('sm_registered_users', JSON.stringify(reg));
+        } catch(_) {}
+
+        // 5. Backend delete call with deleteHistory: true
         try {
             await fetch('/api/admin/delete-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: m.id, email: m.email, phone: m.phone, name: m.name, deleteHistory: true })
+                body: JSON.stringify({ uid: cleanUid, email: cleanEmail, phone: m.phone || '', name: m.name || '', deleteHistory: true })
             });
         } catch(_) {}
-        showToast('Record permanently delete ho gaya!', 'info');
+
+        // 6. Firestore delete if connected
+        if (db && cleanUid) {
+            try { await deleteDoc(doc(db, 'pharmacies', cleanUid)); } catch(_) {}
+            try { await deleteDoc(doc(db, 'users', cleanUid)); } catch(_) {}
+        }
+
+        showToast(`✓ "${displayName}" ka record permanently delete ho gaya!`, 'info');
         window.renderAdminKickedTable();
         window.renderAdminStaffTable();
         window.renderAdminNetworkTable();

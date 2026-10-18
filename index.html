@@ -1907,8 +1907,8 @@
     </div>
 
     <!-- DISTRIBUTOR RATE COMPARISON MODAL -->
-    <div id="distributor-modal" onclick="if(event.target===this) window.closeDistributorModal()" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-3">
-        <div class="bg-white rounded-2xl max-w-xl w-full p-4 sm:p-5 shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto">
+    <div id="distributor-modal" onclick="if(event.target===this) window.closeDistributorModal()" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-start justify-center p-2 sm:p-4 overflow-y-auto pt-1 sm:pt-6">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-3.5 sm:p-5 shadow-2xl flex flex-col gap-2.5 max-h-[96dvh] sm:max-h-[90vh] overflow-hidden my-1 sm:my-auto">
             <div class="flex items-center justify-between border-b pb-2">
                 <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
                     <i data-lucide="git-compare" class="w-4 h-4 text-indigo-600"></i> Distributor Rate Comparison
@@ -1917,11 +1917,11 @@
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
             </div>
-            <p class="text-xs text-slate-500">Check karein kis distributor ne kon si dawai sasti di aur kis ka rate zyada hai.</p>
+            <p class="text-xs text-slate-500">Mukhtalif distributors aur suppliers ke rates ka aamne saamne jaiza lein.</p>
             
-            <!-- Compare Rates Search Filter -->
+            <!-- Compare Rates Search Filter (Sticky above results) -->
             <div class="relative">
-                <input type="text" id="distributor-compare-search" oninput="window.filterDistributorComparison()" placeholder="Dawai ka naam, company ya distributor search karein..." class="w-full pl-9 pr-8 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 bg-slate-50 font-medium text-slate-900 transition">
+                <input type="text" id="distributor-compare-search" oninput="window.filterDistributorComparison()" onfocus="window.handleCompareSearchFocus(this)" placeholder="Dawai ka naam, company ya distributor search karein..." class="w-full pl-9 pr-8 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 bg-slate-50 font-medium text-slate-900 transition shadow-2xs">
                 <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
                 <button type="button" onclick="document.getElementById('distributor-compare-search').value=''; window.filterDistributorComparison();" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5" title="Clear">
                     <i data-lucide="x" class="w-3.5 h-3.5"></i>
@@ -1929,12 +1929,9 @@
             </div>
             <div class="text-[11px] font-semibold text-slate-500 flex items-center justify-between px-0.5">
                 <span>Items: <strong id="distributor-compare-total-count" class="text-slate-800">0</strong></span>
-                <span class="text-indigo-600 text-[10px] flex items-center gap-1 font-bold">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> Sab se sasta rate highlight hota hai
-                </span>
             </div>
 
-            <div id="distributor-comparison-body" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1"></div>
+            <div id="distributor-comparison-body" class="space-y-2.5 flex-1 overflow-y-auto pr-1 pb-64 sm:pb-8"></div>
         </div>
     </div>
 
