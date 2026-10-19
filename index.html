@@ -385,9 +385,37 @@
 
         <!-- DASHBOARD VIEW -->
         <section id="view-dashboard" class="tab-content flex flex-col gap-4">
-            
-            <!-- Prescription AI Banner (Clean & Direct) -->
-            <div class="bg-gradient-to-r from-brand-900 via-indigo-900 to-slate-900 text-white rounded-2xl shadow-xs p-3 sm:p-3.5 flex items-center justify-between gap-3 border border-brand-700/60">
+            <!-- Auth Lock Screen (Shown when user is not logged in) -->
+            <div id="dashboard-auth-lock" class="hidden">
+                <div class="w-full max-w-2xl mx-auto my-6 p-6 sm:p-10 bg-white rounded-3xl border-2 border-amber-200/90 text-center space-y-4 shadow-xl">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-100 to-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+                        <i data-lucide="lock" class="w-8 h-8 text-amber-600"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-600"></i>
+                            <span>Account Login / Sign Up Zaroori Hai</span>
+                        </div>
+                        <h3 class="font-black text-slate-900 text-lg sm:text-xl pt-1">Dashboard & Reports Sirf Login Accounts Kelye Dastyab Hai</h3>
+                        <p class="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+                            Apna pharmacy account banayein ya login karein taa ke aapka daily sales record, revenue metrics, expiry alerts aur stock analytics mehfooz rahein aur sirf aapke access mein hon.
+                        </p>
+                    </div>
+                    <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                        <button type="button" onclick="window.openAccountHubModal()" class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-2xl text-xs sm:text-sm font-black shadow-lg shadow-brand-600/20 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer">
+                            <i data-lucide="log-in" class="w-4 h-4"></i> Login ya Sign Up Karein
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 font-medium pt-1">
+                        🔒 Har user apna zati account bana kar apna business record bilkul alag aur private rakh sakta hai.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Dashboard Main Content (Protected) -->
+            <div id="dashboard-auth-content" class="flex flex-col gap-4">
+                <!-- Prescription AI Banner (Clean & Direct) -->
+                <div class="bg-gradient-to-r from-brand-900 via-indigo-900 to-slate-900 text-white rounded-2xl shadow-xs p-3 sm:p-3.5 flex items-center justify-between gap-3 border border-brand-700/60">
                 <div class="flex items-center gap-2.5">
                     <div class="p-2 bg-amber-400/20 text-amber-300 rounded-xl shrink-0 border border-amber-400/30">
                         <i data-lucide="scan" class="w-5 h-5"></i>
@@ -528,11 +556,41 @@
                     </span>
                 </div>
             </footer>
+            </div>
         </section>
 
         <!-- POS VIEW -->
-        <section id="view-pos" class="tab-content hidden grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div class="lg:col-span-2 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-3">
+        <section id="view-pos" class="tab-content hidden flex flex-col gap-4">
+            <!-- Auth Lock Screen (Shown when user is not logged in) -->
+            <div id="pos-auth-lock" class="hidden">
+                <div class="w-full max-w-2xl mx-auto my-6 p-6 sm:p-10 bg-white rounded-3xl border-2 border-amber-200/90 text-center space-y-4 shadow-xl">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-100 to-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+                        <i data-lucide="lock" class="w-8 h-8 text-amber-600"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-600"></i>
+                            <span>Account Login / Sign Up Zaroori Hai</span>
+                        </div>
+                        <h3 class="font-black text-slate-900 text-lg sm:text-xl pt-1">POS Billing & Counter Sirf Login Accounts Kelye Dastyab Hai</h3>
+                        <p class="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+                            Customer invoices banane, prescription AI scan karne, cart chalane aur digital bills print karne kelye pehle apna account login ya sign up karein.
+                        </p>
+                    </div>
+                    <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                        <button type="button" onclick="window.openAccountHubModal()" class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-2xl text-xs sm:text-sm font-black shadow-lg shadow-brand-600/20 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer">
+                            <i data-lucide="log-in" class="w-4 h-4"></i> Login ya Sign Up Karein
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 font-medium pt-1">
+                        🔒 Har user apna zati account bana kar apna business record bilkul alag aur private rakh sakta hai.
+                    </p>
+                </div>
+            </div>
+
+            <!-- POS Main Content (Protected) -->
+            <div id="pos-auth-content" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-3">
                 <div id="pos-top-action-bar" class="flex items-center justify-between border-b pb-2 transition-all duration-300 ease-in-out origin-top overflow-hidden">
                     <div class="flex items-center gap-2">
                         <h3 class="font-black text-slate-800 text-sm sm:text-base flex items-center gap-2">
@@ -670,10 +728,40 @@
                     </button>
                 </div>
             </div>
+            </div>
         </section>
 
         <!-- STOCK INVENTORY VIEW -->
         <section id="view-inventory" class="tab-content hidden flex flex-col gap-4">
+            <!-- Auth Lock Screen (Shown when user is not logged in) -->
+            <div id="inventory-auth-lock" class="hidden">
+                <div class="w-full max-w-2xl mx-auto my-6 p-6 sm:p-10 bg-white rounded-3xl border-2 border-amber-200/90 text-center space-y-4 shadow-xl">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-100 to-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+                        <i data-lucide="lock" class="w-8 h-8 text-amber-600"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-600"></i>
+                            <span>Account Login / Sign Up Zaroori Hai</span>
+                        </div>
+                        <h3 class="font-black text-slate-900 text-lg sm:text-xl pt-1">Stock & Inventory Sirf Login Accounts Kelye Dastyab Hai</h3>
+                        <p class="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+                            Medicine stock add karne, AI distributor invoice scanner run karne, batches aur rates update karne kelye pehle apna account login ya sign up karein.
+                        </p>
+                    </div>
+                    <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                        <button type="button" onclick="window.openAccountHubModal()" class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-2xl text-xs sm:text-sm font-black shadow-lg shadow-brand-600/20 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer">
+                            <i data-lucide="log-in" class="w-4 h-4"></i> Login ya Sign Up Karein
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 font-medium pt-1">
+                        🔒 Har user apna zati account bana kar apna business record bilkul alag aur private rakh sakta hai.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Inventory Main Content (Protected) -->
+            <div id="inventory-auth-content" class="flex flex-col gap-4">
             <div class="bg-gradient-to-r from-emerald-800 to-teal-900 text-white rounded-2xl shadow-xs p-3 sm:p-3.5 flex items-center justify-between gap-3 border border-emerald-700">
                 <div class="flex items-center gap-2.5">
                     <div class="p-2 bg-white/10 rounded-xl shrink-0">
@@ -761,10 +849,38 @@
                     Stock database load ho raha hai...
                 </div>
             </div>
+            </div>
         </section>
 
         <!-- CALCULATOR VIEW (Perfect Center Screen with Equal Spacing on All Sides) -->
         <section id="view-margin" class="tab-content hidden w-full min-h-[calc(100vh-140px)] flex flex-col items-center justify-center p-3 sm:p-6 md:p-8 m-auto flex-1">
+            <!-- Auth Lock Screen (Shown when user is not logged in) -->
+            <div id="margin-auth-lock" class="hidden w-full max-w-2xl mx-auto my-6 p-6 sm:p-10 bg-white rounded-3xl border-2 border-amber-200/90 text-center space-y-4 shadow-xl">
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-100 to-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+                    <i data-lucide="lock" class="w-8 h-8 text-amber-600"></i>
+                </div>
+                <div class="space-y-1">
+                    <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                        <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-600"></i>
+                        <span>Account Login / Sign Up Zaroori Hai</span>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg sm:text-xl pt-1">Calculators & Rate Compare Sirf Login Accounts Kelye Dastyab Hai</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+                        Digital shop hisaab calculator, wholesale profit margin aur distributor rate comparison tools run karne kelye pehle apna account login ya sign up karein.
+                    </p>
+                </div>
+                <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button type="button" onclick="window.openAccountHubModal()" class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-2xl text-xs sm:text-sm font-black shadow-lg shadow-brand-600/20 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer">
+                        <i data-lucide="log-in" class="w-4 h-4"></i> Login ya Sign Up Karein
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-400 font-medium pt-1">
+                    🔒 Har user apna zati account bana kar apna business record bilkul alag aur private rakh sakta hai.
+                </p>
+            </div>
+
+            <!-- Margin Main Content (Protected) -->
+            <div id="margin-auth-content" class="w-full flex flex-col items-center justify-center">
             <!-- CALCULATOR 1: Simple Standard Math Hisaab Calculator (Clean Light Modern Commercial Desktop Calculator) -->
             <!-- Strict Specification: Light aesthetic, perfect center screen with equal space on all sides, all digit buttons 100% equal in size, uniform grid spacing, large + button merging rows 5 & 6, full-width = button below, crisp modern readable font -->
             <div id="calc-section-simple" class="bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xl shadow-slate-200/50 flex flex-col justify-center max-w-[390px] sm:max-w-[420px] w-full select-none touch-manipulation gap-3 sm:gap-3.5 overflow-hidden overscroll-none m-auto shrink-0">
@@ -1060,10 +1176,40 @@
                     </div>
                 </div>
             </div>
+            </div>
         </section>
 
         <!-- CONNECTED PHARMACIES NETWORK VIEW -->
         <section id="view-network" class="tab-content hidden flex flex-col gap-3">
+            <!-- Auth Lock Screen (Shown when user is not logged in) -->
+            <div id="network-auth-lock" class="hidden">
+                <div class="w-full max-w-2xl mx-auto my-6 p-6 sm:p-10 bg-white rounded-3xl border-2 border-amber-200/90 text-center space-y-4 shadow-xl">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-100 to-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+                        <i data-lucide="lock" class="w-8 h-8 text-amber-600"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-600"></i>
+                            <span>Account Login / Sign Up Zaroori Hai</span>
+                        </div>
+                        <h3 class="font-black text-slate-900 text-lg sm:text-xl pt-1">Connected Network Sirf Login Accounts Kelye Dastyab Hai</h3>
+                        <p class="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+                            Connected Pharmacy Network, partner stores ki inventory aur live medicine rates sirf verified login users kelye hain. Dusre stores se rabta aur stock search karne kelye pehle login ya sign up karein.
+                        </p>
+                    </div>
+                    <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                        <button type="button" onclick="window.openAccountHubModal()" class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-2xl text-xs sm:text-sm font-black shadow-lg shadow-brand-600/20 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer">
+                            <i data-lucide="log-in" class="w-4 h-4"></i> Login ya Sign Up Karein
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 font-medium pt-1">
+                        🔒 Har user apna zati account bana kar apna business record bilkul alag aur private rakh sakta hai.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Network Main Content (Protected) -->
+            <div id="network-auth-content" class="flex flex-col gap-3">
             <div class="bg-gradient-to-r from-emerald-800 to-teal-900 text-white p-3.5 sm:p-4 rounded-2xl shadow-xs flex items-center justify-between border border-emerald-700">
                 <div class="flex items-center gap-3">
                     <div class="p-2.5 bg-white/10 rounded-xl shrink-0">
@@ -1106,6 +1252,7 @@
                     </span>
                 </div>
             </footer>
+            </div>
         </section>
 
     </main>
@@ -2476,7 +2623,7 @@
                     <form onsubmit="event.preventDefault(); window.handleAdminLogin();" class="space-y-2.5 p-3.5 bg-slate-900 text-white rounded-2xl border border-amber-400/40 shadow-lg">
                         <div>
                             <div class="flex items-center justify-between mb-1">
-                                <label class="block text-[11px] font-bold text-amber-300">Super Admin Mobile Number:</label>
+                                <label class="block text-[11px] font-bold text-amber-300">Super Admin Account:</label>
                                 <span class="text-[10px] text-amber-400 font-mono flex items-center gap-1">
                                     <i data-lucide="lock" class="w-2.5 h-2.5 text-amber-400"></i> Fixed & Locked
                                 </span>

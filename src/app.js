@@ -1517,6 +1517,12 @@ let liveCameraStream = null;
 let currentFacingMode = 'environment'; // 'environment' | 'user'
 
 window.triggerUnifiedMediaScan = function(context) {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('AI scanner run karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     currentMediaContext = context || 'presc';
     window.currentMediaContext = currentMediaContext;
 
@@ -1539,6 +1545,12 @@ window.triggerSelectedMediaSource = function() {
 };
 
 window.startLiveCameraCapture = async function(context) {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Camera scan chalane kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return false;
+    }
+
     currentMediaContext = context || currentMediaContext;
     window.currentMediaContext = currentMediaContext;
 
@@ -1831,7 +1843,43 @@ window.getCurrentUser = function() {
     return Object.keys(base).length ? base : null;
 };
 
+window.isAppUserLoggedIn = function() {
+    const currentUser = window.getCurrentUser();
+    const mode = window.getCurrentUserMode();
+    const isSuperAdmin = Boolean(currentUser && currentUser.isSuperAdmin === true);
+    return Boolean(isSuperAdmin || (mode === 'authenticated' && (authUser || currentUser?.email)));
+};
+
+window.updateAllSectionAuthStates = function() {
+    const loggedIn = window.isAppUserLoggedIn();
+    const sections = ['dashboard', 'pos', 'inventory', 'margin', 'network'];
+
+    sections.forEach(sec => {
+        const lockEl = document.getElementById(`${sec}-auth-lock`);
+        const contentEl = document.getElementById(`${sec}-auth-content`);
+        if (lockEl && contentEl) {
+            if (loggedIn) {
+                lockEl.classList.add('hidden');
+                contentEl.classList.remove('hidden');
+            } else {
+                lockEl.classList.remove('hidden');
+                contentEl.classList.add('hidden');
+            }
+        }
+    });
+
+    if (!loggedIn) {
+        const countEl = document.getElementById('network-stores-count');
+        if (countEl) countEl.textContent = '0 (Login Required)';
+    }
+
+    try {
+        if (typeof safeCreateIcons === 'function') safeCreateIcons();
+    } catch(_) {}
+};
+
 window.applyStoreIdentity = function() {
+    window.updateAllSectionAuthStates();
     const config = window.getStoreConfig();
     document.title = 'Digital Pharma - Smart Pharmacy ERP & POS';
     const topName = document.getElementById('top-store-name');
@@ -2008,6 +2056,14 @@ window.removeProfilePic = function() {
 };
 
 window.switchTab = function(tabName) {
+    if (typeof window.updateAllSectionAuthStates === 'function') {
+        window.updateAllSectionAuthStates();
+    }
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Yeh section istemal karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+    }
+
     const tabs = ['dashboard', 'pos', 'inventory', 'margin', 'network'];
     tabs.forEach(t => {
         const view = document.getElementById('view-' + t);
@@ -2090,6 +2146,12 @@ window.switchTab = function(tabName) {
 
 // Toggle Calculator Dropdown Menu (Desktop or Mobile)
 window.toggleCalculatorDropdown = function(event, type) {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Calculator run karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     if (event) {
         event.stopPropagation();
         event.preventDefault();
@@ -3007,6 +3069,13 @@ Return JSON format:
 
 // AI Prescription Scan
 window.handlePrescriptionScan = async function(event) {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Prescription scanner run karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        if (event && event.target) event.target.value = '';
+        return;
+    }
+
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -3402,6 +3471,13 @@ window.copyPrescriptionText = function() {
 
 // AI Wholesale Invoice Scan
 window.handleRealInvoiceOcr = async function(event) {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('AI bill scanner run karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        if (event && event.target) event.target.value = '';
+        return;
+    }
+
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -4824,6 +4900,12 @@ window.clearCartPrompt = function() {
 };
 
 window.completeSale = function() {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Sale complete karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     if (cart.length === 0) {
         showToast('Pehle cart mein items add karein!', 'error');
         return;
@@ -5077,6 +5159,12 @@ let billCameraFacing = 'environment';
 let isBillScanningActive = false;
 
 window.openBillVerifyModal = function() {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Bill verify feature run karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     const modal = document.getElementById('bill-verify-modal');
     if (!modal) return;
     modal.classList.remove('hidden');
@@ -5586,6 +5674,15 @@ window.mobileQuickSearch = function() {
 
 function handleQuickSearchLogic(inputEl, resultsEl, clearBtnEl) {
     if (!inputEl || !resultsEl) return;
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Stock aur rate check karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        resultsEl.classList.add('hidden');
+        clearBtnEl?.classList.add('hidden');
+        inputEl.value = '';
+        return;
+    }
+
     const query = inputEl.value.toLowerCase().trim();
     if (!query) {
         resultsEl.classList.add('hidden');
@@ -6129,6 +6226,12 @@ window.updateMedPackHintLive = function() {
 };
 
 window.openAddMedicineModal = function() {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Medicine shamil karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     const title = document.getElementById('medicine-modal-title');
     if (title) title.innerText = 'Nayi Medicine Shamil Karein';
     document.getElementById('medicine-form')?.reset();
@@ -6312,6 +6415,12 @@ window.closeSaleEditModal = function() {
 };
 
 window.openDistributorComparisonModal = function() {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Distributor rate compare chalane kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     const searchInput = document.getElementById('distributor-compare-search');
     if (searchInput) searchInput.value = '';
     window.renderDistributorComparisonList();
@@ -6455,6 +6564,12 @@ window.renderDistributorComparisonList = function() {
 // CONNECTED PHARMACIES NETWORK (Real Partner Stores, Zero Fake Data)
 // ==========================================
 window.openAddNetworkStoreModal = function() {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Pharmacy connect karne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     document.getElementById('add-network-modal')?.classList.remove('hidden');
     syncModalScrollLock();
     safeCreateIcons();
@@ -7549,6 +7664,12 @@ window.filterLowStockInventory = function() {
 
 // Total Medicines & Category Form/Type Filter Modal
 window.openTotalMedicineFilterModal = function() {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Stock details dekhne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     const modal = document.getElementById('total-medicines-modal');
     if (!modal) return;
 
@@ -8111,6 +8232,12 @@ window.switchSaleAnalyticsModalTab = function(mode) {
 };
 
 window.openSalesAnalyticsModal = function(period = 'today', tab = 'data') {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Sales analytics dekhne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     currentAnalyticsPeriod = period;
     document.getElementById('sales-analytics-modal')?.classList.remove('hidden');
     syncModalScrollLock();
@@ -8135,6 +8262,12 @@ window.setSalesAnalyticsPeriod = function(period) {
 let currentCustomerPeriod = 'today';
 
 window.openCustomerInvoicesModal = function(period = 'today') {
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        showToast('Customer invoices dekhne kelye pehle login ya sign up karein.', 'warning');
+        window.openAccountHubModal();
+        return;
+    }
+
     currentCustomerPeriod = period;
     document.getElementById('customer-invoices-modal')?.classList.remove('hidden');
     syncModalScrollLock();
@@ -10131,6 +10264,10 @@ window.handleAuthSignup = async function() {
         // Connect live listeners
         attachFirestoreSyncListeners(userUid);
 
+        window.applyStoreIdentity();
+        if (typeof window.updateAllSectionAuthStates === 'function') {
+            window.updateAllSectionAuthStates();
+        }
         window.closeAccountHubModal();
 
         // 1st Time: Automatically show Pharmacy / Medical Store Details Modal
@@ -11414,7 +11551,12 @@ window.handleHubLogout = async function() {
     if (typeof updateCartUI === 'function') updateCartUI();
 
     window.applyStoreIdentity();
+    if (typeof window.updateAllSectionAuthStates === 'function') {
+        window.updateAllSectionAuthStates();
+    }
     window.showHubChoiceSection();
+    window.switchHubAuthTab('login');
+    window.openAccountHubModal();
     showToast('Logout ho gaye hain. Aapka data mehfooz kar diya gaya hai aur screen se hata diya gaya hai.', 'info');
 };
 
@@ -11493,6 +11635,9 @@ function initApp() {
     setupDynamicPwaManifest();
     updateInstallUiState();
     window.applyStoreIdentity();
+    if (typeof window.updateAllSectionAuthStates === 'function') {
+        window.updateAllSectionAuthStates();
+    }
     window.updateNetworkConnectivityDot();
     renderDashboardMetrics();
     renderInventoryTable();
@@ -11503,6 +11648,11 @@ function initApp() {
     syncModalScrollLock();
     window.switchTab('dashboard');
     window.checkUserKickedStatus();
+    if (typeof window.isAppUserLoggedIn === 'function' && !window.isAppUserLoggedIn()) {
+        setTimeout(() => {
+            window.openAccountHubModal();
+        }, 300);
+    }
     setInterval(() => {
         window.checkUserKickedStatus();
     }, 25000);
