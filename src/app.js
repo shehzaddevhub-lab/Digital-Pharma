@@ -1262,38 +1262,96 @@ function normalizePrescriptionData(parsed) {
         rawPatient = 'General Patient';
     }
 
+    function isNonMedicinalArtifact(str) {
+        if (!str || typeof str !== 'string') return true;
+        const s = str.trim().toLowerCase();
+        if (s.length < 2) return true;
+        if (/^(rx|sig|treatment|advice|instructions|summary|findings|diagnosis|follow\s*up|notes?|dr|doctor|patient|date|clinic|hospital|mr|mrs|ms|name|age|gender|sex|wt|weight|bp|temp|pulse|slip|prescription)$/i.test(s)) return true;
+        if (/^(cbc|lft|rft|esr|urine|blood|sugar|x-ray|usg|ecg|ultrasound|lipid\s*profile|serum|creatinine|hemoglobin|hb)$/i.test(s)) return true;
+        if (/^(1\+0\+1|1\+1\+1|1\+0\+0|0\+0\+1|tds|bd|od|sos|qid|prn|ac|pc|po|iv|im|mg|ml|gm|mcg|iu)$/i.test(s)) return true;
+        if (/^[\d\s\.\,\-\+\*\#\:\;\/\(\)\[\]]+$/.test(s)) return true;
+        return false;
+    }
+
     const cleanedMeds = meds
         .map(m => {
             if (typeof m === 'string') {
-                const clean = m.trim().replace(/^[\*\-\d\.\)\s]+/, '').trim();
-                if (clean.length < 2 || isModelRefusalText(clean)) return null;
+                const clean = m.trim().replace(/^[\*\-\d\.\)\s\#\>\:\•]+/, '').replace(/^rx\s*[:\.\-]?\s*/i, '').replace(/^sig\s*[:\.\-]?\s*/i, '').trim();
+                if (clean.length < 2 || isModelRefusalText(clean) || isNonMedicinalArtifact(clean)) return null;
                 const parts = clean.split(/[-–—:]/);
-                const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+                let name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+                const medType = detectMedicineTypeSmart('', name);
+                const hasPrefix = /^(tab|tablet|cap|capsule|syp|syrup|susp|drop|drp|inj|injection|scht|sachet|cream|crm|oint|ointment|inhaler)\b/i.test(name);
+                if (!hasPrefix) {
+                    if (medType === 'cap') name = `Cap ${name}`;
+                    else if (medType === 'syp') name = `Syp ${name}`;
+                    else if (medType === 'drop') name = `Drp ${name}`;
+                    else if (medType === 'inj') name = `Inj ${name}`;
+                    else if (medType === 'scht') name = `Scht ${name}`;
+                    else if (medType === 'cream') name = `Cream ${name}`;
+                    else if (medType === 'inhaler') name = `Inhaler ${name}`;
+                    else name = `Tab ${name}`;
+                }
                 const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
                 const shortUse = window.getPrescriptionShortUse(name, '');
                 return {
                     name,
                     formula: '',
                     timing,
-                    usage: 'Taza paani ke sath lein',
+                    usage: medType === 'syp' ? 'Chamach se piyen' : (medType === 'cream' ? 'Halke hath se lagayein' : 'Taza paani ke sath lein'),
                     shortUse
                 };
             }
             if (!m || typeof m !== 'object') return null;
-            const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || m.title || m.label || '').trim();
-            if (!name || isModelRefusalText(name)) return null;
+            let name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || m.title || m.label || '')
+                .replace(/^[\*\-\d\.\)\s\#\>\:\•]+/, '')
+                .replace(/^rx\s*[:\.\-]?\s*/i, '')
+                .replace(/^sig\s*[:\.\-]?\s*/i, '')
+                .trim();
+            if (!name || isModelRefusalText(name) || isNonMedicinalArtifact(name)) return null;
+            const rawType = String(m.type || m.form || m.dosageForm || '').trim();
+            const medType = detectMedicineTypeSmart(rawType, name);
+            const hasPrefix = /^(tab|tablet|cap|capsule|syp|syrup|susp|drop|drp|inj|injection|scht|sachet|cream|crm|oint|ointment|inhaler)\b/i.test(name);
+            if (!hasPrefix) {
+                if (medType === 'cap') name = `Cap ${name}`;
+                else if (medType === 'syp') name = `Syp ${name}`;
+                else if (medType === 'drop') name = `Drp ${name}`;
+                else if (medType === 'inj') name = `Inj ${name}`;
+                else if (medType === 'scht') name = `Scht ${name}`;
+                else if (medType === 'cream') name = `Cream ${name}`;
+                else if (medType === 'inhaler') name = `Inhaler ${name}`;
+                else name = `Tab ${name}`;
+            }
+
             const formula = String(m.formula || m.generic || m.salt || m.composition || '').trim();
             const rawUse = String(m.shortUse || m.use || m.purpose || m.indication || m.reason || '').trim();
-            const shortUseHint = rawUse || window.getMedicineShortUse(name, formula);
+            const shortUseHint = window.getPrescriptionShortUse(name, formula, rawUse);
+
+            let defaultTiming = 'Subah sham 1 goli khane ke baad (1+0+1)';
+            if (medType === 'syp') defaultTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
+            else if (medType === 'cap') defaultTiming = 'Subah sham 1 capsule khane ke baad (1+0+1)';
+            else if (medType === 'drop') defaultTiming = 'Subah sham 2 qatre';
+            else if (medType === 'inhaler') defaultTiming = 'Zaroorat ke waqt 2 puff';
+            else if (medType === 'cream') defaultTiming = 'Subah sham mutaasira jagah par lagayein';
+            else if (medType === 'scht') defaultTiming = 'Neem garam paani mein 1 sachet hal karein';
+            else if (medType === 'inj') defaultTiming = 'Doctor ki hidayat ke mutabiq lagwayein';
+
+            let rawTiming = isModelRefusalText(String(m.timing || '')) 
+                ? defaultTiming 
+                : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || defaultTiming).trim();
+            if (/^1\+0\+1$/i.test(rawTiming)) rawTiming = medType === 'syp' ? 'Subah sham 1 chamach (1+0+1)' : 'Subah sham 1 goli (1+0+1)';
+            else if (/^1\+1\+1$/i.test(rawTiming)) rawTiming = medType === 'syp' ? 'Subah dopehar sham 1 chamach (1+1+1)' : 'Subah dopehar sham 1 goli (1+1+1)';
+            else if (/^1\+0\+0$/i.test(rawTiming)) rawTiming = 'Rozana subah 1 goli (1+0+0)';
+            else if (/^0\+0\+1$/i.test(rawTiming)) rawTiming = 'Raat ko sote waqt 1 goli (0+0+1)';
+
             return {
                 name,
+                type: medType,
                 formula,
-                timing: isModelRefusalText(String(m.timing || '')) 
-                    ? 'Subah sham 1 goli khane ke baad (1+0+1)' 
-                    : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || 'Subah sham 1 goli khane ke baad (1+0+1)').trim(),
+                timing: rawTiming,
                 usage: isModelRefusalText(String(m.usage || '')) 
-                    ? 'Taza paani ke sath lein' 
-                    : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
+                    ? (medType === 'syp' ? 'Chamach se piyen' : (medType === 'cream' ? 'Halke hath se lagayein' : 'Taza paani ke sath lein')) 
+                    : String(m.usage || m.method || (medType === 'syp' ? 'Chamach se piyen' : 'Taza paani ke sath lein')).trim(),
                 shortUse: shortUseHint
             };
         })
@@ -1474,7 +1532,8 @@ async function callGeminiVisionDirect(prompt, base64Data) {
                     ]
                 }],
                 generationConfig: {
-                    responseMimeType: "application/json"
+                    responseMimeType: "application/json",
+                    temperature: 0.1
                 }
             };
 
@@ -2998,15 +3057,17 @@ window.addSimpleCalcToSale = async function() {
     showToast(`Rs. ${formatShopDisplay(String(currentNum))} Sale mein shamil ho gaya!`, 'success');
 };
 
-const PRESCRIPTION_PROMPT = `You are an expert Clinical Pharmacist, Master Handwriting Decipherer, and Medical Forensic OCR specialist.
-Scan this entire prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
+const PRESCRIPTION_PROMPT = `You are an elite Clinical Pharmacist, Master Handwriting Decipherer, and Pakistani DRAP Drug Formulary Specialist.
+Scan this prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
 EXHAUSTIVE EXTRACTION MANDATE:
-Do NOT stop after reading just 1, 2, or 3 items. Carefully transcribe EVERY SINGLE medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
-- Read all numbered lines (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, etc.), unnumbered lines, columns, bullet points, and any margin/SOS notes.
+Carefully transcribe EVERY SINGLE prescribed medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
+- Read all numbered lines (1, 2, 3, 4, 5, 6, 7, 8, 9, 10...), unnumbered lines, columns, bullet points, and margin notes.
 - Use your deep clinical pharmacy intellect to decipher messy doctor cursive handwriting, abbreviations, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
-- For each medicine, determine its medical clinical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi aur balgham kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
-- Also read doctor name, clinic name, and patient name if written.
-- IMPORTANT: Do NOT include any drug category or therapeutic classification in the output.
+- STRICT PAKISTANI BRAND ACCURACY: Prioritize authentic DRAP-approved Pakistani market medicines (e.g. Risek, Nexum, Augmentin, Panadol, Brufen, Arinac, Ponstan, Caflam, Leflox, Novidat, Cefspan, Azomax, Flagyl, Entamizole, Motilium, Gravinate, Buscopan, Spasler, Hydryllin, Pulmonol, Prospan, Rigix, Softin, Myteka, Ventolin, Glucophage, Getryl, Concor, Norvasc, Lipiget, Surbex Z, Neurobion, CaC 1000, Polyfax, Betnovate).
+- NEVER hallucinate fake or imaginary drugs. If handwriting is messy, cross-match the other co-prescribed medicines on the prescription (respiratory synergy, GI synergy, orthopedic pain synergy) to deduce the exact genuine Pakistani brand.
+- STRICT DOSAGE FORM PREFIXES: Tab (Tablet), Cap (Capsule), Syp (Syrup/Suspension), Drop (Drops), Inj (Injection), Scht (Sachet), Cream (Cream/Ointment), Inhaler.
+- For each medicine, provide clinical use in Roman Urdu strictly ending with "kelye" (e.g. "Bukhar aur dard kelye", "Maiday ki jalan kelye", "Infection ke ilaj kelye", "Khansi aur balgham kelye", "Nazla aur zukam kelye", "Ulti aur matli kelye").
+- Also extract doctor name, clinic name, and patient name if written.
 
 Return JSON format:
 {
@@ -3016,14 +3077,15 @@ Return JSON format:
   "advice": "Precautions in Roman Urdu",
   "medicines": [
     {
-      "name": "Exact medicine name and strength",
-      "formula": "Generic salt if visible",
-      "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1)",
+      "name": "Full brand name with prefix and strength (e.g. Cap Risek 20mg, Tab Augmentin 625mg)",
+      "type": "tab / cap / syp / drop / inj / scht / cream / inhaler",
+      "formula": "DRAP generic salt (e.g. Omeprazole 20mg, Co-Amoxiclav 625mg)",
+      "timing": "Dosage instructions e.g. Subah sham 1 goli khane ke baad (1+0+1) or 1 chamach for syrup",
       "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
       "shortUse": "Purpose in Roman Urdu ending with kelye"
     }
   ]
-}`;
+};`;
 
 const INVOICE_PROMPT = `Examine this wholesale invoice, distributor bill, or delivery challan.
 CRITICAL RULES:

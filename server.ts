@@ -341,6 +341,901 @@ function detectMedicineTypeSmart(rawType?: string, rawName?: string): string {
   return 'tab';
 }
 
+// -------------------------------------------------------------
+// PAKISTANI DRAP PHARMACEUTICAL DRUG REGISTRY & CANONICALIZER
+// Rigorously maps doctor handwriting strokes & minor OCR typos to genuine DRAP registered brands
+// -------------------------------------------------------------
+interface PakistaniDrugCanonicalEntry {
+  patterns: RegExp[];
+  brand: string;
+  type: string;
+  formula: string;
+  shortUse: string;
+  timing: string;
+  usage: string;
+}
+
+const PAKISTANI_DRUG_REGISTRY: PakistaniDrugCanonicalEntry[] = [
+  // Stomach & Acidity (PPIs & Antacids)
+  {
+    patterns: [/\brisek\b/i, /\briseck\b/i, /\brisk\b/i, /\bomeprazole\b/i, /\bomega\b/i],
+    brand: 'Cap Risek 20mg',
+    type: 'cap',
+    formula: 'Omeprazole 20mg (Getz)',
+    shortUse: 'Maiday ki jalan kelye',
+    timing: 'Subah niharmunh 1 capsule (1+0+0)',
+    usage: 'Naashtey se aadha ghanta pehle taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bnexum\b/i, /\bnexam\b/i, /\bnexium\b/i, /\besomeprazole\b/i],
+    brand: 'Cap Nexum 40mg',
+    type: 'cap',
+    formula: 'Esomeprazole 40mg (Getz)',
+    shortUse: 'Tezabiyat aur ulcer kelye',
+    timing: 'Subah niharmunh 1 capsule (1+0+0)',
+    usage: 'Naashtey se aadha ghanta pehle taza paani ke sath lein'
+  },
+  {
+    patterns: [/\blosec\b/i, /\blusac\b/i],
+    brand: 'Cap Losec 20mg',
+    type: 'cap',
+    formula: 'Omeprazole 20mg (Bayer)',
+    shortUse: 'Maiday ki tezabiyat kelye',
+    timing: 'Subah niharmunh 1 capsule (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bzopent\b/i, /\bpantoprazole\b/i, /\bpantra\b/i],
+    brand: 'Tab Zopent 40mg',
+    type: 'tab',
+    formula: 'Pantoprazole 40mg (CCL)',
+    shortUse: 'Maiday ke zakham kelye',
+    timing: 'Subah niharmunh 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bgaviscon\b/i, /\bgavison\b/i, /\bgauscon\b/i],
+    brand: 'Syp Gaviscon',
+    type: 'syp',
+    formula: 'Sodium Alginate + Bicarbonate (Reckitt)',
+    shortUse: 'Seene ki jalan aur tezabiyat kelye',
+    timing: 'Subah sham khane ke baad 2 chamach (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+  {
+    patterns: [/\bmucaine\b/i, /\bmucain\b/i],
+    brand: 'Syp Mucaine',
+    type: 'syp',
+    formula: 'Oxethazaine + Antacid (Pfizer)',
+    shortUse: 'Maiday ke shadeed dard kelye',
+    timing: 'Khane se 15 minute pehle 2 chamach',
+    usage: 'Chamach se piyen'
+  },
+
+  // Antibiotics & Anti-infectives
+  {
+    patterns: [/\baugmentin\b/i, /\baugmantin\b/i, /\baugmenten\b/i, /\bco-amoxiclav\b/i, /\bamoxiclav\b/i],
+    brand: 'Tab Augmentin 625mg',
+    type: 'tab',
+    formula: 'Co-Amoxiclav 625mg (GSK)',
+    shortUse: 'Infection ke ilaj kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bamoxil\b/i, /\bamoxyl\b/i],
+    brand: 'Cap Amoxil 500mg',
+    type: 'cap',
+    formula: 'Amoxicillin 500mg (GSK)',
+    shortUse: 'Gale aur sans ke infection kelye',
+    timing: 'Subah dopehar sham 1 capsule (1+1+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bleflox\b/i, /\blefloc\b/i, /\blevofloxacin\b/i, /\bcravit\b/i],
+    brand: 'Tab Leflox 500mg',
+    type: 'tab',
+    formula: 'Levofloxacin 500mg (Getz)',
+    shortUse: 'Phephron aur peshab ke infection kelye',
+    timing: 'Rozana 1 goli khane ke baad (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bnovidat\b/i, /\bnovidate\b/i, /\bciproxin\b/i, /\bciprofloxacin\b/i],
+    brand: 'Tab Novidat 500mg',
+    type: 'tab',
+    formula: 'Ciprofloxacin 500mg (Sami)',
+    shortUse: 'Peshab aur pait ke infection kelye',
+    timing: 'Subah sham 1 goli (1+0+1)',
+    usage: 'Khaane ke baad taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bcefspan\b/i, /\bcefspan\b/i, /\bcaricef\b/i, /\bcefixime\b/i, /\bmaxima\b/i],
+    brand: 'Cap Cefspan 400mg',
+    type: 'cap',
+    formula: 'Cefixime 400mg (Sami)',
+    shortUse: 'Miyadi bukhar aur infection kelye',
+    timing: 'Rozana 1 capsule (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bazomax\b/i, /\bazithromycin\b/i, /\bzithro\b/i, /\bmacrozit\b/i],
+    brand: 'Tab Azomax 500mg',
+    type: 'tab',
+    formula: 'Azithromycin 500mg (Getz)',
+    shortUse: 'Gale aur sans ke infection kelye',
+    timing: 'Rozana 1 goli khane se 1 ghanta pehle (1+0+0)',
+    usage: 'Khali pet ya khane se 1 ghanta pehle lein'
+  },
+  {
+    patterns: [/\bklaricid\b/i, /\bclaritek\b/i, /\bclarithromycin\b/i],
+    brand: 'Tab Klaricid 500mg',
+    type: 'tab',
+    formula: 'Clarithromycin 500mg (Abbott)',
+    shortUse: 'Sans aur phephron ke infection kelye',
+    timing: 'Subah sham 1 goli (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\brocephin\b/i, /\bepicephin\b/i, /\bceftriaxone\b/i],
+    brand: 'Inj Rocephin 1g',
+    type: 'inj',
+    formula: 'Ceftriaxone Sodium 1g (Roche)',
+    shortUse: 'Shadeed bacterial infection kelye',
+    timing: 'Doctor ya dispenser se lagwayein',
+    usage: 'IV / IM Injection'
+  },
+
+  // Pain, Fever & Cold (Analgesics / NSAIDs)
+  {
+    patterns: [/\bpanadol\b/i, /\bpanadol cf\b/i, /\bpanadol extra\b/i, /\bparacetamol\b/i],
+    brand: 'Tab Panadol 500mg',
+    type: 'tab',
+    formula: 'Paracetamol 500mg (GSK)',
+    shortUse: 'Bukhar aur dard kelye',
+    timing: 'Subah dopehar sham 1 goli khane ke baad (1+1+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bcalpol\b/i, /\bcalpol 6 plus\b/i],
+    brand: 'Syp Calpol 120mg/5ml',
+    type: 'syp',
+    formula: 'Paracetamol 120mg/5ml (GSK)',
+    shortUse: 'Bachon ke bukhar aur dard kelye',
+    timing: 'Subah sham 1 chamach (1+0+1)',
+    usage: 'Chamach se pilayein'
+  },
+  {
+    patterns: [/\bfebrol\b/i, /\bdisprol\b/i],
+    brand: 'Tab Febrol 500mg',
+    type: 'tab',
+    formula: 'Paracetamol 500mg (Getz)',
+    shortUse: 'Bukhar aur dard kelye',
+    timing: 'Subah sham 1 goli (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\barinac\b/i, /\barinac forte\b/i, /\barinak\b/i, /\barenac\b/i],
+    brand: 'Tab Arinac Forte',
+    type: 'tab',
+    formula: 'Ibuprofen 400mg + Pseudoephedrine 60mg (Abbott)',
+    shortUse: 'Nazla zukam aur bukhar kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bbrufen\b/i, /\bbrufin\b/i, /\bprofen\b/i, /\bibuprofen\b/i],
+    brand: 'Tab Brufen 400mg',
+    type: 'tab',
+    formula: 'Ibuprofen 400mg (Abbott)',
+    shortUse: 'Dard aur sozish kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bponstan\b/i, /\bponston\b/i, /\bponstan forte\b/i, /\bmefenamic\b/i],
+    brand: 'Tab Ponstan Forte 500mg',
+    type: 'tab',
+    formula: 'Mefenamic Acid 500mg (Pfizer)',
+    shortUse: 'Daant aur jism ke dard kelye',
+    timing: 'Subah dopehar sham 1 goli (1+1+1)',
+    usage: 'Khane ke baad taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bcaflam\b/i, /\bcaflame\b/i, /\bdiclofenac potassium\b/i],
+    brand: 'Tab Caflam 50mg',
+    type: 'tab',
+    formula: 'Diclofenac Potassium 50mg (Novartis)',
+    shortUse: 'Jodon aur haddiyon ke dard kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bvoltral\b/i, /\bvoltaren\b/i, /\bdicloran\b/i, /\bdiclofenac sodium\b/i],
+    brand: 'Tab Voltral 50mg',
+    type: 'tab',
+    formula: 'Diclofenac Sodium 50mg (Novartis)',
+    shortUse: 'Shadeed dard aur sozish kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bsynflex\b/i, /\bnaproxen\b/i],
+    brand: 'Tab Synflex 550mg',
+    type: 'tab',
+    formula: 'Naproxen Sodium 550mg (Searle)',
+    shortUse: 'Haddiyon aur jodon ke dard kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bansaid\b/i, /\bflurbiprofen\b/i],
+    brand: 'Tab Ansaid 100mg',
+    type: 'tab',
+    formula: 'Flurbiprofen 100mg (Pfizer)',
+    shortUse: 'Gale aur sozish ke dard kelye',
+    timing: 'Subah sham 1 goli (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\btoradol\b/i, /\bketorolac\b/i],
+    brand: 'Tab Toradol 10mg',
+    type: 'tab',
+    formula: 'Ketorolac Tromethamine 10mg (Atco)',
+    shortUse: 'Zakham ke shadeed dard kelye',
+    timing: 'Zaroorat ke waqt 1 goli (SOS)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\btramal\b/i, /\btramadol\b/i],
+    brand: 'Cap Tramal 50mg',
+    type: 'cap',
+    formula: 'Tramadol HCl 50mg (Searle)',
+    shortUse: 'Shadeed dard kelye',
+    timing: 'Zaroorat ke waqt 1 capsule',
+    usage: 'Taza paani ke sath lein'
+  },
+
+  // Intestinal, Diarrhea, Nausea & Antispasmodics
+  {
+    patterns: [/\bflagyl\b/i, /\bflgyl\b/i, /\bflagyle\b/i, /\bmetronidazole\b/i],
+    brand: 'Tab Flagyl 400mg',
+    type: 'tab',
+    formula: 'Metronidazole 400mg (Sanofi)',
+    shortUse: 'Pait kharabi aur infection kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bentamizole\b/i, /\bentamizole ds\b/i],
+    brand: 'Tab Entamizole DS',
+    type: 'tab',
+    formula: 'Metronidazole + Diloxanide Furoate (Abbott)',
+    shortUse: 'Pait ke maror aur dast kelye',
+    timing: 'Subah sham 1 goli khane ke baad (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bimodium\b/i, /\bloperamide\b/i],
+    brand: 'Cap Imodium 2mg',
+    type: 'cap',
+    formula: 'Loperamide HCl 2mg (J&J)',
+    shortUse: 'Dast aur motion rokne kelye',
+    timing: 'Dast aane par 1 se 2 capsule',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bmotilium\b/i, /\bmotilum\b/i, /\bdomperidone\b/i, /\bmotilat\b/i],
+    brand: 'Tab Motilium 10mg',
+    type: 'tab',
+    formula: 'Domperidone 10mg (Searle)',
+    shortUse: 'Badhazmi aur ulti kelye',
+    timing: 'Khane se aadha ghanta pehle 1 goli (1+0+1)',
+    usage: 'Khane se pehle taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bgravinate\b/i, /\bgravinat\b/i, /\bdimenhydrinate\b/i, /\bvomilux\b/i],
+    brand: 'Tab Gravinate 50mg',
+    type: 'tab',
+    formula: 'Dimenhydrinate 50mg (Searle)',
+    shortUse: 'Ulti aur matli kelye',
+    timing: 'Zaroorat ke waqt 1 goli (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bmaxolon\b/i, /\bmetoclopramide\b/i],
+    brand: 'Tab Maxolon 10mg',
+    type: 'tab',
+    formula: 'Metoclopramide 10mg (GSK)',
+    shortUse: 'Matli aur ulti kelye',
+    timing: 'Khane se pehle 1 goli',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bonsett\b/i, /\bondansetron\b/i],
+    brand: 'Tab Onsett 8mg',
+    type: 'tab',
+    formula: 'Ondansetron 8mg (Getz)',
+    shortUse: 'Ulti aur qaye rokne kelye',
+    timing: 'Subah sham 1 goli (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bbuscopan\b/i, /\bbuscopan plus\b/i, /\bhyoscine\b/i],
+    brand: 'Tab Buscopan 10mg',
+    type: 'tab',
+    formula: 'Hyoscine Butylbromide 10mg (Sanofi)',
+    shortUse: 'Pait ke dard aur maror kelye',
+    timing: 'Dard ke waqt 1 goli (SOS)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bspasler\b/i, /\bspasler neo\b/i, /\bno-spa\b/i, /\bnospa\b/i, /\bdrotaverine\b/i],
+    brand: 'Tab Spasler Neo',
+    type: 'tab',
+    formula: 'Drotaverine HCl 40mg (Searle)',
+    shortUse: 'Pait aur gurday ke dard kelye',
+    timing: 'Dard ke waqt 1 goli',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bduphalac\b/i, /\blactulose\b/i, /\bezilax\b/i],
+    brand: 'Syp Duphalac',
+    type: 'syp',
+    formula: 'Lactulose 120ml (Abbott)',
+    shortUse: 'Qabz kusha kelye',
+    timing: 'Raat ko sote waqt 2 se 3 chamach',
+    usage: 'Chamach se piyen ya paani mein mila kar lein'
+  },
+  {
+    patterns: [/\bskilax\b/i, /\bsodium picosulfate\b/i],
+    brand: 'Drp Skilax',
+    type: 'drop',
+    formula: 'Sodium Picosulfate (Searle)',
+    shortUse: 'Qabz door karne kelye',
+    timing: 'Raat ko 10 se 15 qatre neem garam paani mein',
+    usage: 'Paani mein tapka kar piyen'
+  },
+
+  // Allergy, Cough & Asthma (Respiratory)
+  {
+    patterns: [/\brigix\b/i, /\brigex\b/i, /\bcetirizine\b/i, /\bzyrtec\b/i],
+    brand: 'Tab Rigix 10mg',
+    type: 'tab',
+    formula: 'Cetirizine 2HCl 10mg (AGP)',
+    shortUse: 'Allergy aur khujli kelye',
+    timing: 'Rozana raat ko 1 goli (0+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bsoftin\b/i, /\bloratadine\b/i],
+    brand: 'Tab Softin 10mg',
+    type: 'tab',
+    formula: 'Loratadine 10mg (Searle)',
+    shortUse: 'Allergy aur zukam kelye',
+    timing: 'Rozana subah 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bkestine\b/i, /\bebastine\b/i],
+    brand: 'Tab Kestine 20mg',
+    type: 'tab',
+    formula: 'Ebastine 20mg (Highnoon)',
+    shortUse: 'Mausami allergy kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\btelfast\b/i, /\bfexofenadine\b/i, /\bfexit\b/i],
+    brand: 'Tab Telfast 120mg',
+    type: 'tab',
+    formula: 'Fexofenadine HCl 120mg (Sanofi)',
+    shortUse: 'Allergy aur cheenkon kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bxyzal\b/i, /\blevocetirizine\b/i, /\bt-day\b/i],
+    brand: 'Tab Xyzal 5mg',
+    type: 'tab',
+    formula: 'Levocetirizine 5mg (GSK)',
+    shortUse: 'Shadeed allergy kelye',
+    timing: 'Raat ko 1 goli (0+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bmyteka\b/i, /\bmontiget\b/i, /\bmontelukast\b/i, /\bmetecka\b/i],
+    brand: 'Tab Myteka 10mg',
+    type: 'tab',
+    formula: 'Montelukast 10mg (Hilton)',
+    shortUse: 'Dama aur sans ki allergy kelye',
+    timing: 'Rozana raat ko 1 goli (0+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bventolin\b/i, /\bsalbutamol\b/i],
+    brand: 'Inhaler Ventolin',
+    type: 'inhaler',
+    formula: 'Salbutamol 100mcg (GSK)',
+    shortUse: 'Saans ki tangi aur dama kelye',
+    timing: 'Zaroorat ke waqt 2 puff',
+    usage: 'Inhaler se gehra saans khenchein'
+  },
+  {
+    patterns: [/\bhydryllin\b/i, /\bhidrilin\b/i, /\bhydryllin dm\b/i],
+    brand: 'Syp Hydryllin',
+    type: 'syp',
+    formula: 'Aminophylline + Diphenhydramine (Searle)',
+    shortUse: 'Khansi aur balgham kelye',
+    timing: 'Subah sham 2 chamach khane ke baad (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+  {
+    patterns: [/\bpulmonol\b/i, /\bpulmonal\b/i],
+    brand: 'Syp Pulmonol',
+    type: 'syp',
+    formula: 'Cough Expectorant (CCL)',
+    shortUse: 'Khansi aur balgham kelye',
+    timing: 'Subah sham 2 chamach (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+  {
+    patterns: [/\bprospan\b/i, /\bhederacol\b/i, /\bivy leaf\b/i],
+    brand: 'Syp Prospan',
+    type: 'syp',
+    formula: 'Ivy Leaf Extract (Engelhard/Getz)',
+    shortUse: 'Balghami khansi kelye',
+    timing: 'Subah sham 1 chamach (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+  {
+    patterns: [/\bacefyl\b/i, /\bacefylline\b/i],
+    brand: 'Syp Acefyl',
+    type: 'syp',
+    formula: 'Acefylline Piperazine (Searle)',
+    shortUse: 'Khansi aur saans ki nali kelye',
+    timing: 'Subah sham 2 chamach (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+  {
+    patterns: [/\bsomophyllin\b/i, /\btheophylline\b/i],
+    brand: 'Syp Somophyllin',
+    type: 'syp',
+    formula: 'Aminophylline (Searle)',
+    shortUse: 'Dama aur khansi kelye',
+    timing: 'Subah sham 1 chamach (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+  {
+    patterns: [/\bsancos\b/i, /\bcorex\b/i, /\bdextromethorphan\b/i],
+    brand: 'Syp Sancos',
+    type: 'syp',
+    formula: 'Dextromethorphan Cough Syrup (Novartis)',
+    shortUse: 'Khushk khansi kelye',
+    timing: 'Subah sham 2 chamach (1+0+1)',
+    usage: 'Chamach se piyen'
+  },
+
+  // Diabetes (Blood Sugar)
+  {
+    patterns: [/\bglucophage\b/i, /\bmetformin\b/i, /\bneodipar\b/i],
+    brand: 'Tab Glucophage 500mg',
+    type: 'tab',
+    formula: 'Metformin HCl 500mg (Merck)',
+    shortUse: 'Sugar control kelye',
+    timing: 'Khane ke darmiyan 1 goli (1+0+1)',
+    usage: 'Khane ke sath taza paani se lein'
+  },
+  {
+    patterns: [/\bgetryl\b/i, /\bglimepiride\b/i, /\bamaryl\b/i],
+    brand: 'Tab Getryl 2mg',
+    type: 'tab',
+    formula: 'Glimepiride 2mg (Getz)',
+    shortUse: 'Sugar normal rakhne kelye',
+    timing: 'Subah naashtey se pehle 1 goli (1+0+0)',
+    usage: 'Naashtey se pehle taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bjanuvia\b/i, /\bsitagliptin\b/i],
+    brand: 'Tab Januvia 100mg',
+    type: 'tab',
+    formula: 'Sitagliptin 100mg (MSD)',
+    shortUse: 'Sugar control kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bjardiance\b/i, /\bempagliflozin\b/i],
+    brand: 'Tab Jardiance 10mg',
+    type: 'tab',
+    formula: 'Empagliflozin 10mg (Boehringer/Searle)',
+    shortUse: 'Sugar aur gurday ki hifazat kelye',
+    timing: 'Rozana subah 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+
+  // Hypertension, Heart & Cholesterol
+  {
+    patterns: [/\bconcor\b/i, /\bbisoprolol\b/i, /\bconcor cor\b/i],
+    brand: 'Tab Concor 5mg',
+    type: 'tab',
+    formula: 'Bisoprolol Fumarate 5mg (Merck)',
+    shortUse: 'Dil ki dharkan aur BP kelye',
+    timing: 'Rozana subah 1 goli (1+0+0)',
+    usage: 'Subah nihar ya naashtey ke baad lein'
+  },
+  {
+    patterns: [/\bnorvasc\b/i, /\bamlodipine\b/i, /\bamcard\b/i],
+    brand: 'Tab Norvasc 5mg',
+    type: 'tab',
+    formula: 'Amlodipine Besylate 5mg (Pfizer)',
+    shortUse: 'Blood pressure control kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\beziday\b/i, /\blosartan\b/i, /\beziday h\b/i],
+    brand: 'Tab Eziday 50mg',
+    type: 'tab',
+    formula: 'Losartan Potassium 50mg (Getz)',
+    shortUse: 'Blood pressure kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\btenormin\b/i, /\batenolol\b/i],
+    brand: 'Tab Tenormin 50mg',
+    type: 'tab',
+    formula: 'Atenolol 50mg (AstraZeneca)',
+    shortUse: 'High BP aur dil ke dard kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bdiovan\b/i, /\bvalsartan\b/i],
+    brand: 'Tab Diovan 80mg',
+    type: 'tab',
+    formula: 'Valsartan 80mg (Novartis)',
+    shortUse: 'Blood pressure kelye',
+    timing: 'Rozana 1 goli (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bcapoten\b/i, /\bcaptopril\b/i],
+    brand: 'Tab Capoten 25mg',
+    type: 'tab',
+    formula: 'Captopril 25mg (Bristol Myers)',
+    shortUse: 'Emergency BP control kelye',
+    timing: 'Doctor ki hidayat par 1 goli',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\blipiget\b/i, /\batorvastatin\b/i, /\blipitor\b/i],
+    brand: 'Tab Lipiget 20mg',
+    type: 'tab',
+    formula: 'Atorvastatin 20mg (Getz)',
+    shortUse: 'Cholesterol kam karne kelye',
+    timing: 'Raat ko 1 goli khane ke baad (0+0+1)',
+    usage: 'Raat ke khane ke baad taza paani se lein'
+  },
+  {
+    patterns: [/\brovista\b/i, /\brosuvastatin\b/i, /\bx-plat\b/i],
+    brand: 'Tab Rovista 10mg',
+    type: 'tab',
+    formula: 'Rosuvastatin 10mg (Getz)',
+    shortUse: 'Cholesterol control kelye',
+    timing: 'Raat ko 1 goli (0+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\blowplat\b/i, /\bclopidogrel\b/i, /\bplavix\b/i],
+    brand: 'Tab Lowplat 75mg',
+    type: 'tab',
+    formula: 'Clopidogrel 75mg (Searle)',
+    shortUse: 'Khoon patla rakhne kelye',
+    timing: 'Rozana 1 goli khane ke baad (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bascard\b/i, /\bloprin\b/i, /\bdisprin\b/i, /\baspirin\b/i],
+    brand: 'Tab Ascard 75mg',
+    type: 'tab',
+    formula: 'Aspirin 75mg (Atco)',
+    shortUse: 'Khoon patla karne kelye',
+    timing: 'Rozana 1 goli dopahar ke khane ke baad',
+    usage: 'Taza paani ke sath lein'
+  },
+
+  // Vitamins, Minerals & Neuropathic
+  {
+    patterns: [/\bsurbex\b/i, /\bsurbex z\b/i, /\bsurbex-z\b/i],
+    brand: 'Tab Surbex Z',
+    type: 'tab',
+    formula: 'Zinc + Vitamin B-Complex + C (Abbott)',
+    shortUse: 'Aasabi taqat aur immunity kelye',
+    timing: 'Rozana 1 goli dopahar ke khane ke baad (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bneurobion\b/i, /\bneurobian\b/i],
+    brand: 'Tab Neurobion',
+    type: 'tab',
+    formula: 'Vitamin B1 + B6 + B12 (Merck)',
+    shortUse: 'Aasaabi kamzori kelye',
+    timing: 'Rozana 1 goli khane ke baad (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bmethycobal\b/i, /\bmecobalamin\b/i],
+    brand: 'Tab Methycobal 500mcg',
+    type: 'tab',
+    formula: 'Mecobalamin 500mcg (Hilton)',
+    shortUse: 'Pathon ke dard aur sunn hone kelye',
+    timing: 'Subah sham 1 goli (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bcac 1000\b/i, /\bcac-1000\b/i, /\bcalcee\b/i],
+    brand: 'Scht CaC 1000 Plus',
+    type: 'scht',
+    formula: 'Calcium Lactate + Vitamin C (GSK)',
+    shortUse: 'Haddiyon aur taqat kelye',
+    timing: 'Rozana 1 sachet 1 glass paani mein',
+    usage: 'Paani mein ghol kar jhaag banne par piyen'
+  },
+  {
+    patterns: [/\bosnate\b/i, /\bosnate-d\b/i, /\bosnate d\b/i],
+    brand: 'Tab Osnate-D',
+    type: 'tab',
+    formula: 'Ossein Mineral Complex + Vit D (Searle)',
+    shortUse: 'Haddiyon ki mazbooti kelye',
+    timing: 'Subah sham 1 goli khane ke sath (1+0+1)',
+    usage: 'Taza paani ke sath lein'
+  },
+  {
+    patterns: [/\bindrop\b/i, /\bindrop-d\b/i, /\bindrop d\b/i, /\bsunny d\b/i, /\bsunny-d\b/i],
+    brand: 'Inj InDrop-D 200,000 IU',
+    type: 'inj',
+    formula: 'Cholecalciferol 200,000 IU (Getz)',
+    shortUse: 'Vitamin D ki shadeed kami kelye',
+    timing: 'Hafte ya maheeney mein 1 ampol doodh mein daal kar',
+    usage: 'Neem garam doodh mein daal kar piyen ya lagwayein'
+  },
+  {
+    patterns: [/\bfefol\b/i, /\bfefol-vit\b/i, /\biberet\b/i, /\biberet-folic\b/i],
+    brand: 'Cap Fefol-Vit',
+    type: 'cap',
+    formula: 'Ferrous Sulphate + Folic Acid (GSK)',
+    shortUse: 'Khoon ki kami kelye',
+    timing: 'Rozana 1 capsule khane ke baad (1+0+0)',
+    usage: 'Taza paani ke sath lein'
+  },
+
+  // Topical Creams & Eye/Ear Drops
+  {
+    patterns: [/\bpolyfax\b/i, /\bpolyfax eye\b/i, /\bpolymyxin\b/i],
+    brand: 'Oint Polyfax Skin',
+    type: 'cream',
+    formula: 'Polymyxin B + Bacitracin (GSK)',
+    shortUse: 'Zakham aur infection kelye',
+    timing: 'Subah sham mutaasira jagah par lagayein',
+    usage: 'Saaf rui ya ungli se barik teh lagayein'
+  },
+  {
+    patterns: [/\bbetnovate\b/i, /\bbetnovate-n\b/i, /\bbetnovate n\b/i, /\bbetamethasone\b/i],
+    brand: 'Cream Betnovate-N',
+    type: 'cream',
+    formula: 'Betamethasone + Neomycin (GSK)',
+    shortUse: 'Jild ki sozish aur kharish kelye',
+    timing: 'Subah sham mutaasira jagah par lagayein',
+    usage: 'Mutaasira jild par halke hath se lagayein'
+  },
+  {
+    patterns: [/\bdermovate\b/i, /\bclobetasol\b/i],
+    brand: 'Cream Dermovate',
+    type: 'cream',
+    formula: 'Clobetasol Propionate (GSK)',
+    shortUse: 'Shadeed jildi sozish kelye',
+    timing: 'Rozana 1 se 2 martaba lagayein',
+    usage: 'Barik teh lagayein'
+  },
+  {
+    patterns: [/\bfucidin\b/i, /\bfusidic acid\b/i],
+    brand: 'Cream Fucidin',
+    type: 'cream',
+    formula: 'Fusidic Acid 2% (Leo/Searle)',
+    shortUse: 'Jildi infection kelye',
+    timing: 'Subah sham lagayein',
+    usage: 'Mutaasira jagah par lagayein'
+  },
+  {
+    patterns: [/\bcanesten\b/i, /\bclotrimazole\b/i],
+    brand: 'Cream Canesten',
+    type: 'cream',
+    formula: 'Clotrimazole 1% (Bayer)',
+    shortUse: 'Fungal infection kelye',
+    timing: 'Subah sham safai ke baad lagayein',
+    usage: 'Khushk kar ke lagayein'
+  },
+  {
+    patterns: [/\bdaktarin\b/i, /\bmiconazole\b/i],
+    brand: 'Gel Daktarin Oral',
+    type: 'cream',
+    formula: 'Miconazole (J&J)',
+    shortUse: 'Munh ke chhale aur fungal infection kelye',
+    timing: 'Subah sham munh ke andar lagayein',
+    usage: 'Khane ke baad munh mein lagayein'
+  },
+  {
+    patterns: [/\btears naturale\b/i, /\btear naturale\b/i, /\brefresh tears\b/i],
+    brand: 'Drp Tears Naturale II',
+    type: 'drop',
+    formula: 'Dextran 70 + Hypromellose (Alcon)',
+    shortUse: 'Aankhon ki jalan aur khushki kelye',
+    timing: 'Subah sham 1 se 2 qatre',
+    usage: 'Aankh mein tapkayen'
+  },
+  {
+    patterns: [/\bbetnesol\b/i, /\bbetnesol eye\b/i],
+    brand: 'Drp Betnesol Eye/Ear',
+    type: 'drop',
+    formula: 'Betamethasone Sodium Phosphate (GSK)',
+    shortUse: 'Aankh ya kaan ki sozish kelye',
+    timing: 'Subah sham 2 qatre',
+    usage: 'Aankh ya kaan mein tapkayen'
+  },
+  {
+    patterns: [/\btobradex\b/i, /\btobramycin\b/i],
+    brand: 'Drp Tobradex',
+    type: 'drop',
+    formula: 'Tobramycin + Dexamethasone (Alcon)',
+    shortUse: 'Aankh ke infection aur sozish kelye',
+    timing: 'Subah sham 1 qatra',
+    usage: 'Aankh mein tapkayen'
+  },
+  {
+    patterns: [/\bmoxigan\b/i, /\bvigamox\b/i],
+    brand: 'Drp Moxigan',
+    type: 'drop',
+    formula: 'Moxifloxacin Eye Drops (Sami)',
+    shortUse: 'Aankh ke infection kelye',
+    timing: 'Subah sham 1 qatra',
+    usage: 'Aankh mein tapkayen'
+  }
+];
+
+// Rejects non-medicinal artifacts (tests, headers, garbage OCR strokes)
+function isNonMedicinalArtifact(str: string): boolean {
+  if (!str || typeof str !== 'string') return true;
+  const s = str.trim().toLowerCase();
+  if (s.length < 2) return true;
+  if (/^(rx|sig|treatment|advice|instructions|summary|findings|diagnosis|follow\s*up|notes?|dr|doctor|patient|date|clinic|hospital|mr|mrs|ms|name|age|gender|sex|wt|weight|bp|temp|pulse|slip|prescription)$/i.test(s)) return true;
+  if (/^(cbc|lft|rft|esr|urine|blood|sugar|x-ray|usg|ecg|ultrasound|lipid\s*profile|serum|creatinine|hemoglobin|hb)$/i.test(s)) return true;
+  if (/^(1\+0\+1|1\+1\+1|1\+0\+0|0\+0\+1|tds|bd|od|sos|qid|prn|ac|pc|po|iv|im|mg|ml|gm|mcg|iu)$/i.test(s)) return true;
+  if (/^[\d\s\.\,\-\+\*\#\:\;\/\(\)\[\]]+$/.test(s)) return true;
+  return false;
+}
+
+// Canonicalize and deduplicate medicine using Pakistani DRAP Formulary
+function canonicalizePakistaniMedicine(
+  rawName: string,
+  rawType?: string,
+  rawFormula?: string,
+  rawUse?: string,
+  rawTiming?: string,
+  rawUsage?: string
+): any {
+  if (!rawName || isModelRefusal(rawName)) return null;
+
+  let cleaned = rawName
+    .replace(/^[\*\-\d\.\)\s\#\>\:\•]+/, '')
+    .replace(/^rx\s*[:\.\-]?\s*/i, '')
+    .replace(/^sig\s*[:\.\-]?\s*/i, '')
+    .replace(/[\*\#_]+/g, '')
+    .trim();
+
+  if (isNonMedicinalArtifact(cleaned)) return null;
+
+  const lowName = cleaned.toLowerCase();
+  const lowFormula = (rawFormula || '').toLowerCase();
+  const combined = `${lowName} ${lowFormula}`.trim();
+
+  // 1. Direct registry matching (Pakistani DRAP Formulary)
+  for (const entry of PAKISTANI_DRUG_REGISTRY) {
+    if (entry.patterns.some(p => p.test(combined))) {
+      const isSyrupForm = /\b(syp|syrup|susp|suspension|ped|liquid)\b/i.test(combined) || rawType === 'syp';
+      const isDropForm = /\b(drop|drops|drp)\b/i.test(combined) || rawType === 'drop';
+      const isInjForm = /\b(inj|injection|amp|vial)\b/i.test(combined) || rawType === 'inj';
+
+      let finalBrand = entry.brand;
+      let finalType = entry.type;
+      let finalTiming = rawTiming && !isModelRefusal(rawTiming) ? rawTiming.trim() : entry.timing;
+      let finalUsage = rawUsage && !isModelRefusal(rawUsage) ? rawUsage.trim() : entry.usage;
+
+      // Handle pediatric syrups vs adult tablets (e.g. Syp Augmentin vs Tab Augmentin)
+      if (isSyrupForm && !entry.brand.startsWith('Syp')) {
+        finalBrand = entry.brand.replace(/^(Tab|Cap)\s+/i, 'Syp ');
+        finalType = 'syp';
+        if (!rawTiming || isModelRefusal(rawTiming)) finalTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
+        finalUsage = 'Chamach se piyen';
+      } else if (isDropForm && !entry.brand.startsWith('Drp')) {
+        finalBrand = entry.brand.replace(/^(Tab|Cap)\s+/i, 'Drp ');
+        finalType = 'drop';
+        if (!rawTiming || isModelRefusal(rawTiming)) finalTiming = 'Subah sham 2 qatre';
+        finalUsage = 'Aankh ya kaan mein tapkayen';
+      } else if (isInjForm && !entry.brand.startsWith('Inj')) {
+        finalBrand = entry.brand.replace(/^(Tab|Cap)\s+/i, 'Inj ');
+        finalType = 'inj';
+        finalUsage = 'Doctor ya dispenser se lagwayein';
+      }
+
+      // Preserve specific strength if already handwritten by doctor (e.g. Risek 40mg vs Risek 20mg)
+      const strengthMatch = cleaned.match(/\b(\d+(?:\.\d+)?\s*(?:mg|ml|mcg|gm|g|iu))\b/i);
+      if (strengthMatch && !finalBrand.toLowerCase().includes(strengthMatch[1].toLowerCase())) {
+        finalBrand = finalBrand.replace(/\b\d+\s*mg\b/i, strengthMatch[1]);
+      }
+
+      return {
+        name: finalBrand,
+        type: finalType,
+        formula: entry.formula,
+        timing: finalTiming,
+        usage: finalUsage,
+        shortUse: entry.shortUse
+      };
+    }
+  }
+
+  // 2. Generic Pakistani normalization if not explicitly in table
+  const medType = detectMedicineTypeSmart(rawType || '', cleaned);
+
+  // Auto-prepend standard Pakistani dosage form prefix (Tab, Cap, Syp, etc.) if missing
+  let formattedName = cleaned;
+  const hasPrefix = /^(tab|tablet|cap|capsule|syp|syrup|susp|drop|drp|inj|injection|scht|sachet|cream|crm|oint|ointment|inhaler)\b/i.test(formattedName);
+  if (!hasPrefix) {
+    if (medType === 'cap') formattedName = `Cap ${formattedName}`;
+    else if (medType === 'syp') formattedName = `Syp ${formattedName}`;
+    else if (medType === 'drop') formattedName = `Drp ${formattedName}`;
+    else if (medType === 'inj') formattedName = `Inj ${formattedName}`;
+    else if (medType === 'scht') formattedName = `Scht ${formattedName}`;
+    else if (medType === 'cream') formattedName = `Cream ${formattedName}`;
+    else if (medType === 'inhaler') formattedName = `Inhaler ${formattedName}`;
+    else formattedName = `Tab ${formattedName}`;
+  }
+
+  let defaultTiming = 'Subah sham 1 goli khane ke baad (1+0+1)';
+  if (medType === 'syp') defaultTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
+  else if (medType === 'cap') defaultTiming = 'Subah sham 1 capsule khane ke baad (1+0+1)';
+  else if (medType === 'drop') defaultTiming = 'Subah sham 2 qatre';
+  else if (medType === 'inhaler') defaultTiming = 'Zaroorat ke waqt 2 puff';
+  else if (medType === 'cream') defaultTiming = 'Subah sham mutaasira jagah par lagayein';
+  else if (medType === 'scht') defaultTiming = 'Neem garam paani mein 1 sachet hal karein';
+  else if (medType === 'inj') defaultTiming = 'Doctor ki hidayat ke mutabiq lagwayein';
+
+  let rawTimingClean = rawTiming && !isModelRefusal(rawTiming) ? rawTiming.trim() : defaultTiming;
+  // Convert 1+0+1 shorthand if provided
+  if (/^1\+0\+1$/i.test(rawTimingClean)) {
+    rawTimingClean = medType === 'syp' ? 'Subah sham 1 chamach (1+0+1)' : 'Subah sham 1 goli (1+0+1)';
+  } else if (/^1\+1\+1$/i.test(rawTimingClean)) {
+    rawTimingClean = medType === 'syp' ? 'Subah dopehar sham 1 chamach (1+1+1)' : 'Subah dopehar sham 1 goli (1+1+1)';
+  } else if (/^1\+0\+0$/i.test(rawTimingClean)) {
+    rawTimingClean = 'Rozana subah 1 goli (1+0+0)';
+  } else if (/^0\+0\+1$/i.test(rawTimingClean)) {
+    rawTimingClean = 'Raat ko sote waqt 1 goli (0+0+1)';
+  }
+
+  const shortUse = getMedicineShortUse(formattedName, rawFormula || rawUse || '');
+
+  return {
+    name: formattedName,
+    type: medType,
+    formula: rawFormula ? String(rawFormula).trim() : '',
+    timing: rawTimingClean,
+    usage: rawUsage && !isModelRefusal(rawUsage) ? rawUsage.trim() : (medType === 'cream' ? 'Halke hath se lagayein' : (medType === 'drop' ? 'Aankh ya kaan mein tapkayen' : (medType === 'syp' ? 'Chamach se piyen' : 'Taza paani ke sath lein'))),
+    shortUse
+  };
+}
+
 function normalizePrescriptionData(parsed: any) {
   if (!parsed) return null;
   let meds: any[] = [];
@@ -387,57 +1282,18 @@ function normalizePrescriptionData(parsed: any) {
         if (clean.length < 2 || isModelRefusal(clean)) return null;
         const parts = clean.split(/[-–—:]/);
         const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
-        const medType = detectMedicineTypeSmart('', name);
-        let defaultTiming = 'Subah sham 1 goli khane ke baad (1+0+1)';
-        if (medType === 'syp') defaultTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
-        else if (medType === 'cap') defaultTiming = 'Subah sham 1 capsule khane ke baad (1+0+1)';
-        else if (medType === 'drop') defaultTiming = 'Subah sham 2 qatre';
-        else if (medType === 'inhaler') defaultTiming = 'Zaroorat ke waqt 2 puff';
-        else if (medType === 'cream') defaultTiming = 'Subah sham mutaasira jagah par lagayein';
-        else if (medType === 'scht') defaultTiming = 'Neem garam paani mein 1 sachet hal karein';
-        else if (medType === 'inj') defaultTiming = 'Doctor ki hidayat ke mutabiq lagwayein';
-
-        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || defaultTiming;
-        const shortUse = getMedicineShortUse(name, '');
-        return {
-          name,
-          type: medType,
-          formula: '',
-          timing,
-          usage: medType === 'cream' ? 'Halke hath se lagayein' : (medType === 'drop' ? 'Aankh ya kaan mein tapkayen' : 'Taza paani ke sath lein'),
-          shortUse
-        };
+        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || '';
+        return canonicalizePakistaniMedicine(name, '', '', '', timing, '');
       }
       if (!m || typeof m !== 'object') return null;
       const name = String(m.name || m.medicine || m.brand || m.drug || m.item || m.medicineName || m.title || m.label || '').trim();
       if (!name || isModelRefusal(name)) return null;
       const rawType = String(m.type || m.form || m.dosageForm || '').trim();
-      const medType = detectMedicineTypeSmart(rawType, name);
-
-      let defaultTiming = 'Subah sham 1 goli khane ke baad (1+0+1)';
-      if (medType === 'syp') defaultTiming = 'Subah sham 1 chamach khane ke baad (1+0+1)';
-      else if (medType === 'cap') defaultTiming = 'Subah sham 1 capsule khane ke baad (1+0+1)';
-      else if (medType === 'drop') defaultTiming = 'Subah sham 2 qatre';
-      else if (medType === 'inhaler') defaultTiming = 'Zaroorat ke waqt 2 puff';
-      else if (medType === 'cream') defaultTiming = 'Subah sham mutaasira jagah par lagayein';
-      else if (medType === 'scht') defaultTiming = 'Neem garam paani mein 1 sachet hal karein';
-      else if (medType === 'inj') defaultTiming = 'Doctor ki hidayat ke mutabiq lagwayein';
-
       const formula = String(m.formula || m.generic || m.salt || m.composition || '').trim();
       const rawUse = String(m.shortUse || m.use || m.purpose || m.indication || m.reason || '').trim();
-      const shortUseHint = rawUse || getMedicineShortUse(name, formula);
-      return {
-        name,
-        type: medType,
-        formula,
-        timing: isModelRefusal(String(m.timing || '')) 
-          ? defaultTiming
-          : String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || defaultTiming).trim(),
-        usage: isModelRefusal(String(m.usage || '')) 
-          ? (medType === 'cream' ? 'Halke hath se lagayein' : (medType === 'drop' ? 'Aankh ya kaan mein tapkayen' : 'Taza paani ke sath lein')) 
-          : String(m.usage || m.method || 'Taza paani ke sath lein').trim(),
-        shortUse: shortUseHint
-      };
+      const rawTiming = String(m.timing || m.dosage || m.dose || m.schedule || m.frequency || '').trim();
+      const rawUsage = String(m.usage || m.method || '').trim();
+      return canonicalizePakistaniMedicine(name, rawType, formula, rawUse, rawTiming, rawUsage);
     })
     .filter(Boolean);
 
@@ -581,24 +1437,14 @@ function extractMedicinesFromTextLines(text: string) {
   const meds: any[] = [];
   for (const line of lines) {
     const clean = line.replace(/^[\*\-\d\.\)\s]+/, '').trim();
-    if (clean.length < 3 || isModelRefusal(clean)) continue;
-    if (/^(rx|doctor|patient|clinic|date|advice|note|diagnosis|sig|treatment|name|instructions|summary|findings):/i.test(clean)) continue;
-    if (/(tab|cap|syp|inj|drop|goli|capsule|mg|ml|gm|sachet|syrup|tablet|ointment|cream)/i.test(clean) || clean.split(/\s+/).length >= 1) {
-      const parts = clean.split(/[-–—:]/);
-      const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
-      if (name.length >= 2 && !isModelRefusal(name)) {
-        const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || 'Subah sham 1 goli khane ke baad (1+0+1)';
-        const shortUseHint = getMedicineShortUse(name, '');
-        meds.push({
-          name,
-          formula: '',
-          form: /syp|syrup/i.test(name) ? 'Sharbath (Syrup)' : (/cap/i.test(name) ? 'Capsule' : (/inj/i.test(name) ? 'Injection' : (/drop/i.test(name) ? 'Drops' : 'Goli (Tablet)'))),
-          timing,
-          usage: 'Taza paani ke sath lein',
-          purpose: shortUseHint,
-          shortUse: shortUseHint
-        });
-      }
+    if (clean.length < 3 || isModelRefusal(clean) || isNonMedicinalArtifact(clean)) continue;
+    if (/^(rx|doctor|patient|clinic|date|advice|note|diagnosis|sig|treatment|name|instructions|summary|findings|test|lab|cbc|lft|rft|esr):/i.test(clean)) continue;
+    const parts = clean.split(/[-–—:]/);
+    const name = parts[0].trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '');
+    const timing = parts[1]?.trim().replace(/^[\*\#_]+|[\*\#_]+$/g, '') || '';
+    const canon = canonicalizePakistaniMedicine(name, '', '', '', timing, '');
+    if (canon) {
+      meds.push(canon);
     }
   }
   return meds;
@@ -660,7 +1506,8 @@ function extractInvoiceItemsFromTextLines(text: string) {
 async function generateWithVisionFallback(
   prompt: string, 
   imageBase64: string,
-  systemInstruction?: string
+  systemInstruction?: string,
+  temperature: number = 0.1
 ): Promise<string | null> {
   let apiKey = process.env.GEMINI_API_KEY ||
                process.env.GOOGLE_API_KEY ||
@@ -710,7 +1557,8 @@ async function generateWithVisionFallback(
         config: {
           systemInstruction: systemInstruction || "You are an expert Clinical Pharmacist, Master Handwriting Decipherer, and Medical Forensic OCR specialist. Your sole duty is to thoroughly and deeply read EVERY medical prescription slip, hospital discharge slip, clinic note, or doctor handwriting without skipping any item. Carefully analyze all numbered items (1, 2, 3...), unnumbered lines, columns, dosage frequencies, brand names, and active salts. Always return structured JSON strictly conforming to the requested schema with all medicines transcribed.",
           responseMimeType: "application/json",
-          maxOutputTokens: 8192
+          maxOutputTokens: 8192,
+          temperature: temperature
         }
       });
 
@@ -763,6 +1611,39 @@ async function generateWithVisionFallback(
 }
 
 // -------------------------------------------------------------
+// PAKISTANI CLINICAL PHARMACY SYSTEM INSTRUCTION
+// -------------------------------------------------------------
+const PAKISTANI_PRESCRIPTION_SYSTEM_INSTRUCTION = `You are an elite Clinical Pharmacist, Master Handwriting Decipherer, and Pakistani DRAP Drug Formulary Specialist.
+Your mission is to read doctor handwritten prescriptions, hospital slips, and clinic pads across Pakistan with extreme clinical accuracy, zero fake hallucinations, and lightning speed (within 2-4 seconds).
+
+CORE MANDATES:
+1. CLINICAL DEDUCTION & FORENSIC HANDWRITING DECIPHERING ("Zehn aur Demagh Ladana"):
+   - Read cursive doctor handwriting with pharmacological intellect.
+   - Cross-match the entire prescription context and clinical syndromes:
+     * Respiratory / Cold / Flu Syndrome: If you see an antibiotic like Augmentin, Leflox, or Azomax co-prescribed with an analgesic (Panadol / Arinac / Febrol), cough syrup (Hydryllin / Pulmonol / Prospan), and anti-allergy (Rigix / Softin / Kestine), use this synergy to confidently resolve messy doctor handwriting.
+     * Gastric / Dysentery Syndrome: Co-prescriptions of PPIs (Risek / Nexum / Losec), antiemetics (Motilium / Gravinate), antidiarrheals (Flagyl / Entamizole), antacids (Gaviscon / Mucaine), and antispasmodics (Buscopan / Spasler).
+     * Orthopedic / Pain Syndrome: NSAIDs (Brufen / Caflam / Ponstan Forte / Synflex) co-prescribed with PPI gastroprotection (Risek / Nexum) and B-Complex / Neuropathic vitamins (Neurobion / Methycobal).
+     * Pediatric Slips: Almost always syrups / suspensions ("Syp" or "Susp") with tsp / ml dosages (Syp Calpol, Syp Brufen, Syp Augmentin DS, Syp Gravinate, Syp Flagyl).
+   - Interpret abbreviations: "OD" (Rozana 1 martaba / 1+0+0), "BD" (Subah sham / 1+0+1), "TDS" (Subah dopehar sham / 1+1+1), "QID" (Din mein 4 martaba), "HS" (Raat sote waqt / 0+0+1), "SOS" / "PRN" (Zaroorat ke waqt), "AC" (Khane se pehle), "PC" (Khane ke baad).
+
+2. STRICT PAKISTANI DRAP BRAND PRIORITIZATION:
+   - Match all medicines to authentic, DRAP-approved Pakistani pharmaceutical brands (from Getz, GSK, Abbott, Searle, Sami, Martin Dow, Hilton, Highnoon, Ferozsons, Sanofi, Bosch, CCL, Nabiqasim, Platinum, PharmEvo, Atco, etc.).
+   - Standard Pakistani dosage prefixes: "Tab" (Tablet), "Cap" (Capsule), "Syp" (Syrup/Suspension), "Drp" (Drops), "Inj" (Injection), "Scht" (Sachet), "Cream" / "Oint" (Cream/Ointment), "Inhaler".
+   - Include standard strength if visible (e.g. 20mg, 40mg, 500mg, 625mg, 1g, 400mg, 50mg, 10mg).
+
+3. STRICT ZERO-HALLUCINATION & ANTI-FAKE DRUGS ("Fake medicine apni taraf se na bataye"):
+   - NEVER invent fantasy, fake, or non-existent medicine names.
+   - NEVER output diagnostic tests (CBC, LFT, RFT, Urine R/E, ESR, Blood Sugar, X-Ray) as medicines.
+   - NEVER output prescription header labels ("Rx", "Sig", "Treatment", "Advice", "Follow Up", "Date", "Clinic", "Doctor") as medicines.
+   - If handwriting is partially distorted, pick the closest genuine DRAP Pakistani brand based on visible characters, strength, and syndrome context.
+
+4. ROMAN URDU CLINICAL USE ENDING WITH "... KELYE":
+   - For every medicine, state the clinical indication in natural Roman Urdu strictly ending with "kelye" (e.g. "Maiday ki jalan kelye", "Bukhar aur dard kelye", "Infection ke ilaj kelye", "Khansi aur balgham kelye", "Nazla aur zukam kelye", "Ulti aur matli kelye", "Pait ke maror kelye", "Blood pressure kelye", "Sugar control kelye").
+
+5. EXHAUSTIVE EXTRACTION MANDATE:
+   - Transcribe EVERY single medicine prescribed on the page without stopping after 1 or 2 items.`;
+
+// -------------------------------------------------------------
 // AI Prescription Scanner Endpoint
 // -------------------------------------------------------------
 app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promise<void> => {
@@ -773,25 +1654,16 @@ app.post('/api/ai/scan-prescription', async (req: Request, res: Response): Promi
       return;
     }
 
-    const prompt = `You are an expert Clinical Pharmacist, Master Handwriting Decipherer, and Medical Forensic OCR specialist.
-Scan this entire prescription slip, clinic pad, doctor note, or hospital slip exhaustively from top to bottom.
+    const prompt = `Scan this prescription slip, clinic pad, doctor note, or hospital slip exhaustively.
 EXHAUSTIVE EXTRACTION MANDATE:
-Do NOT stop after reading just 1, 2, or 3 items. Carefully transcribe EVERY SINGLE medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
-- Read all numbered lines (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, etc.), unnumbered lines, columns, bullet points, and any margin/SOS notes.
-- Use your deep clinical pharmacy intellect to decipher messy doctor cursive handwriting, abbreviations, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
-- STRICT MEDICINE TYPE ACCURACY: Accurately identify the dosage form:
-  * tab: Tablet, chewable, dispersible
-  * cap: Capsule, softgel
-  * syp: Syrup, suspension, elixir, oral liquid
-  * drop: Eye drops, ear drops, nasal drops
-  * inj: Injection, ampoule, vial, IV infusion
-  * scht: Sachet, powder
-  * cream: Cream, ointment, gel, lotion
-  * inhaler: Inhaler, spray
-  Never confuse a capsule for a tablet, or a syrup for a capsule!
-- For each medicine, determine its medical clinical use in Roman Urdu ending with "kelye" (e.g. "Bukhar aur dard kelye", "Ulti aur matli kelye", "Maiday ki tezabiyat kelye", "Khansi aur balgham kelye", "Infection kelye", "Allergy kelye", "Sugar control kelye", "Blood pressure kelye", "Dard aur sozish kelye").
-- Also read doctor name, clinic name, and patient name if written.
-- IMPORTANT: Do NOT include any drug category or therapeutic classification in the output.
+Carefully transcribe EVERY SINGLE prescribed medicine, tablet, capsule, syrup, injection, drops, inhaler, sachet, cream, or ointment written on this paper.
+- Read all numbered lines (1, 2, 3, 4, 5, 6, 7, 8, 9, 10...), unnumbered lines, columns, bullet points, and margin notes.
+- Use clinical pharmacy intellect to decipher messy doctor handwriting, abbreviations, strengths (mg, ml, g), and dosage timings (e.g. 1+0+1, 1x2, TDS, BD, OD, SOS).
+- STRICT PAKISTANI BRAND ACCURACY: Prioritize DRAP-approved Pakistani market medicines (e.g. Risek, Nexum, Augmentin, Panadol, Brufen, Arinac, Ponstan, Caflam, Leflox, Novidat, Cefspan, Azomax, Flagyl, Entamizole, Motilium, Gravinate, Buscopan, Spasler, Hydryllin, Pulmonol, Prospan, Rigix, Softin, Myteka, Ventolin, Glucophage, Getryl, Concor, Norvasc, Lipiget, Surbex Z, Neurobion, CaC 1000, Polyfax, Betnovate).
+- NEVER hallucinate fake or imaginary drugs. If handwriting is messy, cross-match the other co-prescribed medicines to deduce the exact genuine Pakistani brand.
+- STRICT DOSAGE FORM PREFIXES: Tab (Tablet), Cap (Capsule), Syp (Syrup/Suspension), Drop (Drops), Inj (Injection), Scht (Sachet), Cream (Cream/Ointment), Inhaler.
+- For each medicine, provide clinical use in Roman Urdu strictly ending with "kelye" (e.g. "Bukhar aur dard kelye", "Maiday ki jalan kelye", "Infection ke ilaj kelye", "Khansi aur balgham kelye").
+- Also extract doctor name, clinic name, and patient name if written.
 
 Return JSON format:
 {
@@ -801,17 +1673,17 @@ Return JSON format:
   "advice": "Precautions in Roman Urdu",
   "medicines": [
     {
-      "name": "Exact medicine name and strength",
+      "name": "Full brand name with prefix and strength (e.g. Cap Risek 20mg, Tab Augmentin 625mg)",
       "type": "tab / cap / syp / drop / inj / scht / cream / inhaler",
-      "formula": "Generic salt if visible",
-      "timing": "Dosage instructions e.g. Subah sham 1 goli (1+0+1) or 1 chamach for syrup",
+      "formula": "DRAP generic salt (e.g. Omeprazole 20mg, Co-Amoxiclav 625mg)",
+      "timing": "Dosage instructions e.g. Subah sham 1 goli khane ke baad (1+0+1) or 1 chamach for syrup",
       "usage": "Usage instructions in Roman Urdu e.g. Taza paani ke sath lein",
       "shortUse": "Purpose in Roman Urdu ending with kelye"
     }
   ]
 }`;
 
-    const text = await generateWithVisionFallback(prompt, imageBase64);
+    const text = await generateWithVisionFallback(prompt, imageBase64, PAKISTANI_PRESCRIPTION_SYSTEM_INSTRUCTION, 0.1);
     const parsed = text ? extractJsonFromText(text) : null;
     let normalized = normalizePrescriptionData(parsed);
 
